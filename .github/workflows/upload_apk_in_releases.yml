@@ -1,31 +1,6 @@
 name: Build, Sign and Upload APK in Releases
 on:
-#  push:
-#    paths:
-#      - 'dependencies.gradle'
-#  pull_request:
-#    paths:
-#      - 'dependencies.gradle'
   workflow_dispatch:
-
-#on:
-#  push:
-#    branches:
-#      - 'master'
-#    paths:
-#      - 'app/**'
-#      - 'app/*'
-#      - 'gradle/**'
-#      - 'gradle/*'
-#  pull_request:
-#    branches:
-#      - 'master'
-#    paths:
-#      - 'app/**'
-#      - 'app/*'
-#      - 'gradle/**'
-#      - 'gradle/*'
-#  workflow_dispatch:
 
 jobs:
   apk:
@@ -43,15 +18,6 @@ jobs:
       - name: Grant Permission to Execute
         run: chmod +x gradlew
       
-#      - name: Increment patch version
-#        uses: yoichiro/gh-action-increment-value@v5
-#        with:
-#          target_directory: ''
-#          target_file: 'dependencies.gradle'
-#          prefix: 'versionPatch:'
-#          suffix: ']'
-#          commit_message: '[skip ci] Increments the patch version to'
-
       # Run Build Project
       - name: Build gradle project
         run: bash ./gradlew build --stacktrace
@@ -92,8 +58,6 @@ jobs:
           tag_name: ${{ env.VERSION_TAG }}
           name: Release ${{ env.VERSION_TAG }}
           release_name: Release ${{ env.VERSION_TAG }}
-#          tag_name: release-v${{ github.run_number }}
-#          release_name: Automatic Release ${{ github.run_number }}
           draft: false
           prerelease: false
 
