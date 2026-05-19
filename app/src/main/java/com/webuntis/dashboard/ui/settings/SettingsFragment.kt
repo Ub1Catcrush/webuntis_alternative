@@ -1,0 +1,115 @@
+package com.webuntis.dashboard.ui.settings
+
+import android.os.Bundle
+import android.view.*
+import androidx.core.view.isVisible
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.navigation.fragment.findNavController
+import com.webuntis.dashboard.R
+import com.webuntis.dashboard.databinding.FragmentSettingsBinding
+import com.webuntis.dashboard.ui.login.LoginState
+import com.webuntis.dashboard.ui.login.LoginViewModel
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
+
+@AndroidEntryPoint
+class SettingsFragment : Fragment() {
+
+    private var _binding: FragmentSettingsBinding? = null
+    private val binding get() = _binding!!
+
+    // Share the same LoginViewModel as MainActivity so logout propagates
+    private val loginViewModel: LoginViewModel by viewModels(
+        ownerProducer = { requireActivity() }
+    )
+
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
+    ): View {
+        _binding = FragmentSettingsBinding.inflate(inflater, container, false)
+        return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+        // Populate fields from stored session/credentials
+        val session = loginViewModel.sessionManager.session
+        val creds   = loginViewModel.sessionManager.storedCredentials
+        binding.inputServer.setText(session?.server ?: "")
+        binding.inputSchoolname.setText(session?.schoolname ?: "")
+        binding.inputUsername.setText(creds?.first ?: session?.username ?: "")
+        // Password intentionally not pre-filled; show placeholder
+        binding.inputPassword.hint = if (creds != null)
+            getString(R.string.login_password_saved_hint)
+        else getString(R.string.login_password_hint)
+
+        binding.btnSave.setOnClickListener { saveAndReLogin() }
+        binding.btnLogout.setOnClickListener { loginViewModel.logout() }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                loginViewModel.loginState.collect { state ->
+                    binding.progressBar.isVisible = state is LoginState.Loading
+                    binding.btnSave.isEnabled = state !is LoginState.Loading
+                    when (state) {
+                        is LoginState.Success -> {
+                            binding.statusText.text = getString(R.string.settings_saved_ok)
+                            binding.statusText.isVisible = true
+                        }
+                        is LoginState.Error -> {
+                            binding.statusText.text = state.message
+                            binding.statusText.isVisible = true
+                        }
+                        else -> binding.statusText.isVisible = false
+                    }
+                }
+            }
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                loginViewModel.isLoggedIn.collect { loggedIn ->
+                    if (!loggedIn) {
+                        // Logged out → navigate back to login
+                        findNavController().navigate(R.id.loginFragment)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun saveAndReLogin() {
+        val server     = binding.inputServer.text.toString().trim()
+        val schoolname = binding.inputSchoolname.text.toString().trim()
+        val username   = binding.inputUsername.text.toString().trim()
+        val typed      = binding.inputPassword.text.toString()
+        val password   = if (typed.isBlank())
+            loginViewModel.sessionManager.storedCredentials?.second ?: ""
+        else typed
+
+        if (server.isBlank() || schoolname.isBlank() || username.isBlank() || password.isBlank()) {
+            // Password may be blank if user wants to keep stored password - that's fine
+            val effectivePassword = password.ifBlank {
+                loginViewModel.sessionManager.storedCredentials?.second
+            }
+            if (server.isBlank() || schoolname.isBlank() || username.isBlank() || effectivePassword.isNullOrBlank()) {
+                binding.statusText.text = getString(R.string.error_fill_all_fields)
+                binding.statusText.isVisible = true
+                return
+            }
+        }
+        // Clear old session so RetrofitFactory uses the new server
+        loginViewModel.sessionManager.clearSession()
+        loginViewModel.login(server, schoolname, username, password)
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
+}

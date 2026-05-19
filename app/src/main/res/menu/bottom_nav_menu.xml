@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/timetableFragment"
+        android:icon="@drawable/ic_calendar"
+        android:title="@string/nav_timetable" />
+
+    <item
+        android:id="@+id/homeworkFragment"
+        android:icon="@drawable/ic_homework"
+        android:title="@string/nav_homework" />
+
+    <item
+        android:id="@+id/messagesFragment"
+        android:icon="@drawable/ic_message"
+        android:title="@string/nav_messages" />
+
+    <item
+        android:id="@+id/absencesFragment"
+        android:icon="@drawable/ic_absence"
+        android:title="@string/nav_absences" />
+
+    <item
+        android:id="@+id/nav_more"
+        android:icon="@drawable/ic_more"
+        android:title="@string/nav_more" />
+
+</menu>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand -->
+    <color name="primary">#4F8EF7</color>
+    <color name="primary_variant">#6C63FF</color>
+    <color name="on_primary">#FFFFFF</color>
+
+    <!-- Semantic -->
+    <color name="red">#F25C5C</color>
+    <color name="red_container">#3DF25C5C</color>
+    <color name="yellow">#F5C842</color>
+    <color name="yellow_container">#3DF5C842</color>
+    <color name="green">#3ECF8E</color>
+    <color name="green_container">#3D3ECF8E</color>
+    <color name="blue">#4F8EF7</color>
+    <color name="blue_container">#3D4F8EF7</color>
+    <color name="orange">#F5803E</color>
+    <color name="orange_container">#3DF5803E</color>
+    <color name="on_surface_variant">#7A7F94</color>
+
+    <!-- Subject dot colors -->
+    <color name="subject_math">#4F8EF7</color>
+    <color name="subject_german">#F25C5C</color>
+    <color name="subject_english">#3ECF8E</color>
+    <color name="subject_physics">#6C63FF</color>
+    <color name="subject_chemistry">#F59E42</color>
+    <color name="subject_history">#E86496</color>
+    <color name="subject_bio">#3EBE64</color>
+    <color name="subject_sport">#F0C41E</color>
+    <color name="subject_art">#AA64E6</color>
+    <color name="subject_default">#7A7F94</color>
+
+    <!-- Subject chip containers (low opacity) -->
+    <color name="subject_math_container">#284F8EF7</color>
+    <color name="subject_german_container">#28F25C5C</color>
+    <color name="subject_english_container">#283ECF8E</color>
+    <color name="subject_physics_container">#286C63FF</color>
+    <color name="subject_chemistry_container">#28F59E42</color>
+    <color name="subject_history_container">#28E86496</color>
+    <color name="subject_bio_container">#283EBE64</color>
+    <color name="subject_sport_container">#28F0C41E</color>
+    <color name="subject_default_container">#287A7F94</color>
+
+    <!-- Material baseline (needed by theme) -->
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

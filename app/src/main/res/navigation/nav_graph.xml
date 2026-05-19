@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/loginFragment">
+
+    <fragment
+        android:id="@+id/loginFragment"
+        android:name="com.webuntis.dashboard.ui.login.LoginFragment"
+        android:label="Login">
+        <action
+            android:id="@+id/action_login_to_timetable"
+            app:destination="@id/timetableFragment"
+            app:popUpTo="@id/loginFragment"
+            app:popUpToInclusive="true" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/timetableFragment"
+        android:name="com.webuntis.dashboard.ui.timetable.TimetableFragment"
+        android:label="Stundenplan" />
+
+    <fragment
+        android:id="@+id/homeworkFragment"
+        android:name="com.webuntis.dashboard.ui.homework.HomeworkFragment"
+        android:label="Hausaufgaben" />
+
+    <fragment
+        android:id="@+id/messagesFragment"
+        android:name="com.webuntis.dashboard.ui.messages.MessagesFragment"
+        android:label="Nachrichten" />
+
+    <fragment
+        android:id="@+id/absencesFragment"
+        android:name="com.webuntis.dashboard.ui.absences.AbsencesFragment"
+        android:label="Abwesenheiten" />
+
+    <fragment
+        android:id="@+id/classbookFragment"
+        android:name="com.webuntis.dashboard.ui.classbook.ClassbookFragment"
+        android:label="Klassenbuch" />
+
+    <fragment
+        android:id="@+id/eventsFragment"
+        android:name="com.webuntis.dashboard.ui.events.EventsFragment"
+        android:label="Termine" />
+
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="com.webuntis.dashboard.ui.settings.SettingsFragment"
+        android:label="Einstellungen" />
+
+</navigation>
