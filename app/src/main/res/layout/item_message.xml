@@ -2,6 +2,7 @@
 <com.google.android.material.card.MaterialCardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/card_root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginBottom="8dp"
@@ -23,6 +24,20 @@
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
+            <!-- Account label chip (second account) -->
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_account"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:textSize="10sp"
+                app:chipMinHeight="22dp"
+                app:chipStartPadding="6dp"
+                app:chipEndPadding="6dp"
+                app:ensureMinTouchTargetSize="false"
+                android:visibility="gone"
+                style="@style/Widget.Material3.Chip.Suggestion" />
+
             <TextView
                 android:id="@+id/text_sender"
                 android:layout_width="0dp"
@@ -38,8 +53,8 @@
                 android:layout_height="16dp"
                 android:layout_marginEnd="6dp"
                 android:src="@drawable/ic_homework"
-                android:visibility="gone"
-                app:tint="?attr/colorOnSurfaceVariant" />
+                android:tint="?attr/colorOnSurfaceVariant"
+                android:visibility="gone" />
 
             <View
                 android:id="@+id/icon_unread"
@@ -71,7 +86,7 @@
             android:maxLines="1"
             android:ellipsize="end" />
 
-        <!-- Preview -->
+        <!-- Preview (collapsed) -->
         <TextView
             android:id="@+id/text_preview"
             android:layout_width="match_parent"
@@ -82,6 +97,50 @@
             android:maxLines="2"
             android:ellipsize="end"
             android:lineSpacingMultiplier="1.3" />
+
+        <!-- Expanded section -->
+        <LinearLayout
+            android:id="@+id/layout_expanded"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <!-- Divider -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="10dp"
+                android:background="?attr/colorOutlineVariant" />
+
+            <!-- Full preview text -->
+            <TextView
+                android:id="@+id/text_full_preview"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="13sp"
+                android:textColor="?attr/colorOnSurface"
+                android:lineSpacingMultiplier="1.4" />
+
+            <!-- Attachments container -->
+            <LinearLayout
+                android:id="@+id/layout_attachments"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="10dp"
+                android:visibility="gone" />
+
+            <!-- Attachment loading indicator -->
+            <ProgressBar
+                android:id="@+id/attachments_progress"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginTop="8dp"
+                android:visibility="gone" />
+
+        </LinearLayout>
 
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

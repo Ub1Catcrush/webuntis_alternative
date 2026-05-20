@@ -82,18 +82,63 @@ class SessionManager @Inject constructor(
             }
         }
 
+    data class SecondAccount(
+        val username: String,
+        val password: String,
+        val label: String,
+        val personType: Int = 0,
+        val personName: String = ""
+    ) {
+        val accountTypeLabel: String get() = when (personType) {
+            2    -> "Lehrer"
+            5    -> "Schüler"
+            12   -> "Eltern"
+            else -> ""
+        }
+    }
 
+    var secondAccount: SecondAccount?
+        get() {
+            val u = prefs.getString(KEY_SECOND_USER, null) ?: return null
+            val p = prefs.getString(KEY_SECOND_PASS, null) ?: return null
+            val l = prefs.getString(KEY_SECOND_LABEL, "") ?: ""
+            val t = prefs.getInt(KEY_SECOND_TYPE, 0)
+            val n = prefs.getString(KEY_SECOND_NAME, "") ?: ""
+            return SecondAccount(u, p, l, t, n)
+        }
+        set(value) {
+            if (value == null) {
+                prefs.edit()
+                    .remove(KEY_SECOND_USER).remove(KEY_SECOND_PASS)
+                    .remove(KEY_SECOND_LABEL).remove(KEY_SECOND_TYPE)
+                    .remove(KEY_SECOND_NAME)
+                    .apply()
+            } else {
+                prefs.edit()
+                    .putString(KEY_SECOND_USER, value.username)
+                    .putString(KEY_SECOND_PASS, value.password)
+                    .putString(KEY_SECOND_LABEL, value.label)
+                    .putInt(KEY_SECOND_TYPE, value.personType)
+                    .putString(KEY_SECOND_NAME, value.personName)
+                    .apply()
+            }
+        }
 
     companion object {
-        private const val KEY_SERVER      = "server"
-        private const val KEY_SCHOOLNAME  = "schoolname"
-        private const val KEY_USERNAME    = "username"
-        private const val KEY_SESSION_ID  = "session_id"
-        private const val KEY_PERSON_ID   = "person_id"
-        private const val KEY_CLASS_ID    = "class_id"
-        private const val KEY_PERSON_NAME = "person_name"
-        private const val KEY_PERSON_TYPE = "person_type"
-        private const val KEY_STORED_USER = "stored_user"
-        private const val KEY_STORED_PASS = "stored_pass"
+        private const val KEY_SERVER       = "server"
+        private const val KEY_SCHOOLNAME   = "schoolname"
+        private const val KEY_USERNAME     = "username"
+        private const val KEY_SESSION_ID   = "session_id"
+        private const val KEY_PERSON_ID    = "person_id"
+        private const val KEY_CLASS_ID     = "class_id"
+        private const val KEY_PERSON_NAME  = "person_name"
+        private const val KEY_PERSON_TYPE  = "person_type"
+        private const val KEY_STORED_USER  = "stored_user"
+        private const val KEY_STORED_PASS  = "stored_pass"
+        private const val KEY_SECOND_USER  = "second_user"
+        private const val KEY_SECOND_PASS  = "second_pass"
+        private const val KEY_SECOND_LABEL = "second_label"
+        private const val KEY_SECOND_TYPE  = "second_type"
+        private const val KEY_SECOND_NAME  = "second_name"
     }
 }

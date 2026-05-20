@@ -60,6 +60,17 @@ interface WebUntisService {
         @Query("layout") layout: String = "START_TIME"
     ): Response<ResponseBody>
 
+    // ── Calendar Entry Detail (v2) — carries substText, lessonInfo per entry ──
+    @GET("api/rest/view/v2/calendar-entry/detail")
+    suspend fun getCalendarEntryDetail(
+        @Header("Authorization") authorization: String,
+        @Query("elementId") elementId: Int,
+        @Query("elementType") elementType: Int,
+        @Query("startDateTime") startDateTime: String,
+        @Query("endDateTime") endDateTime: String,
+        @Query("homeworkOption") homeworkOption: String = "DUE"
+    ): Response<ResponseBody>
+
     // ── Homework ──────────────────────────────────────────────────────────────
     @GET("api/homeworks/lessons")
     suspend fun getHomework(
@@ -108,6 +119,26 @@ interface WebUntisService {
     @GET("api/rest/view/v1/messages")
     suspend fun getMessagesAuth(
         @Header("Authorization") authorization: String
+    ): Response<ResponseBody>
+
+    @GET("api/rest/view/v1/messages/{id}")
+    suspend fun getMessageDetail(
+        @Path("id") id: Int,
+        @Header("Authorization") authorization: String
+    ): Response<ResponseBody>
+
+    @GET("api/rest/view/v1/messages/{attachmentId}/attachmentstorageurl")
+    suspend fun getAttachmentStorageUrl(
+        @Path("attachmentId") attachmentId: String,
+        @Header("Authorization") authorization: String
+    ): Response<ResponseBody>
+
+    @GET
+    suspend fun downloadFromStorage(
+        @Url url: String,
+        @Header("x-amz-server-side-encryption-customer-algorithm") encAlgorithm: String,
+        @Header("x-amz-server-side-encryption-customer-key") encKey: String,
+        @Header("x-amz-server-side-encryption-customer-key-md5") encKeyMd5: String
     ): Response<ResponseBody>
 
     @GET("api/rest/view/v1/messages/status")

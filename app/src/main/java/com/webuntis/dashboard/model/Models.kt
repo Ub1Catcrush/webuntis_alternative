@@ -146,6 +146,19 @@ data class TimetableV1Element(
     val shortName: String?, val longName: String?, val displayName: String?
 )
 
+// ─── CALENDAR ENTRY DETAIL (v2) ───────────────────────────────────────────────
+
+data class CalendarEntryDetailResponse(val calendarEntries: List<CalendarEntryDetail>?)
+data class CalendarEntryDetail(
+    val id: Int?,
+    val lessonInfo: String?,
+    val substText: String?,
+    val notesAll: String?,
+    val teachingContent: String?,
+    val startDateTime: String?,
+    val endDateTime: String?
+)
+
 // ─── HOMEWORK ─────────────────────────────────────────────────────────────────
 
 data class HomeworkResponse(val data: HomeworkData?)
@@ -275,7 +288,18 @@ data class SessionData(
     val server: String, val schoolname: String, val username: String,
     val sessionId: String, val personId: Int, val classId: Int,
     val personName: String, val personType: Int = 0
-)
+) {
+    /** Human-readable account type derived from personType */
+    val accountTypeLabel: String get() = when (personType) {
+        2    -> "Lehrer"
+        5    -> "Schüler"
+        12   -> "Eltern"
+        else -> "Unbekannt"
+    }
+    val isParent:  Boolean get() = personType == 12
+    val isStudent: Boolean get() = personType == 5
+    val isTeacher: Boolean get() = personType == 2
+}
 
 // ─── UI STATE ─────────────────────────────────────────────────────────────────
 
@@ -292,6 +316,18 @@ data class MessagesResponse(
     val readConfirmationMessages: List<Message>?
 )
 
+data class Attachment(
+    val id: String?,   // UUID e.g. "a0ca8e68-bbd8-4aa6-8c69-4858677f8938"
+    val name: String?
+)
+
+data class AttachmentStorageHeader(val key: String?, val value: String?)
+
+data class AttachmentStorageUrl(
+    val downloadUrl: String?,
+    val additionalHeaders: List<AttachmentStorageHeader>?
+)
+
 data class Message(
     val id: Int,
     val subject: String?,
@@ -301,8 +337,14 @@ data class Message(
     val hasAttachments: Boolean?,
     val isMessageRead: Boolean?,
     val isReplyAllowed: Boolean?,
-    val isReply: Boolean?
+    val isReply: Boolean?,
+    @com.google.gson.annotations.SerializedName("_accountLabel")
+    val accountLabel: String? = null,
+    @com.google.gson.annotations.SerializedName("_attachments")
+    val attachmentList: List<Attachment>? = null
 ) {
+    val attachments: List<Attachment> get() = attachmentList ?: emptyList()
+    val label: String get() = accountLabel ?: ""
     val sentDateFormatted: String get() {
         if (sentDateTime.isNullOrBlank()) return ""
         val parts = sentDateTime.split("T")

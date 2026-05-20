@@ -10,9 +10,11 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
 import com.webuntis.dashboard.R
+import com.webuntis.dashboard.api.SessionManager
 import com.webuntis.dashboard.databinding.FragmentSettingsBinding
 import com.webuntis.dashboard.ui.login.LoginState
 import com.webuntis.dashboard.ui.login.LoginViewModel
+import com.webuntis.dashboard.ui.login.SecondAccountState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 
@@ -38,18 +40,89 @@ class SettingsFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         // Populate fields from stored session/credentials
-        val session = loginViewModel.sessionManager.session
-        val creds   = loginViewModel.sessionManager.storedCredentials
-        binding.inputServer.setText(session?.server ?: "")
-        binding.inputSchoolname.setText(session?.schoolname ?: "")
-        binding.inputUsername.setText(creds?.first ?: session?.username ?: "")
-        // Password intentionally not pre-filled; show placeholder
+        val creds = loginViewModel.sessionManager.storedCredentials
         binding.inputPassword.hint = if (creds != null)
             getString(R.string.login_password_saved_hint)
         else getString(R.string.login_password_hint)
 
         binding.btnSave.setOnClickListener { saveAndReLogin() }
         binding.btnLogout.setOnClickListener { loginViewModel.logout() }
+
+        // ── Primary account type display ──────────────────────────────────────
+        val session = loginViewModel.sessionManager.session
+        if (session != null) {
+            binding.inputServer.setText(session.server)
+            binding.inputSchoolname.setText(session.schoolname)
+            binding.inputUsername.setText(loginViewModel.sessionManager.storedCredentials?.first ?: session.username)
+        }
+
+        // ── Second account ────────────────────────────────────────────────────
+        val second = loginViewModel.sessionManager.secondAccount
+        if (second != null) {
+            binding.inputSecondLabel.setText(second.label)
+            binding.inputSecondUsername.setText(second.username)
+            binding.inputSecondPassword.hint = "Gespeichert – leer lassen zum Beibehalten"
+            binding.btnRemoveSecond.isVisible = true
+            // Show resolved type if known
+            if (second.accountTypeLabel.isNotBlank()) {
+                binding.statusSecond.text = "✓ ${second.personName} · ${second.accountTypeLabel}"
+                binding.statusSecond.isVisible = true
+            }
+        }
+
+        binding.btnSaveSecond.setOnClickListener {
+            val label    = binding.inputSecondLabel.text.toString().trim()
+            val username = binding.inputSecondUsername.text.toString().trim()
+            val typed    = binding.inputSecondPassword.text.toString()
+            val password = typed.ifBlank {
+                loginViewModel.sessionManager.secondAccount?.password ?: ""
+            }
+            if (username.isBlank() || password.isBlank()) {
+                binding.statusSecond.text = "Benutzername und Passwort erforderlich."
+                binding.statusSecond.isVisible = true
+                return@setOnClickListener
+            }
+            loginViewModel.saveSecondAccount(username, password, label)
+        }
+
+        binding.btnRemoveSecond.setOnClickListener {
+            loginViewModel.removeSecondAccount()
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                loginViewModel.secondAccountState.collect { state ->
+                    when (state) {
+                        is SecondAccountState.Loading -> {
+                            binding.btnSaveSecond.isEnabled = false
+                            binding.statusSecond.text = "Verbinde…"
+                            binding.statusSecond.isVisible = true
+                        }
+                        is SecondAccountState.Saved -> {
+                            binding.btnSaveSecond.isEnabled = true
+                            binding.btnRemoveSecond.isVisible = true
+                            binding.statusSecond.text = "✓ Gespeichert: ${state.info}"
+                            binding.statusSecond.isVisible = true
+                        }
+                        is SecondAccountState.Removed -> {
+                            binding.btnSaveSecond.isEnabled = true
+                            binding.btnRemoveSecond.isVisible = false
+                            binding.inputSecondLabel.text?.clear()
+                            binding.inputSecondUsername.text?.clear()
+                            binding.inputSecondPassword.text?.clear()
+                            binding.statusSecond.text = "Zweiter Account entfernt."
+                            binding.statusSecond.isVisible = true
+                        }
+                        is SecondAccountState.Error -> {
+                            binding.btnSaveSecond.isEnabled = true
+                            binding.statusSecond.text = "Fehler: ${state.message}"
+                            binding.statusSecond.isVisible = true
+                        }
+                        else -> {}
+                    }
+                }
+            }
+        }
 
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {

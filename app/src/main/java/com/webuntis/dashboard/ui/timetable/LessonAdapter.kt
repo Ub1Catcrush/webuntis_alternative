@@ -33,16 +33,18 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
             b.textTime.text = "${lesson.startTimeFormatted}\n${lesson.endTimeFormatted}"
 
             // ── Proportional height based on actual duration ──────────────────
-            // Parse HHMM integers → minutes
-            val startMin = (lesson.startTime / 100) * 60 + (lesson.startTime % 100)
-            val endMin   = (lesson.endTime   / 100) * 60 + (lesson.endTime   % 100)
+            val startMin    = (lesson.startTime / 100) * 60 + (lesson.startTime % 100)
+            val endMin      = (lesson.endTime   / 100) * 60 + (lesson.endTime   % 100)
             val durationMin = (endMin - startMin).coerceAtLeast(1)
-            // Base unit = 45 min → BASE_DP tall. Everything scales linearly from that.
-            val BASE_DP = 80f
-            val BASE_MIN = 45f
-            val heightDp = BASE_DP * (durationMin / BASE_MIN)
-            val heightPx = (heightDp * ctx.resources.displayMetrics.density).toInt()
-            b.root.layoutParams = b.root.layoutParams.also { it.height = heightPx }
+            val BASE_DP     = 80f
+            val BASE_MIN    = 45f
+            val heightDp    = BASE_DP * (durationMin / BASE_MIN)
+            val minHeightPx = (heightDp * ctx.resources.displayMetrics.density).toInt()
+            b.root.minimumHeight = minHeightPx
+            // When info text is visible let the card grow freely; otherwise pin to exact height
+            b.root.layoutParams = b.root.layoutParams.also { lp ->
+                lp.height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            }
 
             // Subject
             b.textSubject.text = lesson.subjectName

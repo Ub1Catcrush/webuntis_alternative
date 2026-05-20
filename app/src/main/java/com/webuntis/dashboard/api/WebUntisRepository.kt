@@ -8,6 +8,7 @@ import com.google.gson.ToNumberPolicy
 import com.google.gson.reflect.TypeToken
 import com.google.gson.stream.JsonReader
 import com.webuntis.dashboard.model.*
+import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.StringReader
@@ -216,7 +217,9 @@ class WebUntisRepository @Inject constructor(
                 if (raw.contains("<html", ignoreCase = true))
                     return Result.failure(Exception("Session abgelaufen"))
                 val ttResp: TimetableV1Response = parseJson(raw)
-                Result.success(ttResp.toLessons())
+                val lessons = ttResp.toLessons()
+                val enriched = enrichLessonsWithDetail(lessons, classId, session.personType)
+                Result.success(enriched)
             } catch (e: Exception) {
                 Result.failure(Exception("Stundenplan: ${e.message}", e))
             }
@@ -259,7 +262,71 @@ class WebUntisRepository @Inject constructor(
         return LocalDate.of(s.substring(0,4).toInt(), s.substring(4,6).toInt(), s.substring(6,8).toInt())
     }
 
-    // ── Homework ──────────────────────────────────────────────────────────────
+    // ── Calendar Entry Detail enrichment ──────────────────────────────────────
+
+    /**
+     * For lessons that are substitutions or have no info text, fetch detail from v2 API
+     * and fill in substText / lessonInfo / notesAll.
+     * Uses parallel coroutines, max 8 concurrent to avoid flooding the server.
+     */
+    private suspend fun enrichLessonsWithDetail(
+        lessons: List<Lesson>,
+        elementId: Int,
+        elementType: Int
+    ): List<Lesson> {
+        val token = bearerToken ?: fetchBearerToken() ?: return lessons
+        val needsDetail = lessons.filter { lesson ->
+            lesson.isSubstitution || lesson.isCancelled ||
+            (lesson.substText.isNullOrBlank() && lesson.info.isNullOrBlank())
+        }
+        if (needsDetail.isEmpty()) return lessons
+
+        val detailMap = mutableMapOf<Int, CalendarEntryDetail>()
+
+        kotlinx.coroutines.coroutineScope {
+            needsDetail.chunked(8).forEach { batch ->
+                val jobs = batch.map { lesson ->
+                    async(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            val dateStr = lesson.date.toString()
+                            val dateIso = "${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}"
+                            val startHH = lesson.startTime / 100
+                            val startMM = lesson.startTime % 100
+                            val endHH   = lesson.endTime   / 100
+                            val endMM   = lesson.endTime   % 100
+                            val startDt = "${dateIso}T${startHH.toString().padStart(2,'0')}:${startMM.toString().padStart(2,'0')}:00"
+                            val endDt   = "${dateIso}T${endHH.toString().padStart(2,'0')}:${endMM.toString().padStart(2,'0')}:00"
+                            val resp = service().getCalendarEntryDetail(
+                                authorization = "Bearer $token",
+                                elementId     = elementId,
+                                elementType   = elementType,
+                                startDateTime = startDt,
+                                endDateTime   = endDt
+                            )
+                            val raw = rawBody(resp) ?: return@async
+                            val detail: CalendarEntryDetailResponse = parseJson(raw)
+                            detail.calendarEntries?.firstOrNull()?.let { entry ->
+                                synchronized(detailMap) { detailMap[lesson.id] = entry }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+                jobs.forEach { it.await() }
+            }
+        }
+
+        return lessons.map { lesson ->
+            val detail = detailMap[lesson.id] ?: return@map lesson
+            val newSubst = lesson.substText ?: detail.substText?.takeIf { it.isNotBlank() }
+            val newInfo  = lesson.info
+                ?: detail.lessonInfo?.takeIf { it.isNotBlank() }
+                ?: detail.notesAll?.takeIf { it.isNotBlank() }
+                ?: detail.teachingContent?.takeIf { it.isNotBlank() }
+            lesson.copy(substText = newSubst, info = newInfo)
+        }
+    }
+
+        // ── Homework ──────────────────────────────────────────────────────────────
 
     suspend fun getHomework(): Result<Pair<List<Homework>, Map<String, String>>> {
         return try {
@@ -375,33 +442,187 @@ class WebUntisRepository @Inject constructor(
 
     // ── Messages ──────────────────────────────────────────────────────────────
 
+    @Volatile private var secondBearerToken: String? = null
+
+    private suspend fun fetchMessagesWithToken(token: String?, label: String): List<Message> {
+        val resp = if (token != null) service().getMessagesAuth("Bearer $token")
+                   else service().getMessages()
+        val effective = if (resp.code() in listOf(401, 403)) {
+            bearerToken = null
+            val fresh = fetchBearerToken()
+            if (fresh != null) service().getMessagesAuth("Bearer $fresh")
+            else service().getMessages()
+        } else resp
+        val raw = rawBody(effective) ?: return emptyList()
+        val parsed: MessagesResponse = parseJson(raw)
+        return (parsed.incomingMessages ?: emptyList())
+            .map { it.copy(accountLabel = label) }
+    }
+
+    private suspend fun fetchMessagesForSecondAccount(
+        server: String, schoolname: String,
+        username: String, password: String, label: String
+    ): List<Message> {
+        return try {
+            val svc = retrofitFactory.create(server)
+            val body = JsonRpcRequest(
+                method = "authenticate",
+                params = mapOf("user" to username, "password" to password, "client" to "android")
+            )
+            val loginResp = svc.jsonRpcLogin(schoolname, body)
+            val loginRaw  = loginResp.body()?.string()?.trim() ?: return emptyList()
+            val rpcResp: JsonRpcResponse<AuthResult> =
+                parseJson(loginRaw, object : TypeToken<JsonRpcResponse<AuthResult>>() {})
+            val authResult = rpcResp.result ?: return emptyList()
+
+            val resolvedLabel = label.ifBlank {
+                authResult.personName?.takeIf { it.isNotBlank() } ?: username
+            }
+            sessionManager.secondAccount?.let { existing ->
+                sessionManager.secondAccount = existing.copy(
+                    personType = authResult.personType ?: 0,
+                    personName = authResult.personName ?: "",
+                    label = resolvedLabel
+                )
+            }
+
+            val bearerResp = svc.getBearerToken()
+            val bearerRaw  = bearerResp.body()?.string()?.trim() ?: return emptyList()
+            val token = if (bearerRaw.startsWith("{"))
+                com.google.gson.JsonParser.parseString(bearerRaw).asJsonObject.get("token")?.asString ?: bearerRaw
+            else bearerRaw.trim('"')
+            secondBearerToken = token
+
+            val msgResp = svc.getMessagesAuth("Bearer $token")
+            val raw     = rawBody(msgResp) ?: return emptyList()
+            val parsed: MessagesResponse = parseJson(raw)
+            (parsed.incomingMessages ?: emptyList())
+                .map { it.copy(accountLabel = resolvedLabel) }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    /** Returns the bearer token that owns this message. */
+    private fun tokenForMessage(msg: Message): String? {
+        val secondLabel = sessionManager.secondAccount?.label ?: return bearerToken
+        return if (!msg.accountLabel.isNullOrBlank() && msg.accountLabel == secondLabel)
+            secondBearerToken ?: bearerToken
+        else bearerToken
+    }
+
+    suspend fun verifyAndSaveSecondAccount(
+        username: String, password: String, label: String
+    ): Result<String> {
+        return try {
+            val session = sessionManager.session
+                ?: return Result.failure(Exception("Nicht angemeldet"))
+            val svc  = retrofitFactory.create(session.server)
+            val body = JsonRpcRequest(
+                method = "authenticate",
+                params = mapOf("user" to username, "password" to password, "client" to "android")
+            )
+            val resp    = svc.jsonRpcLogin(session.schoolname, body)
+            val raw     = resp.body()?.string()?.trim()
+                ?: return Result.failure(Exception("Keine Antwort vom Server"))
+            val rpcResp: JsonRpcResponse<AuthResult> =
+                parseJson(raw, object : TypeToken<JsonRpcResponse<AuthResult>>() {})
+            if (rpcResp.error != null)
+                return Result.failure(Exception(rpcResp.error.message ?: "Login fehlgeschlagen"))
+            val auth = rpcResp.result ?: return Result.failure(Exception("Keine Antwort"))
+
+            val resolvedName  = auth.personName?.takeIf { it.isNotBlank() } ?: username
+            val resolvedLabel = label.ifBlank { resolvedName }
+            val typeLabel = when (auth.personType) {
+                2 -> "Lehrer"; 5 -> "Schüler"; 12 -> "Eltern"
+                else -> "Unbekannt (Typ ${auth.personType})"
+            }
+            sessionManager.secondAccount = SessionManager.SecondAccount(
+                username = username, password = password, label = resolvedLabel,
+                personType = auth.personType ?: 0, personName = resolvedName
+            )
+            Result.success("$resolvedName · $typeLabel")
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
     suspend fun getMessages(): Result<List<Message>> {
         return try {
-            val token = bearerToken ?: fetchBearerToken()
-            val resp = if (token != null) {
-                service().getMessagesAuth("Bearer $token")
-            } else {
-                service().getMessages()
-            }
-            // Retry once with a fresh token on 401/403
-            val effectiveResp = if (resp.code() in listOf(401, 403)) {
-                bearerToken = null
-                val fresh = fetchBearerToken()
-                if (fresh != null) service().getMessagesAuth("Bearer $fresh")
-                else service().getMessages()
-            } else resp
-            val raw = rawBody(effectiveResp) ?: return Result.success(emptyList())
-            val msgsResp: MessagesResponse = parseJson(raw)
-            Result.success(
-                (msgsResp.incomingMessages ?: emptyList())
-                    .sortedByDescending { it.sentDateTime }
-            )
+            val session      = sessionManager.session
+            val primaryLabel = session?.personName?.takeIf { it.isNotBlank() }
+                ?: session?.accountTypeLabel ?: "Hauptaccount"
+
+            val token   = bearerToken ?: fetchBearerToken()
+            val primary = fetchMessagesWithToken(token, primaryLabel)
+            val second  = sessionManager.secondAccount?.let { acc ->
+                val server = session?.server ?: return@let emptyList()
+                fetchMessagesForSecondAccount(server, session.schoolname,
+                    acc.username, acc.password, acc.label)
+            } ?: emptyList()
+
+            val seenIds  = mutableSetOf<Int>()
+            val seenKeys = mutableSetOf<String>()
+            val merged   = (primary + second)
+                .sortedByDescending { it.sentDateTime }
+                .filter { msg ->
+                    seenIds.add(msg.id) &&
+                    seenKeys.add("${msg.subject}|${msg.sender?.userId}|${msg.sentDateTime}")
+                }
+            Result.success(merged)
         } catch (e: Exception) {
             Result.failure(Exception("Nachrichten: ${e.message}", e))
         }
     }
 
-    suspend fun getUnreadMessageCount(): Int {
+    /** Fetch storageAttachments using the correct account token. */
+    suspend fun getMessageWithAttachments(msg: Message): Result<Message> {
+        return try {
+            val token = tokenForMessage(msg) ?: return Result.success(msg)
+            val resp  = service().getMessageDetail(msg.id, "Bearer $token")
+            val raw   = rawBody(resp) ?: return Result.success(msg)
+            val obj   = com.google.gson.JsonParser.parseString(raw).asJsonObject
+            val atts  = obj.getAsJsonArray("storageAttachments")
+                ?.mapNotNull { el ->
+                    val o = el.asJsonObject
+                    Attachment(
+                        id   = o.get("id")?.takeIf   { !it.isJsonNull }?.asString,
+                        name = o.get("name")?.takeIf { !it.isJsonNull }?.asString
+                    )
+                } ?: emptyList()
+            Result.success(msg.copy(attachmentList = atts))
+        } catch (e: Exception) { Result.success(msg) }
+    }
+
+    /**
+     * Download a storageAttachment:
+     * 1. GET /{uuid}/attachmentstorageurl  → presigned S3 URL + encryption headers
+     * 2. GET the S3 URL with those headers
+     */
+    suspend fun downloadAttachment(attachmentId: String, msg: Message): Result<ByteArray> {
+        return try {
+            val token = tokenForMessage(msg)
+                ?: return Result.failure(Exception("Nicht angemeldet"))
+
+            // Step 1: get presigned URL + encryption headers
+            val urlResp = service().getAttachmentStorageUrl(attachmentId, "Bearer $token")
+            val urlRaw  = rawBody(urlResp)
+                ?: return Result.failure(Exception("Keine Download-URL"))
+            val storageUrl: AttachmentStorageUrl = parseJson(urlRaw)
+
+            val downloadUrl = storageUrl.downloadUrl
+                ?: return Result.failure(Exception("Keine URL in Antwort"))
+
+            val headers   = storageUrl.additionalHeaders?.associate { it.key!! to it.value!! } ?: emptyMap()
+            val algorithm = headers["x-amz-server-side-encryption-customer-algorithm"] ?: ""
+            val encKey    = headers["x-amz-server-side-encryption-customer-key"] ?: ""
+            val encKeyMd5 = headers["x-amz-server-side-encryption-customer-key-md5"] ?: ""
+
+            // Step 2: download from S3
+            val dlResp = service().downloadFromStorage(downloadUrl, algorithm, encKey, encKeyMd5)
+            val bytes  = dlResp.body()?.bytes()
+                ?: return Result.failure(Exception("Leere Antwort vom Speicher"))
+            Result.success(bytes)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+        suspend fun getUnreadMessageCount(): Int {
         return try {
             val resp = service().getMessagesStatus()
             if (!resp.isSuccessful) return 0

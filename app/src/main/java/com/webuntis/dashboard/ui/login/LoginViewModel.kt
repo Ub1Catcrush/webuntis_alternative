@@ -73,6 +73,24 @@ class LoginViewModel @Inject constructor(
             _loginState.value = LoginState.Idle
         }
     }
+
+    private val _secondAccountState = MutableStateFlow<SecondAccountState>(SecondAccountState.Idle)
+    val secondAccountState: StateFlow<SecondAccountState> = _secondAccountState
+
+    fun saveSecondAccount(username: String, password: String, label: String) {
+        viewModelScope.launch {
+            _secondAccountState.value = SecondAccountState.Loading
+            repository.verifyAndSaveSecondAccount(username, password, label).fold(
+                onSuccess = { info -> _secondAccountState.value = SecondAccountState.Saved(info) },
+                onFailure = { _secondAccountState.value = SecondAccountState.Error(it.message ?: "Fehler") }
+            )
+        }
+    }
+
+    fun removeSecondAccount() {
+        sessionManager.secondAccount = null
+        _secondAccountState.value = SecondAccountState.Removed
+    }
 }
 
 sealed class LoginState {
@@ -80,4 +98,12 @@ sealed class LoginState {
     object Loading : LoginState()
     object Success : LoginState()
     data class Error(val message: String) : LoginState()
+}
+
+sealed class SecondAccountState {
+    object Idle    : SecondAccountState()
+    object Loading : SecondAccountState()
+    object Removed : SecondAccountState()
+    data class Saved(val info: String) : SecondAccountState()
+    data class Error(val message: String) : SecondAccountState()
 }
