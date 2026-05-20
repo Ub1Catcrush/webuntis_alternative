@@ -1,5 +1,7 @@
 package com.webuntis.dashboard.api
 
+import androidx.annotation.Keep
+import com.google.gson.annotations.SerializedName
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
@@ -154,15 +156,17 @@ interface WebUntisService {
     ): Response<ResponseBody>
 }
 
+@Keep // Verhindert, dass R8 die Klasse anrührt
 data class JsonRpcRequest(
-    val jsonrpc: String = "2.0",
-    val method: String,
-    val params: Map<String, Any>,
-    val id: String = System.currentTimeMillis().toString()
+    @SerializedName("jsonrpc") val jsonrpc: String = "2.0",
+    @SerializedName("method") val method: String,
+    @SerializedName("params") val params: Map<String, Any>,
+    @SerializedName("id") val id: String = System.currentTimeMillis().toString()
 )
 
+@Keep // Verhindert, dass R8 die Klasse anrührt
 data class LoginRequest(
-    val user: String,
-    val password: String,
-    val client: String = "android"
+    @SerializedName("user") val user: String,
+    @SerializedName("password") val password: String,
+    @SerializedName("client") val client: String = "android"
 )

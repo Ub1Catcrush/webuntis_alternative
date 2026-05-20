@@ -13,11 +13,12 @@
 # Retrofit
 -dontwarn retrofit2.**
 -keep class retrofit2.** { *; }
-# WICHTIG: Ersetzen Sie dies mit dem echten Pfad zu Ihren Retrofit-Interfaces!
+-keep class com.webuntis.dashboard.api.LoginRequest { *; }
 -keep interface com.webuntis.dashboard.api.** { *; }
 
 # Gson & WebUntis Models
 -keep class com.webuntis.dashboard.model.** { *; }
+
 #-keep class com.webuntis.dashboard.model.** { <fields>; <methods>; }
 -keepclassmembers class com.webuntis.dashboard.model.** { *; }
 #-keepclassmembers class * {
