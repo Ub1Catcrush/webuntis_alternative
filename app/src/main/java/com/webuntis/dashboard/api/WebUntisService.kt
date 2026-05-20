@@ -158,11 +158,11 @@ data class JsonRpcRequest(
     val jsonrpc: String = "2.0",
     val method: String,
     val params: Map<String, Any>,
-    val id: Long = System.currentTimeMillis()
+    val id: String = System.currentTimeMillis().toString()
 )
 
 data class LoginRequest(
     val user: String,
     val password: String,
-    val client: String = "WebUntis Dashboard"
+    val client: String = "android"
 )

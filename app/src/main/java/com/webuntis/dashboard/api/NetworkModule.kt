@@ -61,17 +61,17 @@ object NetworkModule {
                     stored.removeAll { it.name == "JSESSIONID" }
                     stored.add(Cookie.Builder()
                         .name("JSESSIONID").value(session.sessionId)
-                        .domain(host).path("/").build())
+                        .domain(host).path("/").secure().httpOnly().build())
 
                     if (stored.none { it.name == "schoolname" }) {
                         stored.add(Cookie.Builder()
                             .name("schoolname").value(session.schoolname)
-                            .domain(host).path("/").build())
+                            .domain(host).path("/").secure().build())
                     }
                     if (stored.none { it.name == "traceId" }) {
                         stored.add(Cookie.Builder()
                             .name("traceId").value("webuntis-dashboard")
-                            .domain(host).path("/").build())
+                            .domain(host).path("/").secure().build())
                     }
                 }
                 return stored
@@ -96,6 +96,10 @@ object NetworkModule {
         if (session != null && session.sessionId.isNotEmpty()) {
             builder.header("Referer", "https://$host/WebUntis/")
         }
+        // Origin header is required for the REST login CSRF check.
+        // Without it the server returns 403 on newer Android versions because
+        // the User-Agent signals a modern browser that must pass origin validation.
+        builder.header("Origin", "https://$host")
         chain.proceed(builder.build())
     }
 

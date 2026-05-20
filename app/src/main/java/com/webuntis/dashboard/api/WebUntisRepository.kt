@@ -125,6 +125,13 @@ class WebUntisRepository @Inject constructor(
             sessionManager.storedCredentials = Pair(username, password)
             rpc
         } else {
+            // The JSON-RPC call already established a JSESSIONID cookie on the server.
+            // We must carry it over to the REST login; on Android 15 the CookieJar
+            // does this automatically only if we wait one frame — but since session is
+            // still null the injector skips it. Force a short yield so the CookieJar
+            // has flushed the Set-Cookie headers from the RPC response before the
+            // REST call reads loadForRequest.
+            kotlinx.coroutines.yield()
             val rest = loginViaRest(server, schoolname, username, password)
             if (rest.isSuccess) sessionManager.storedCredentials = Pair(username, password)
             rest

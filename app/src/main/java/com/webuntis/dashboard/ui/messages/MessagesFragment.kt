@@ -209,7 +209,7 @@ class MessageAdapter(
             b.textPreview.ellipsize = if (isExpanded) null else android.text.TextUtils.TruncateAt.END
             b.layoutExpanded.isVisible = isExpanded
 
-            if (isExpanded && expandedMsg != null) {
+            if (isExpanded) {
                 b.textFullPreview.text = msg.contentPreview ?: ""
 
                 // Attachments
