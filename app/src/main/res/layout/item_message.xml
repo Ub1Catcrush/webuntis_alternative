@@ -53,8 +53,8 @@
                 android:layout_height="16dp"
                 android:layout_marginEnd="6dp"
                 android:src="@drawable/ic_homework"
-                android:tint="?attr/colorOnSurfaceVariant"
-                android:visibility="gone" />
+                android:visibility="gone"
+                app:tint="?attr/colorOnSurfaceVariant" />
 
             <View
                 android:id="@+id/icon_unread"
