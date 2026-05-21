@@ -51,11 +51,11 @@ class HomeworkFragment : Fragment() {
                             binding.progressBar.isVisible = false
                             val open = state.data.count { !it.isDone }
                             binding.toolbar.subtitle =
-                                if (open > 0) "$open offen" else "Alles erledigt ✓"
+                                if (open > 0) getString(R.string.label_homework_open, open) else getString(R.string.label_homework_all_done)
                             if (state.data.isEmpty()) {
                                 binding.recyclerView.isVisible = false
                                 binding.emptyView.isVisible = true
-                                binding.emptyView.text = "Keine Hausaufgaben"
+                                binding.emptyView.text = getString(R.string.label_no_homework_short)
                             } else {
                                 binding.recyclerView.isVisible = true
                                 binding.emptyView.isVisible = false

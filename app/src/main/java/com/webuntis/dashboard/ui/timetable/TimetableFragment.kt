@@ -54,7 +54,7 @@ class TimetableFragment : Fragment() {
                                 binding.tabLayout, binding.viewPager
                             ) { tab, position ->
                                 tab.text = days.getOrNull(position)?.tabLabel
-                                    ?: "Tag ${position + 1}"
+                                    ?: getString(R.string.label_day_fallback, position + 1)
                             }.also { it.attach() }
                         }
                         is UiState.Error -> {

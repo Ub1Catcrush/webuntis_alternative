@@ -62,7 +62,7 @@ class AbsencesFragment : Fragment() {
                             if (state.data.isEmpty()) {
                                 binding.recyclerView.isVisible = false
                                 binding.emptyView.isVisible = true
-                                binding.emptyView.text = "Keine Abwesenheiten"
+                                binding.emptyView.text = getString(R.string.label_no_absences_short)
                             } else {
                                 binding.recyclerView.isVisible = true
                                 binding.emptyView.isVisible = false
@@ -94,7 +94,7 @@ class AbsenceAdapter : ListAdapter<Absence, AbsenceAdapter.VH>(Diff) {
         fun bind(a: Absence) {
             val ctx = b.root.context
             b.textDate.text   = a.dateLabel
-            b.textTime.text   = if (a.isFullDay) "Ganztägig" else a.timeLabel
+            b.textTime.text   = if (a.isFullDay) getString(R.string.label_absence_fullday) else a.timeLabel
             b.textReason.text = a.reason?.takeIf { it.isNotBlank() }
                 ?: a.text?.takeIf { it.isNotBlank() } ?: "–"
             val noteText = a.text?.takeIf { it.isNotBlank() && it != a.reason }

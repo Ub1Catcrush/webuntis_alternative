@@ -90,7 +90,7 @@ class LoginFragment : Fragment() {
         val password = binding.inputPassword.text.toString()
 
         if (server.isBlank() || schoolname.isBlank() || username.isBlank() || password.isBlank()) {
-            binding.errorText.text = "Bitte alle Felder ausfüllen"
+            binding.errorText.text = getString(R.string.error_fill_all_fields)
             binding.errorText.isVisible = true
             return
         }

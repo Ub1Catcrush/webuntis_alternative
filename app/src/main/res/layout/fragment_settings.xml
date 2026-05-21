@@ -115,7 +115,7 @@
                 android:layout_height="wrap_content"
                 android:text="@string/settings_logout_button" />
 
-            <!-- ── Zweiter Account (Schüler) ──────────────────────────────── -->
+            <!-- ── Stundenplan-Tage ──────────────────────────────────────── -->
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
@@ -123,11 +123,51 @@
                 android:layout_marginBottom="20dp"
                 android:background="?attr/colorOutlineVariant" />
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="4dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/settings_timetable_days_label"
+                    android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                <TextView
+                    android:id="@+id/text_timetable_days_value"
+                    android:layout_width="32dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:textAppearance="?attr/textAppearanceTitleMedium"
+                    android:text="5" />
+
+            </LinearLayout>
+
+            <SeekBar
+                android:id="@+id/seeker_timetable_days"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                android:max="19"
+                android:progress="4" />
+
+            <!-- ── Zweiter Account (Schüler) ──────────────────────────────── -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="20dp"
+                android:background="?attr/colorOutlineVariant" />
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="4dp"
-                android:text="Zweiter Account (Schüler)"
+                android:text="@string/settings_second_account_title"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:textColor="?attr/colorOnSurface" />
@@ -136,7 +176,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
-                android:text="Nachrichten beider Accounts werden zusammengeführt."
+                android:text="@string/settings_second_account_notice"
                 android:textSize="13sp"
                 android:textColor="?attr/colorOnSurfaceVariant" />
 
@@ -145,7 +185,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
                 style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                android:hint="Bezeichnung (z. B. Simon)">
+                android:hint="@string/settings_second_label_hint">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/input_second_label"
                     android:layout_width="match_parent"
@@ -159,7 +199,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
                 style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                android:hint="Benutzername (Schüler)">
+                android:hint="@string/settings_second_username_hint">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/input_second_username"
                     android:layout_width="match_parent"
@@ -174,7 +214,7 @@
                 android:layout_marginBottom="16dp"
                 style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                 app:endIconMode="password_toggle"
-                android:hint="Passwort (Schüler)">
+                android:hint="@string/settings_second_password_hint">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/input_second_password"
                     android:layout_width="match_parent"
@@ -188,7 +228,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
-                android:text="Zweiten Account speichern" />
+                android:text="@string/settings_second_save_button" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_remove_second"
@@ -196,7 +236,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
-                android:text="Zweiten Account entfernen"
+                android:text="@string/settings_second_remove_button"
                 android:visibility="gone" />
 
             <TextView

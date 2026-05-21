@@ -10,21 +10,24 @@
     <string name="nav_classbook">Klassenbuch</string>
     <string name="nav_events">Termine</string>
     <string name="nav_more">Mehr</string>
+    <string name="nav_settings">Einstellungen</string>
 
     <!-- Login -->
-    <string name="login_title">Anmelden</string>
+    <string name="login_title">WebUntis Dashboard</string>
+    <string name="login_subtitle">Melde dich mit deinen Schuldaten an</string>
     <string name="login_server_hint">Server (z.B. meine-schule.webuntis.com)</string>
     <string name="login_schoolname_hint">Schul-Kurzname</string>
     <string name="login_username_hint">Benutzername</string>
     <string name="login_password_hint">Passwort</string>
     <string name="login_password_saved_hint">Passwort gespeichert</string>
     <string name="login_button">Anmelden</string>
+    <string name="login_data_notice">Deine Zugangsdaten werden verschlüsselt auf dem Gerät gespeichert und nicht übertragen.</string>
+    <string name="hint_sso">Hinweis: Falls du dich über Schulportal, Microsoft- oder Google-Login anmeldest, werden direkte WebUntis-Zugangsdaten benötigt.</string>
     <string name="error_fill_all_fields">Bitte alle Felder ausfüllen</string>
     <string name="error_unknown">Unbekannter Fehler</string>
     <string name="error_not_authenticated">Nicht angemeldet</string>
     <string name="error_empty_response">Leere Antwort vom Server</string>
     <string name="error_no_data">Keine Antwortdaten vom Server</string>
-    <string name="hint_sso">Hinweis: Falls du dich über Schulportal, Microsoft- oder Google-Login anmeldest, werden direkte WebUntis-Zugangsdaten benötigt.</string>
 
     <!-- Student selection -->
     <string name="dialog_select_student_title">Kind auswählen</string>
@@ -35,6 +38,7 @@
     <!-- Timetable -->
     <string name="label_today">Heute</string>
     <string name="label_tomorrow">Morgen</string>
+    <string name="label_day_fallback">Tag %d</string>
     <string name="label_no_lessons_today">Heute keine Stunden 🎉</string>
     <string name="label_no_lessons_tomorrow">Morgen keine Stunden 🎉</string>
     <string name="error_timetable">Stundenplan konnte nicht geladen werden</string>
@@ -45,6 +49,9 @@
     <string name="label_homework_due">📅 %s</string>
     <string name="label_subject_unknown">Fach #%d</string>
     <string name="label_task_fallback">Aufgabe</string>
+    <string name="label_homework_open">%d offen</string>
+    <string name="label_homework_all_done">Alles erledigt ✓</string>
+    <string name="label_no_homework_short">Keine Hausaufgaben</string>
     <string name="error_homework_prefix">Hausaufgaben: %s</string>
 
     <!-- Events / Termine -->
@@ -55,31 +62,57 @@
     <string name="error_events_prefix">Termine: %s</string>
 
     <!-- Classbook -->
-    <string name="label_no_classbook">Keine Klassenbucheinträge verfügbar 📖\n(Für diesen Benutzertyp nicht zugänglich)</string>
+    <string name="label_no_classbook">Keine Klassenbucheinträge verfügbar 📖
+(Für diesen Benutzertyp nicht zugänglich)</string>
     <string name="error_classbook_prefix">Klassenbuch: %s</string>
     <string name="label_entry_type_homework">Hausaufgabe</string>
     <string name="label_entry_type_absence">Abwesenheit</string>
     <string name="label_entry_type_late">Verspätung</string>
-
-    <!-- Generic -->
-    <string name="error_prefix">⚠️ %s</string>
-    <string name="error_generic">Fehler</string>
-
-    <!-- Badges -->
-    <string name="badge_cancelled">Ausfall</string>
-    <string name="badge_substitution">Vertretung</string>
-    <string name="badge_extra">Zusatz</string>
-    <string name="badge_exam">Klassenarbeit</string>
+    <string name="label_entry_type_remark">Bemerkung</string>
 
     <!-- Absences -->
     <string name="label_absence_excused">✓ entschuldigt</string>
     <string name="label_absence_unexcused">✗ unentschuldigt</string>
     <string name="label_absence_pending">Entschuldigung ausstehend</string>
+    <string name="label_absence_fullday">Ganztägig</string>
     <string name="label_no_absences">Keine Abwesenheiten eingetragen ✅</string>
+    <string name="label_no_absences_short">Keine Abwesenheiten</string>
+
+    <!-- Messages -->
+    <string name="label_no_messages">Keine Nachrichten</string>
+    <string name="label_attachment_fallback">Anhang</string>
+    <string name="label_attachment_name_fallback">anhang</string>
+    <string name="error_download_failed">Download fehlgeschlagen: %s</string>
+    <string name="error_save_failed">Speichern fehlgeschlagen: %s</string>
+    <string name="error_mediastore_insert">MediaStore insert fehlgeschlagen</string>
+    <string name="error_outputstream_open">OutputStream konnte nicht geöffnet werden</string>
+
+    <!-- Badges -->
+    <string name="badge_cancelled">Entfall</string>
+    <string name="badge_substitution">Vertretung</string>
+    <string name="badge_extra">Zusatz</string>
+    <string name="badge_exam">Klassenarbeit</string>
+
+    <!-- Generic -->
+    <string name="error_prefix">⚠️ %s</string>
+    <string name="error_generic">Fehler</string>
+
     <!-- Settings -->
-    <string name="nav_settings">Einstellungen</string>
     <string name="settings_save_button">Speichern &amp; neu verbinden</string>
     <string name="settings_logout_button">Abmelden</string>
     <string name="settings_saved_ok">✓ Erfolgreich gespeichert und neu angemeldet</string>
+    <string name="settings_timetable_days_label">Angezeigte Schultage</string>
+    <string name="settings_second_account_title">Zweiter Account (Schüler)</string>
+    <string name="settings_second_account_notice">Nachrichten beider Accounts werden zusammengeführt.</string>
+    <string name="settings_second_label_hint">Bezeichnung (z. B. Simon)</string>
+    <string name="settings_second_username_hint">Benutzername (Schüler)</string>
+    <string name="settings_second_password_hint">Passwort (Schüler)</string>
+    <string name="settings_second_save_button">Zweiten Account speichern</string>
+    <string name="settings_second_remove_button">Zweiten Account entfernen</string>
+    <string name="settings_second_password_saved_hint">Gespeichert – leer lassen zum Beibehalten</string>
+    <string name="settings_second_connecting">Verbinde…</string>
+    <string name="settings_second_removed">Zweiter Account entfernt.</string>
+    <string name="settings_second_error_credentials">Benutzername und Passwort erforderlich.</string>
+    <string name="settings_second_error_prefix">Fehler: %s</string>
 
 </resources>

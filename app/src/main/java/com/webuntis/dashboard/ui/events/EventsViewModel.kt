@@ -26,7 +26,7 @@ class EventsViewModel @Inject constructor(
             _state.value = UiState.Loading
             repository.getEvents().fold(
                 onSuccess = { _state.value = UiState.Success(it) },
-                onFailure = { _state.value = UiState.Error(it.message ?: "Fehler") }
+                onFailure = { _state.value = UiState.Error(it.message ?: context.getString(R.string.error_generic)) }
             )
         }
     }

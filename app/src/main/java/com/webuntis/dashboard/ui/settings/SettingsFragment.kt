@@ -48,6 +48,28 @@ class SettingsFragment : Fragment() {
         binding.btnSave.setOnClickListener { saveAndReLogin() }
         binding.btnLogout.setOnClickListener { loginViewModel.logout() }
 
+        // ── Timetable days slider ─────────────────────────────────────────────
+        val current = loginViewModel.sessionManager.timetableDays
+        binding.seekerTimetableDays.max = SessionManager.MAX_TIMETABLE_DAYS - SessionManager.MIN_TIMETABLE_DAYS
+        binding.seekerTimetableDays.progress = current - SessionManager.MIN_TIMETABLE_DAYS
+        binding.textTimetableDaysValue.text = current.toString()
+
+        binding.seekerTimetableDays.setOnSeekBarChangeListener(
+            object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                    val days = progress + SessionManager.MIN_TIMETABLE_DAYS
+                    binding.textTimetableDaysValue.text = days.toString()
+                }
+                override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
+                override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                    val days = (sb?.progress ?: 0) + SessionManager.MIN_TIMETABLE_DAYS
+                    loginViewModel.sessionManager.timetableDays = days
+                    // Trigger timetable reload so the new count takes effect immediately
+                    loginViewModel.refreshTimetable()
+                }
+            }
+        )
+
         // ── Primary account type display ──────────────────────────────────────
         val session = loginViewModel.sessionManager.session
         if (session != null) {
@@ -74,7 +96,7 @@ class SettingsFragment : Fragment() {
                 loginViewModel.sessionManager.secondAccount?.password ?: ""
             }
             if (username.isBlank() || password.isBlank()) {
-                binding.statusSecond.text = "Benutzername und Passwort erforderlich."
+                binding.statusSecond.text = getString(R.string.settings_second_error_credentials)
                 binding.statusSecond.isVisible = true
                 return@setOnClickListener
             }
@@ -91,7 +113,7 @@ class SettingsFragment : Fragment() {
                     when (state) {
                         is SecondAccountState.Loading -> {
                             binding.btnSaveSecond.isEnabled = false
-                            binding.statusSecond.text = "Verbinde…"
+                            binding.statusSecond.text = getString(R.string.settings_second_connecting)
                             binding.statusSecond.isVisible = true
                         }
                         is SecondAccountState.Saved -> {
@@ -108,7 +130,7 @@ class SettingsFragment : Fragment() {
                                 if (binding.inputSecondUsername.text.isNullOrBlank())
                                     binding.inputSecondUsername.setText(stored.username)
                                 binding.inputSecondPassword.hint =
-                                    "Gespeichert – leer lassen zum Beibehalten"
+                                    getString(R.string.settings_second_password_saved_hint)
                             }
                         }
                         is SecondAccountState.Removed -> {
@@ -117,12 +139,12 @@ class SettingsFragment : Fragment() {
                             binding.inputSecondLabel.text?.clear()
                             binding.inputSecondUsername.text?.clear()
                             binding.inputSecondPassword.text?.clear()
-                            binding.statusSecond.text = "Zweiter Account entfernt."
+                            binding.statusSecond.text = getString(R.string.settings_second_removed)
                             binding.statusSecond.isVisible = true
                         }
                         is SecondAccountState.Error -> {
                             binding.btnSaveSecond.isEnabled = true
-                            binding.statusSecond.text = "Fehler: ${state.message}"
+                            binding.statusSecond.text = getString(R.string.settings_second_error_prefix, state.message)
                             binding.statusSecond.isVisible = true
                         }
                         else -> {}

@@ -118,7 +118,7 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
                     b.root.alpha = 0.7f
                     b.cardRoot.setCardBackgroundColor(ContextCompat.getColor(ctx, R.color.red_container))
                     b.badgeChip.isVisible = true
-                    b.badgeChip.text = "Entfall"
+                    b.badgeChip.text = b.root.context.getString(R.string.badge_cancelled)
                     b.badgeChip.setChipBackgroundColorResource(R.color.red_container)
                     b.badgeChip.setTextColor(ContextCompat.getColor(ctx, R.color.red))
                 }
@@ -127,7 +127,7 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
                     b.textSubject.typeface = Typeface.DEFAULT_BOLD
                     b.cardRoot.setCardBackgroundColor(ContextCompat.getColor(ctx, R.color.yellow_container))
                     b.badgeChip.isVisible = true
-                    b.badgeChip.text = "Vertretung"
+                    b.badgeChip.text = b.root.context.getString(R.string.badge_substitution)
                     b.badgeChip.setChipBackgroundColorResource(R.color.yellow_container)
                     b.badgeChip.setTextColor(ContextCompat.getColor(ctx, R.color.yellow))
                 }
@@ -136,7 +136,7 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
                     b.textSubject.typeface = Typeface.DEFAULT_BOLD
                     b.cardRoot.setCardBackgroundColor(ContextCompat.getColor(ctx, R.color.green_container))
                     b.badgeChip.isVisible = true
-                    b.badgeChip.text = "Zusatz"
+                    b.badgeChip.text = b.root.context.getString(R.string.badge_extra)
                     b.badgeChip.setChipBackgroundColorResource(R.color.green_container)
                     b.badgeChip.setTextColor(ContextCompat.getColor(ctx, R.color.green))
                 }

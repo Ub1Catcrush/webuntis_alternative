@@ -29,7 +29,7 @@
             android:id="@+id/title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="WebUntis Dashboard"
+            android:text="@string/login_title"
             android:textSize="22sp"
             android:textStyle="bold"
             android:textColor="?attr/colorOnBackground"
@@ -42,7 +42,7 @@
             android:id="@+id/subtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Melde dich mit deinen Schuldaten an"
+            android:text="@string/login_subtitle"
             android:textSize="14sp"
             android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginTop="4dp"
@@ -72,7 +72,7 @@
                 <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="Server (z.B. meine-schule.webuntis.com)"
+                    android:hint="@string/login_server_hint"
                     style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/input_server"
@@ -85,7 +85,7 @@
                 <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="Schul-Kurzname"
+                    android:hint="@string/login_schoolname_hint"
                     android:layout_marginTop="12dp"
                     style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
                     <com.google.android.material.textfield.TextInputEditText
@@ -99,7 +99,7 @@
                 <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="Benutzername"
+                    android:hint="@string/login_username_hint"
                     android:layout_marginTop="12dp"
                     style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
                     <com.google.android.material.textfield.TextInputEditText
@@ -113,7 +113,7 @@
                 <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="Passwort"
+                    android:hint="@string/login_password_hint"
                     android:layout_marginTop="12dp"
                     app:endIconMode="password_toggle"
                     style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
@@ -129,7 +129,7 @@
                     android:id="@+id/btn_login"
                     android:layout_width="match_parent"
                     android:layout_height="52dp"
-                    android:text="Anmelden"
+                    android:text="@string/login_button"
                     android:layout_marginTop="20dp"
                     style="@style/Widget.Material3.Button" />
 
@@ -157,7 +157,7 @@
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="Deine Zugangsdaten werden verschlüsselt auf dem Gerät gespeichert und nicht übertragen."
+            android:text="@string/login_data_notice"
             android:textSize="12sp"
             android:textColor="?attr/colorOnSurfaceVariant"
             android:gravity="center"

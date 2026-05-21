@@ -37,7 +37,7 @@ class TimetableViewModel @Inject constructor(
             _days.value = UiState.Loading
             _days.value = repository.getTwoSchoolDays().fold(
                 onSuccess = { list -> UiState.Success(list.map { SchoolDay(it) }) },
-                onFailure = { UiState.Error(it.message ?: "Fehler") }
+                onFailure = { UiState.Error(it.message ?: context.getString(R.string.error_generic)) }
             )
         }
     }

@@ -253,13 +253,17 @@ class WebUntisRepository @Inject constructor(
     }
 
     suspend fun getTwoSchoolDays(): Result<List<TimetableDay>> {
+        val numDays = sessionManager.timetableDays
         val today = LocalDate.now()
-        val rangeResult = fetchLessonsInRange(today.toUntis(), today.plusDays(21).toUntis())
+        // Fetch enough data: worst case every day is a weekend/holiday, so request
+        // 3× the desired days to guarantee we can fill numDays school days.
+        val fetchDays = (numDays * 3).coerceAtLeast(21).toLong()
+        val rangeResult = fetchLessonsInRange(today.toUntis(), today.plusDays(fetchDays).toUntis())
         if (rangeResult.isFailure) return Result.failure(rangeResult.exceptionOrNull()!!)
         val byDate = rangeResult.getOrThrow()
             .groupBy { it.date }.entries
             .filter { (d, _) -> !untisIntToDate(d).isBefore(today) && untisIntToDate(d).dayOfWeek.value <= 5 }
-            .sortedBy { it.key }.take(5)
+            .sortedBy { it.key }.take(numDays)
             .map { (d, lessons) -> TimetableDay(untisIntToDate(d), lessons.sortedBy { it.startTime }) }
         return Result.success(byDate)
     }

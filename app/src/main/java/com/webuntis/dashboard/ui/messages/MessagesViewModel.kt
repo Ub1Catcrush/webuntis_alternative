@@ -34,7 +34,7 @@ class MessagesViewModel @Inject constructor(
             _state.value = UiState.Loading
             repository.getMessages().fold(
                 onSuccess = { _state.value = UiState.Success(it) },
-                onFailure = { _state.value = UiState.Error(it.message ?: "Fehler") }
+                onFailure = { _state.value = UiState.Error(it.message ?: context.getString(R.string.error_generic)) }
             )
         }
     }
@@ -60,7 +60,7 @@ class MessagesViewModel @Inject constructor(
             _downloadState.value = DownloadState.Loading(filename)
             repository.downloadAttachment(attachmentId, msg).fold(
                 onSuccess = { bytes -> _downloadState.value = DownloadState.Ready(filename, bytes) },
-                onFailure = { _downloadState.value = DownloadState.Error(it.message ?: "Fehler") }
+                onFailure = { _downloadState.value = DownloadState.Error(it.message ?: context.getString(R.string.error_generic)) }
             )
         }
     }

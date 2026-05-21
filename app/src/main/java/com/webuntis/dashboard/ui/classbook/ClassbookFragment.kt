@@ -109,7 +109,7 @@ class ClassbookAdapter : ListAdapter<ClassbookEntry, ClassbookAdapter.VH>(Diff) 
                 cat.contains("homework") || cat.contains("hausauf") ->
                     Triple(b.root.context.getString(R.string.label_entry_type_homework), R.color.blue_container, R.color.blue)
                 cat.contains("note") || cat.contains("bemer") ->
-                    Triple("Bemerkung", R.color.green_container, R.color.green)
+                    Triple(getString(R.string.label_entry_type_remark), R.color.green_container, R.color.green)
                 else -> Triple(entry.displayCategory, R.color.blue_container, R.color.blue)
             }
             b.categoryChip.text = labelRes

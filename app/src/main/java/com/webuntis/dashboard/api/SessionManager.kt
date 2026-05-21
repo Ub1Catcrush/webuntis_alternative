@@ -124,6 +124,19 @@ class SessionManager @Inject constructor(
             }
         }
 
+    /** Number of school days shown in the timetable. Stored in plain prefs (not sensitive). */
+    var timetableDays: Int
+        get() = plainPrefs.getInt(KEY_TIMETABLE_DAYS, DEFAULT_TIMETABLE_DAYS)
+        set(value) {
+            plainPrefs.edit()
+                .putInt(KEY_TIMETABLE_DAYS, value.coerceIn(MIN_TIMETABLE_DAYS, MAX_TIMETABLE_DAYS))
+                .apply()
+        }
+
+    private val plainPrefs by lazy {
+        context.getSharedPreferences("webuntis_settings", android.content.Context.MODE_PRIVATE)
+    }
+
     companion object {
         private const val KEY_SERVER       = "server"
         private const val KEY_SCHOOLNAME   = "schoolname"
@@ -140,5 +153,9 @@ class SessionManager @Inject constructor(
         private const val KEY_SECOND_LABEL = "second_label"
         private const val KEY_SECOND_TYPE  = "second_type"
         private const val KEY_SECOND_NAME  = "second_name"
+        private const val KEY_TIMETABLE_DAYS = "timetable_days"
+        const val DEFAULT_TIMETABLE_DAYS = 5
+        const val MIN_TIMETABLE_DAYS     = 1
+        const val MAX_TIMETABLE_DAYS     = 20
     }
 }

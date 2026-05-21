@@ -59,7 +59,7 @@ class LoginViewModel @Inject constructor(
                     isLoggingIn = false
                 },
                 onFailure = {
-                    _loginState.value = LoginState.Error(it.message ?: "Unbekannter Fehler")
+                    _loginState.value = LoginState.Error(it.message ?: context.getString(R.string.error_unknown))
                     isLoggingIn = false
                 }
             )
@@ -82,6 +82,11 @@ class LoginViewModel @Inject constructor(
      * SessionManager. Primes the StateFlow with Saved so the UI collector renders
      * the stored account without requiring a Force Close / re-launch.
      */
+    /** Re-fetches the timetable after a settings change (e.g. day count). */
+    fun refreshTimetable() {
+        viewModelScope.launch { repository.getTwoSchoolDays() }
+    }
+
     fun primeSecondAccountState() {
         val second = sessionManager.secondAccount ?: return
         val info = buildString {
@@ -105,7 +110,7 @@ class LoginViewModel @Inject constructor(
             _secondAccountState.value = SecondAccountState.Loading
             repository.verifyAndSaveSecondAccount(username, password, label).fold(
                 onSuccess = { info -> _secondAccountState.value = SecondAccountState.Saved(info) },
-                onFailure = { _secondAccountState.value = SecondAccountState.Error(it.message ?: "Fehler") }
+                onFailure = { _secondAccountState.value = SecondAccountState.Error(it.message ?: context.getString(R.string.error_generic)) }
             )
         }
     }
