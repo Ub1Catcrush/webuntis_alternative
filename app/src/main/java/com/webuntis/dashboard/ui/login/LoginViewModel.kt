@@ -59,7 +59,7 @@ class LoginViewModel @Inject constructor(
                     isLoggingIn = false
                 },
                 onFailure = {
-                    _loginState.value = LoginState.Error(it.message ?: context.getString(R.string.error_unknown))
+                    _loginState.value = LoginState.Error(it.message ?: "Unbekannter Fehler")
                     isLoggingIn = false
                 }
             )
@@ -110,7 +110,7 @@ class LoginViewModel @Inject constructor(
             _secondAccountState.value = SecondAccountState.Loading
             repository.verifyAndSaveSecondAccount(username, password, label).fold(
                 onSuccess = { info -> _secondAccountState.value = SecondAccountState.Saved(info) },
-                onFailure = { _secondAccountState.value = SecondAccountState.Error(it.message ?: context.getString(R.string.error_generic)) }
+                onFailure = { _secondAccountState.value = SecondAccountState.Error(it.message ?: "Fehler beim Laden") }
             )
         }
     }

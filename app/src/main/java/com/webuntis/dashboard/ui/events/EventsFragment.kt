@@ -61,7 +61,7 @@ class EventsFragment : Fragment() {
                             binding.recyclerView.isVisible = false
                             binding.emptyView.isVisible = true
                             binding.emptyView.text =
-                                getString(R.string.error_prefix, state.message)
+                                state.message
                         }
                     }
                 }

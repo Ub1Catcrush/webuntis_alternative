@@ -81,7 +81,7 @@ class DayFragment : Fragment() {
                             binding.progressBar.isVisible = false
                             binding.recyclerView.isVisible = false
                             binding.emptyView.isVisible = true
-                            binding.emptyView.text = getString(R.string.error_prefix, state.message)
+                            binding.emptyView.text = state.message
                         }
                     }
                 }

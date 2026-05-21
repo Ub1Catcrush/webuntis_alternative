@@ -26,7 +26,7 @@ class ClassbookViewModel @Inject constructor(
             _state.value = UiState.Loading
             repository.getClassbookEntries().fold(
                 onSuccess = { _state.value = UiState.Success(it) },
-                onFailure = { _state.value = UiState.Error(it.message ?: context.getString(R.string.error_generic)) }
+                onFailure = { _state.value = UiState.Error(it.message ?: "Fehler beim Laden") }
             )
         }
     }

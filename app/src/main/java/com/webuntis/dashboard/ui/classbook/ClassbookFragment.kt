@@ -57,7 +57,7 @@ class ClassbookFragment : Fragment() {
                         if (state.data.isEmpty()) {
                             binding.recyclerView.isVisible = false
                             binding.emptyView.isVisible = true
-                            binding.emptyView.text = getString(R.string.label_no_classbook)
+                            binding.emptyView.text = "Keine Einträge"
                         } else {
                             binding.recyclerView.isVisible = true
                             binding.emptyView.isVisible = false
@@ -68,7 +68,7 @@ class ClassbookFragment : Fragment() {
                         binding.progressBar.isVisible = false
                         binding.recyclerView.isVisible = false
                         binding.emptyView.isVisible = true
-                        binding.emptyView.text = getString(R.string.error_prefix, state.message)
+                        binding.emptyView.text = state.message
                     }
                 }
             }
@@ -103,13 +103,13 @@ class ClassbookAdapter : ListAdapter<ClassbookEntry, ClassbookAdapter.VH>(Diff) 
             val cat = entry.displayCategory.lowercase()
             val (labelRes, bgRes, fgRes) = when {
                 cat.contains("absen") || cat.contains("fehlen") ->
-                    Triple(b.root.context.getString(R.string.label_entry_type_absence), R.color.red_container, R.color.red)
+                    Triple("Abwesenheit", R.color.red_container, R.color.red)
                 cat.contains("late") || cat.contains("spät") || cat.contains("verspät") ->
-                    Triple(b.root.context.getString(R.string.label_entry_type_late), R.color.yellow_container, R.color.yellow)
+                    Triple("Verspätung", R.color.yellow_container, R.color.yellow)
                 cat.contains("homework") || cat.contains("hausauf") ->
-                    Triple(b.root.context.getString(R.string.label_entry_type_homework), R.color.blue_container, R.color.blue)
+                    Triple("Hausaufgabe", R.color.blue_container, R.color.blue)
                 cat.contains("note") || cat.contains("bemer") ->
-                    Triple(getString(R.string.label_entry_type_remark), R.color.green_container, R.color.green)
+                    Triple("Bemerkung", R.color.green_container, R.color.green)
                 else -> Triple(entry.displayCategory, R.color.blue_container, R.color.blue)
             }
             b.categoryChip.text = labelRes

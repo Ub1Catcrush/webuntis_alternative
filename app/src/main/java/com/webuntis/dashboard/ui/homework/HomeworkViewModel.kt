@@ -44,12 +44,12 @@ class HomeworkViewModel @Inject constructor(
                         .map { hw ->
                             val subject = subjectMap[hw.lessonId?.toString()]
                                 ?: hw.subject
-                                ?: context.getString(R.string.label_task_fallback)
+                                ?: "Aufgabe"
                             HomeworkUiItem(hw, subject, hw.id in doneIds)
                         }
                     _state.value = UiState.Success(items)
                 },
-                onFailure = { _state.value = UiState.Error(it.message ?: context.getString(R.string.error_generic)) }
+                onFailure = { _state.value = UiState.Error(it.message ?: "Fehler beim Laden") }
             )
         }
     }
