@@ -77,6 +77,29 @@ class LoginViewModel @Inject constructor(
     private val _secondAccountState = MutableStateFlow<SecondAccountState>(SecondAccountState.Idle)
     val secondAccountState: StateFlow<SecondAccountState> = _secondAccountState
 
+    /**
+     * Called by SettingsFragment on open when a second account already exists in
+     * SessionManager. Primes the StateFlow with Saved so the UI collector renders
+     * the stored account without requiring a Force Close / re-launch.
+     */
+    fun primeSecondAccountState() {
+        val second = sessionManager.secondAccount ?: return
+        val info = buildString {
+            if (second.personName.isNotBlank()) append(second.personName)
+            if (second.accountTypeLabel.isNotBlank()) {
+                if (isNotEmpty()) append(" · ")
+                append(second.accountTypeLabel)
+            }
+            if (second.label.isNotBlank()) {
+                if (isNotEmpty()) append(" (")
+                append(second.label)
+                append(")")
+            }
+            if (isEmpty()) append(second.username)
+        }
+        _secondAccountState.value = SecondAccountState.Saved(info)
+    }
+
     fun saveSecondAccount(username: String, password: String, label: String) {
         viewModelScope.launch {
             _secondAccountState.value = SecondAccountState.Loading

@@ -57,17 +57,13 @@ class SettingsFragment : Fragment() {
         }
 
         // ── Second account ────────────────────────────────────────────────────
+        // If an account is already stored, prime the StateFlow with Saved so the
+        // collector below is the single source of truth and updates the UI correctly
+        // when the fragment opens — regardless of whether we just saved it or it was
+        // already there from a previous session.
         val second = loginViewModel.sessionManager.secondAccount
         if (second != null) {
-            binding.inputSecondLabel.setText(second.label)
-            binding.inputSecondUsername.setText(second.username)
-            binding.inputSecondPassword.hint = "Gespeichert – leer lassen zum Beibehalten"
-            binding.btnRemoveSecond.isVisible = true
-            // Show resolved type if known
-            if (second.accountTypeLabel.isNotBlank()) {
-                binding.statusSecond.text = "✓ ${second.personName} · ${second.accountTypeLabel}"
-                binding.statusSecond.isVisible = true
-            }
+            loginViewModel.primeSecondAccountState()
         }
 
         binding.btnSaveSecond.setOnClickListener {
@@ -101,8 +97,19 @@ class SettingsFragment : Fragment() {
                         is SecondAccountState.Saved -> {
                             binding.btnSaveSecond.isEnabled = true
                             binding.btnRemoveSecond.isVisible = true
-                            binding.statusSecond.text = "✓ Gespeichert: ${state.info}"
+                            binding.statusSecond.text = "✓ ${state.info}"
                             binding.statusSecond.isVisible = true
+                            // Populate input fields from stored account so the user
+                            // sees what is saved (covers the "primed on open" case)
+                            val stored = loginViewModel.sessionManager.secondAccount
+                            if (stored != null) {
+                                if (binding.inputSecondLabel.text.isNullOrBlank())
+                                    binding.inputSecondLabel.setText(stored.label)
+                                if (binding.inputSecondUsername.text.isNullOrBlank())
+                                    binding.inputSecondUsername.setText(stored.username)
+                                binding.inputSecondPassword.hint =
+                                    "Gespeichert – leer lassen zum Beibehalten"
+                            }
                         }
                         is SecondAccountState.Removed -> {
                             binding.btnSaveSecond.isEnabled = true
