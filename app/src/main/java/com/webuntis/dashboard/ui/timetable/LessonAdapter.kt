@@ -49,18 +49,20 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
             // Subject
             b.textSubject.text = lesson.subjectName
 
-            // Teacher + original teacher (strikethrough for substitutions)
-            val teacherName = lesson.teacherNames
-            if (teacherName.isNotEmpty()) {
+            // ── Teacher row ──────────────────────────────────────────────────
+            // Active teachers (not REMOVED); strikethrough for removed ones
+            // Uses detail-enriched removedTeachers when available, else orgname fallback.
+            val activeTeachers = lesson.teacherNames   // already filters active from te[]
+            val removedNames   = lesson.removedTeachers
+                ?: lesson.te?.mapNotNull { it.orgname }?.filter { it.isNotEmpty() }
+                    ?.takeIf { lesson.isSubstitution }
+
+            if (activeTeachers.isNotEmpty() || !removedNames.isNullOrEmpty()) {
                 b.teacherRow.isVisible = true
-                b.textTeacher.text = teacherName
-                val orgTeacher = lesson.te
-                    ?.mapNotNull { it.orgname }
-                    ?.filter { it.isNotEmpty() }
-                    ?.joinToString(", ") ?: ""
-                if (lesson.isSubstitution && orgTeacher.isNotEmpty()) {
+                b.textTeacher.text = activeTeachers.ifEmpty { "–" }
+                if (!removedNames.isNullOrEmpty()) {
                     b.textTeacherOriginal.isVisible = true
-                    b.textTeacherOriginal.text = orgTeacher
+                    b.textTeacherOriginal.text = removedNames.joinToString(", ")
                     b.textTeacherOriginal.paintFlags =
                         b.textTeacherOriginal.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
                 } else {
@@ -71,13 +73,27 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
                 b.textTeacherOriginal.isVisible = false
             }
 
-            // Info / substitution text
+            // ── Info / substitution / teaching content ───────────────────────
             val infoText = listOfNotNull(
                 lesson.substText?.takeIf { it.isNotBlank() },
-                lesson.info?.takeIf { it.isNotBlank() }
+                lesson.info?.takeIf { it.isNotBlank() },
+                lesson.teachingContent?.takeIf { it.isNotBlank() }
+                    ?.let { "📖 $it" }
             ).joinToString(" · ")
             b.textInfo.isVisible = infoText.isNotEmpty()
             b.textInfo.text = infoText
+
+            // ── Notes for all (from v1 gridEntry notesAll / NOTES_FOR_ALL text) ──
+            // Shown as a separate row with a 📌 prefix so it's clearly distinct
+            // from lesson info and substitution text.
+            val notes = lesson.notesForAll?.takeIf { it.isNotBlank() }
+            b.textNotesForAll.isVisible = notes != null
+            if (notes != null) {
+                b.textNotesForAll.text = "📌 $notes"
+                // Make URLs clickable so teachers' links (wikihow, youtube, etc.) open directly
+                android.text.util.Linkify.addLinks(b.textNotesForAll, android.text.util.Linkify.WEB_URLS)
+                b.textNotesForAll.movementMethod = android.text.method.LinkMovementMethod.getInstance()
+            }
 
             // Room
             b.textRoom.text = lesson.roomNames

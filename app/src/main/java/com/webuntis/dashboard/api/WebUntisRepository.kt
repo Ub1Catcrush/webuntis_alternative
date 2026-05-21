@@ -282,11 +282,9 @@ class WebUntisRepository @Inject constructor(
         elementType: Int
     ): List<Lesson> {
         val token = bearerToken ?: fetchBearerToken() ?: return lessons
-        val needsDetail = lessons.filter { lesson ->
-            lesson.isSubstitution || lesson.isCancelled ||
-            (lesson.substText.isNullOrBlank() && lesson.info.isNullOrBlank())
-        }
-        if (needsDetail.isEmpty()) return lessons
+        // Enrich all lessons — teaching content, teacher substitution status,
+        // and notes are only available via the v2 detail endpoint regardless of lesson type.
+        val needsDetail = lessons
 
         val detailMap = mutableMapOf<Int, CalendarEntryDetail>()
 
@@ -324,12 +322,49 @@ class WebUntisRepository @Inject constructor(
 
         return lessons.map { lesson ->
             val detail = detailMap[lesson.id] ?: return@map lesson
-            val newSubst = lesson.substText ?: detail.substText?.takeIf { it.isNotBlank() }
-            val newInfo  = lesson.info
+
+            // substText: keep existing lesson value, fall back to detail
+            val newSubst = lesson.substText?.takeIf { it.isNotBlank() }
+                ?: detail.substText?.takeIf { it.isNotBlank() }
+
+            // info: prefer lessonInfo, then notesAll, then notesStaff
+            val newInfo = lesson.info?.takeIf { it.isNotBlank() }
                 ?: detail.lessonInfo?.takeIf { it.isNotBlank() }
                 ?: detail.notesAll?.takeIf { it.isNotBlank() }
-                ?: detail.teachingContent?.takeIf { it.isNotBlank() }
-            lesson.copy(substText = newSubst, info = newInfo)
+                ?: detail.notesStaff?.takeIf { it.isNotBlank() }
+
+            // teachingContent: what was actually taught this lesson (e.g. "AH Seite 78-82")
+            val newTeachingContent = detail.teachingContent?.takeIf { it.isNotBlank() }
+
+            // Teacher substitution info from detail (status: REMOVED / SUBSTITUTION)
+            val removed      = detail.removedTeachers.takeIf { it.isNotEmpty() }
+            val substituted  = detail.substitutedTeachers.takeIf { it.isNotEmpty() }
+
+            // Override lesson code/lstype if detail says it's cancelled or substitution
+            // and the JSON-RPC response didn't already mark it
+            val newCode   = when {
+                lesson.code != null          -> lesson.code
+                detail.isCancelled           -> "cancelled"
+                detail.isSubstitution        -> "irregular"
+                else                         -> null
+            }
+            val newLstype = when {
+                lesson.lstype != null        -> lesson.lstype
+                detail.isCancelled           -> "cancel"
+                detail.isSubstitution        -> "subst"
+                else                         -> null
+            }
+
+            lesson.copy(
+                substText           = newSubst,
+                info                = newInfo,
+                teachingContent     = newTeachingContent,
+                removedTeachers     = removed,
+                substitutedTeachers = substituted,
+                code                = newCode,
+                lstype              = newLstype
+                // notesForAll is already set from v1 gridEntry; don't overwrite it here
+            )
         }
     }
 

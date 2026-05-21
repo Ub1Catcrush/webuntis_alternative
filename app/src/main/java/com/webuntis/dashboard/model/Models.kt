@@ -37,7 +37,13 @@ data class Lesson(
     val code: String?,
     val lstype: String?,
     val info: String?,
-    val substText: String?
+    val substText: String?,
+    // Enriched by CalendarEntryDetail v2
+    val teachingContent: String? = null,
+    val removedTeachers: List<String>? = null,    // teachers with status REMOVED
+    val substitutedTeachers: List<String>? = null, // teachers with status SUBSTITUTION
+    // Directly from v1 gridEntry — no detail call needed
+    val notesForAll: String? = null
 ) {
     val isCancelled: Boolean get() = code == "cancelled" || lstype == "cancel"
     val isSubstitution: Boolean get() = code == "irregular" || lstype == "subst"
@@ -89,7 +95,9 @@ data class TimetableV1Entry(
     val lessonInfo: String?,
     val substitutionText: String?,
     val lessonText: String?,
-    val color: String?
+    val color: String?,
+    val notesAll: String?,          // NOTES_FOR_ALL text, present when icons contains "NOTES"
+    val icons: List<String>?        // e.g. ["NOTES"], ["HOMEWORK"]
 ) {
     fun toLesson(dateInt: Int): Lesson {
         val startT = duration?.start?.drop(11)?.take(5)?.replace(":", "")?.toIntOrNull() ?: 0
@@ -134,7 +142,10 @@ data class TimetableV1Entry(
             code      = code,
             lstype    = lstype,
             info      = lessonInfo?.takeIf { it.isNotBlank() },
-            substText = substitutionText?.takeIf { it.isNotBlank() }
+            substText = substitutionText?.takeIf { it.isNotBlank() },
+            // notesAll from the v1 gridEntry is directly available here —
+            // no detail API call required for this field.
+            notesForAll = notesAll?.takeIf { it.isNotBlank() }
         )
     }
 }
@@ -149,15 +160,62 @@ data class TimetableV1Element(
 // ─── CALENDAR ENTRY DETAIL (v2) ───────────────────────────────────────────────
 
 data class CalendarEntryDetailResponse(val calendarEntries: List<CalendarEntryDetail>?)
+
+data class CalendarEntryDetailTeacher(
+    val id: Int?,
+    val shortName: String?,
+    val longName: String?,
+    val displayName: String?,
+    val status: String?   // REGULAR, REMOVED, SUBSTITUTION
+)
+
+data class CalendarEntryDetailRoom(
+    val id: Int?,
+    val shortName: String?,
+    val longName: String?,
+    val displayName: String?,
+    val status: String?   // REGULAR, ADDED, REMOVED
+)
+
+data class CalendarEntryDetailSubject(
+    val id: Int?,
+    val shortName: String?,
+    val longName: String?,
+    val displayName: String?
+)
+
 data class CalendarEntryDetail(
     val id: Int?,
     val lessonInfo: String?,
     val substText: String?,
     val notesAll: String?,
+    val notesStaff: String?,
     val teachingContent: String?,
     val startDateTime: String?,
-    val endDateTime: String?
-)
+    val endDateTime: String?,
+    val status: String?,          // TAKING_PLACE, CANCELLED, etc.
+    val type: String?,            // NORMAL_TEACHING_PERIOD, SUBSTITUTION, CANCELLATION, etc.
+    val color: String?,
+    val teachers: List<CalendarEntryDetailTeacher>?,
+    val rooms: List<CalendarEntryDetailRoom>?,
+    val subject: CalendarEntryDetailSubject?
+) {
+    val removedTeachers: List<String>
+        get() = teachers?.filter { it.status == "REMOVED" }
+                        ?.mapNotNull { it.longName ?: it.shortName } ?: emptyList()
+
+    val substitutedTeachers: List<String>
+        get() = teachers?.filter { it.status == "SUBSTITUTION" }
+                        ?.mapNotNull { it.longName ?: it.shortName } ?: emptyList()
+
+    val activeTeachers: List<String>
+        get() = teachers?.filter { it.status != "REMOVED" }
+                        ?.mapNotNull { it.longName ?: it.shortName } ?: emptyList()
+
+    val isCancelled: Boolean get() = status == "CANCELLED" || type == "CANCELLATION"
+    val isSubstitution: Boolean get() = type == "SUBSTITUTION" || substitutedTeachers.isNotEmpty()
+    val isChanged: Boolean get() = type == "CHANGED_TEACHING_PERIOD"
+}
 
 // ─── HOMEWORK ─────────────────────────────────────────────────────────────────
 
