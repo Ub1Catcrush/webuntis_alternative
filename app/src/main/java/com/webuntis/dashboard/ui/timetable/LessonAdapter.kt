@@ -2,8 +2,11 @@ package com.webuntis.dashboard.ui.timetable
 
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.text.method.LinkMovementMethod
+import android.text.util.Linkify
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
@@ -11,11 +14,11 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.webuntis.dashboard.R
 import com.webuntis.dashboard.databinding.ItemLessonBinding
+import com.webuntis.dashboard.databinding.ItemLessonGroupBinding
 import com.webuntis.dashboard.model.Lesson
 
-class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(LessonDiff) {
+class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(GroupDiff) {
 
-    /** Set by the Fragment from SessionManager.showLongNames; triggers redraw when changed. */
     var showLongSubjects: Boolean = false
         set(value) { field = value; notifyDataSetChanged() }
     var showLongTeachers: Boolean = false
@@ -23,43 +26,56 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
     var showLongRooms: Boolean = false
         set(value) { field = value; notifyDataSetChanged() }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): LessonViewHolder {
-        val binding = ItemLessonBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        return LessonViewHolder(binding)
+    var onLessonClick: ((Lesson) -> Unit)? = null
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): GroupViewHolder {
+        val binding = ItemLessonGroupBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        return GroupViewHolder(binding)
     }
 
-    override fun onBindViewHolder(holder: LessonViewHolder, position: Int) {
-        holder.bind(getItem(position), showLongSubjects, showLongTeachers, showLongRooms)
+    override fun onBindViewHolder(holder: GroupViewHolder, position: Int) {
+        holder.bind(getItem(position), showLongSubjects, showLongTeachers, showLongRooms, onLessonClick)
     }
 
-    class LessonViewHolder(private val b: ItemLessonBinding) : RecyclerView.ViewHolder(b.root) {
-
-        fun bind(lesson: Lesson, showLongSubjects: Boolean, showLongTeachers: Boolean, showLongRooms: Boolean) {
+    class GroupViewHolder(private val b: ItemLessonGroupBinding) : RecyclerView.ViewHolder(b.root) {
+        
+        fun bind(group: LessonGroup, showLongSubjects: Boolean, showLongTeachers: Boolean, showLongRooms: Boolean, onClick: ((Lesson) -> Unit)?) {
             val ctx = b.root.context
-
-            // Time
-            b.textTime.text = "${lesson.startTimeFormatted}\n${lesson.endTimeFormatted}"
-
-            // ── Proportional height based on actual duration ──────────────────
-            val startMin    = (lesson.startTime / 100) * 60 + (lesson.startTime % 100)
-            val endMin      = (lesson.endTime   / 100) * 60 + (lesson.endTime   % 100)
+            val first = group.lessons.firstOrNull() ?: return
+            
+            b.textTime.text = "${first.startTimeFormatted}\n${first.endTimeFormatted}"
+            
+            // ── Ultra-compact density calculation ──────────────────────────
+            val startMin    = (first.startTime / 100) * 60 + (first.startTime % 100)
+            val endMin      = (first.endTime   / 100) * 60 + (first.endTime   % 100)
             val durationMin = (endMin - startMin).coerceAtLeast(1)
-            val BASE_DP     = 80f
+            val BASE_DP     = 48f // Reduced to fit ~10-12 hours per screen
             val BASE_MIN    = 45f
             val heightDp    = BASE_DP * (durationMin / BASE_MIN)
             val minHeightPx = (heightDp * ctx.resources.displayMetrics.density).toInt()
+
             b.root.minimumHeight = minHeightPx
-            // When info text is visible let the card grow freely; otherwise pin to exact height
-            b.root.layoutParams = b.root.layoutParams.also { lp ->
-                lp.height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            b.lessonsContainer.removeAllViews()
+
+            group.lessons.forEachIndexed { index, lesson ->
+                val lessonBinding = ItemLessonBinding.inflate(LayoutInflater.from(ctx), b.lessonsContainer, false)
+                lessonBinding.root.minimumHeight = minHeightPx
+                bindLesson(lessonBinding, lesson, showLongSubjects, showLongTeachers, showLongRooms, onClick)
+                
+                val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+                if (index > 0) lp.marginStart = (4 * ctx.resources.displayMetrics.density).toInt()
+                
+                b.lessonsContainer.addView(lessonBinding.root, lp)
             }
+        }
 
-            // Subject
+        private fun bindLesson(b: ItemLessonBinding, lesson: Lesson, showLongSubjects: Boolean, showLongTeachers: Boolean, showLongRooms: Boolean, onClick: ((Lesson) -> Unit)?) {
+            val ctx = b.root.context
+
             b.textSubject.text = lesson.displaySubject(showLongSubjects)
+            b.root.setOnClickListener { onClick?.invoke(lesson) }
 
-            // ── Teacher row ──────────────────────────────────────────────────
-            // Active teachers (not REMOVED); strikethrough for removed ones
-            // Uses detail-enriched removedTeachers when available, else orgname fallback.
+            // Teacher Row
             val activeTeachers = lesson.displayTeachers(showLongTeachers)
             val removedNames   = lesson.removedTeachers
                 ?: lesson.te?.mapNotNull { it.orgname }?.filter { it.isNotEmpty() }
@@ -70,7 +86,7 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
                 b.textTeacher.text = activeTeachers.ifEmpty { "–" }
                 if (!removedNames.isNullOrEmpty()) {
                     b.textTeacherOriginal.isVisible = true
-                    b.textTeacherOriginal.text = removedNames.joinToString(", ")
+                    b.textTeacherOriginal.text = "(${removedNames.joinToString(", ")})"
                     b.textTeacherOriginal.paintFlags =
                         b.textTeacherOriginal.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
                 } else {
@@ -78,42 +94,36 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
                 }
             } else {
                 b.teacherRow.isVisible = false
-                b.textTeacherOriginal.isVisible = false
             }
 
-            // ── Info / substitution / teaching content ───────────────────────
+            // Info text (Now below teacher in Column 1)
+            val replacedText = lesson.replacedSubject?.let { ctx.getString(R.string.timetable_replaced_subject, it) }
             val infoText = listOfNotNull(
+                replacedText,
                 lesson.substText?.takeIf { it.isNotBlank() },
                 lesson.info?.takeIf { it.isNotBlank() },
-                lesson.teachingContent?.takeIf { it.isNotBlank() }
-                    ?.let { "📖 $it" }
+                lesson.teachingContent?.takeIf { it.isNotBlank() }?.let { "📖 $it" }
             ).joinToString(" · ")
+            
             b.textInfo.isVisible = infoText.isNotEmpty()
-            b.textInfo.text = infoText
-
-            // ── Notes for all (from v1 gridEntry notesAll / NOTES_FOR_ALL text) ──
-            // Shown as a separate row with a 📌 prefix so it's clearly distinct
-            // from lesson info and substitution text.
-            val notes = lesson.notesForAll?.takeIf { it.isNotBlank() }
-            b.textNotesForAll.isVisible = notes != null
-            if (notes != null) {
-                b.textNotesForAll.text = "📌 $notes"
-                // Make URLs clickable so teachers' links (wikihow, youtube, etc.) open directly
-                android.text.util.Linkify.addLinks(b.textNotesForAll, android.text.util.Linkify.WEB_URLS)
-                b.textNotesForAll.movementMethod = android.text.method.LinkMovementMethod.getInstance()
+            if (infoText.isNotEmpty()) {
+                b.textInfo.text = infoText
             }
 
             // Room
             b.textRoom.text = lesson.displayRooms(showLongRooms)
             b.textRoom.isVisible = lesson.displayRooms(showLongRooms).isNotEmpty()
 
-            // Dot color
-            // Keep space even when cancelled so layout stays stable (INVISIBLE not GONE)
-            b.colorDot.visibility = if (lesson.isCancelled) android.view.View.INVISIBLE else android.view.View.VISIBLE
-            b.colorDot.setColorFilter(subjectColor(lesson.subjectName, ctx))
+            // Notes (pinned)
+            val notes = lesson.notesForAll?.takeIf { it.isNotBlank() }
+            b.textNotesForAll.isVisible = notes != null
+            if (notes != null) {
+                b.textNotesForAll.text = "📌 $notes"
+            }
 
-            // Status styling
-            // Reset first
+            // Status Colors
+            b.colorDot.isVisible = !lesson.isCancelled
+            b.colorDot.setColorFilter(subjectColor(lesson.subjectName, ctx))
             b.textSubject.paintFlags = b.textSubject.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
             b.root.alpha = 1f
             b.badgeChip.isVisible = false
@@ -122,36 +132,27 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
             when {
                 lesson.isCancelled -> {
                     b.textSubject.setTextColor(ContextCompat.getColor(ctx, R.color.red))
-                    b.textSubject.typeface = Typeface.DEFAULT_BOLD
                     b.textSubject.paintFlags = b.textSubject.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
                     b.root.alpha = 0.7f
                     b.cardRoot.setCardBackgroundColor(ContextCompat.getColor(ctx, R.color.red_container))
                     b.badgeChip.isVisible = true
-                    b.badgeChip.text = b.root.context.getString(R.string.badge_cancelled)
+                    b.badgeChip.text = ctx.getString(R.string.badge_cancelled)
                     b.badgeChip.setChipBackgroundColorResource(R.color.red_container)
                     b.badgeChip.setTextColor(ContextCompat.getColor(ctx, R.color.red))
                 }
                 lesson.isSubstitution -> {
-                    b.textSubject.setTextColor(ContextCompat.getColor(ctx, android.R.color.tab_indicator_text))
-                    b.textSubject.typeface = Typeface.DEFAULT_BOLD
                     b.cardRoot.setCardBackgroundColor(ContextCompat.getColor(ctx, R.color.yellow_container))
                     b.badgeChip.isVisible = true
-                    b.badgeChip.text = b.root.context.getString(R.string.badge_substitution)
+                    b.badgeChip.text = ctx.getString(R.string.badge_substitution)
                     b.badgeChip.setChipBackgroundColorResource(R.color.yellow_container)
                     b.badgeChip.setTextColor(ContextCompat.getColor(ctx, R.color.yellow))
                 }
                 lesson.isExtra -> {
-                    b.textSubject.setTextColor(ContextCompat.getColor(ctx, android.R.color.tab_indicator_text))
-                    b.textSubject.typeface = Typeface.DEFAULT_BOLD
                     b.cardRoot.setCardBackgroundColor(ContextCompat.getColor(ctx, R.color.green_container))
                     b.badgeChip.isVisible = true
-                    b.badgeChip.text = b.root.context.getString(R.string.badge_extra)
+                    b.badgeChip.text = ctx.getString(R.string.badge_extra)
                     b.badgeChip.setChipBackgroundColorResource(R.color.green_container)
                     b.badgeChip.setTextColor(ContextCompat.getColor(ctx, R.color.green))
-                }
-                else -> {
-                    b.textSubject.setTextColor(ContextCompat.getColor(ctx, android.R.color.tab_indicator_text))
-                    b.textSubject.typeface = Typeface.DEFAULT_BOLD
                 }
             }
         }
@@ -174,8 +175,8 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
         }
     }
 
-    object LessonDiff : DiffUtil.ItemCallback<Lesson>() {
-        override fun areItemsTheSame(a: Lesson, b: Lesson) = a.id == b.id
-        override fun areContentsTheSame(a: Lesson, b: Lesson) = a == b
+    object GroupDiff : DiffUtil.ItemCallback<LessonGroup>() {
+        override fun areItemsTheSame(a: LessonGroup, b: LessonGroup) = a.id == b.id
+        override fun areContentsTheSame(a: LessonGroup, b: LessonGroup) = a == b
     }
 }

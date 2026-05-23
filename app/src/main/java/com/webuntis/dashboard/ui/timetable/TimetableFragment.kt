@@ -54,7 +54,8 @@ class TimetableFragment : Fragment() {
                     val isCompact = viewModel.useCompactWeekView
                     
                     // Toggle visibility based on mode
-                    binding.appBar.isVisible = !isCompact
+                    // AppBar stays visible for Toolbar, but TabLayout is hidden in compact mode
+                    binding.tabLayout.isVisible = !isCompact
                     binding.viewPager.isVisible = !isCompact
                     binding.compactRecyclerView.isVisible = isCompact
 
@@ -113,6 +114,10 @@ class TimetableFragment : Fragment() {
         with(dialogBinding) {
             textSubject.text = lesson.displaySubject(viewModel.showLongSubjects)
             
+            // Time range from strings.xml
+            textTime.text = getString(R.string.timetable_time_range, 
+                lesson.startTimeFormatted, lesson.endTimeFormatted)
+
             // Teacher logic with strikethrough for removed ones
             val activeTeachers = lesson.displayTeachers(viewModel.showLongTeachers)
             val removedNames   = lesson.removedTeachers
@@ -131,6 +136,7 @@ class TimetableFragment : Fragment() {
             textRoom.text = lesson.displayRooms(viewModel.showLongRooms).ifEmpty { "–" }
             
             val info = listOfNotNull(
+                lesson.replacedSubject?.let { getString(R.string.timetable_replaced_subject, it) },
                 lesson.substText?.takeIf { it.isNotBlank() },
                 lesson.info?.takeIf { it.isNotBlank() }
             ).joinToString(" · ")

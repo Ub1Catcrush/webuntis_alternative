@@ -5,158 +5,132 @@
     android:id="@+id/card_root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="8dp"
     app:cardElevation="0dp"
     app:strokeWidth="1dp"
     app:strokeColor="?attr/colorOutlineVariant"
-    app:cardCornerRadius="12dp">
+    app:cardCornerRadius="4dp">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="horizontal"
-        android:padding="12dp"
-        android:gravity="center_vertical">
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="4dp"
+        android:paddingVertical="3dp">
 
-        <!-- Time -->
-        <TextView
-            android:id="@+id/text_time"
-            android:layout_width="52dp"
-            android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:fontFamily="monospace"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:gravity="end"
-            android:lineSpacingMultiplier="1.3" />
-
-        <!-- Color dot / cancelled bar -->
-        <View
-            android:id="@+id/color_bar"
-            android:layout_width="4dp"
-            android:layout_height="match_parent"
-            android:layout_marginStart="10dp"
-            android:layout_marginEnd="10dp"
-            android:minHeight="40dp"
-            android:background="@drawable/ic_circle"
-            android:visibility="gone" />
-
-        <ImageView
-            android:id="@+id/color_dot"
-            android:layout_width="10dp"
-            android:layout_height="10dp"
-            android:layout_marginStart="10dp"
-            android:layout_marginEnd="10dp"
-            android:src="@drawable/ic_circle"
-            android:scaleType="fitCenter" />
-
-        <!-- Subject, badge, teacher, info -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:orientation="horizontal"
+            android:gravity="top"
+            android:baselineAligned="false">
 
-            <!-- Subject + badge row -->
+            <!-- Col 1: Fach, Lehrer, Zusatzinfos (Vertikal Stack) -->
+            <ImageView
+                android:id="@+id/color_dot"
+                android:layout_width="4dp"
+                android:layout_height="4dp"
+                android:layout_marginTop="5dp"
+                android:src="@drawable/ic_circle"
+                android:scaleType="fitCenter" />
+
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="4dp">
 
                 <TextView
                     android:id="@+id/text_subject"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textSize="15sp"
+                    android:textSize="12sp"
                     android:textStyle="bold"
-                    android:textColor="?attr/colorOnSurface" />
+                    android:textColor="?attr/colorOnSurface"
+                    android:ellipsize="end"
+                    android:maxLines="1" />
+
+                <LinearLayout
+                    android:id="@+id/teacher_row"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/text_teacher"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="10sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:ellipsize="end"
+                        android:maxLines="1" />
+
+                    <TextView
+                        android:id="@+id/text_teacher_original"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="9sp"
+                        android:textColor="?attr/colorOutline"
+                        android:layout_marginStart="3dp"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- Zusatzinfos jetzt direkt unter Lehrer -->
+                <TextView
+                    android:id="@+id/text_info"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="10sp"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textStyle="italic"
+                    android:visibility="gone"
+                    android:ellipsize="end"
+                    android:maxLines="2" />
+            </LinearLayout>
+
+            <!-- Col 2: Badge & Raum (Rechtsbündig) -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="end"
+                android:layout_marginStart="4dp">
 
                 <com.google.android.material.chip.Chip
                     android:id="@+id/badge_chip"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:textSize="11sp"
-                    app:chipMinHeight="28dp"
-                    app:chipStartPadding="8dp"
-                    app:chipEndPadding="8dp"
+                    android:textSize="8sp"
+                    app:chipMinHeight="14dp"
+                    app:chipStartPadding="2dp"
+                    app:chipEndPadding="2dp"
                     app:ensureMinTouchTargetSize="false"
                     android:visibility="gone"
                     style="@style/Widget.Material3.Chip.Suggestion" />
 
-            </LinearLayout>
-
-            <!-- Teacher row: current + original (strikethrough for substitution) -->
-            <LinearLayout
-                android:id="@+id/teacher_row"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginTop="2dp"
-                android:visibility="gone">
-
                 <TextView
-                    android:id="@+id/text_teacher"
+                    android:id="@+id/text_room"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textSize="13sp"
+                    android:textSize="10sp"
+                    android:fontFamily="monospace"
                     android:textColor="?attr/colorOnSurfaceVariant" />
-
-                <!-- Original teacher, shown strikethrough for substitutions -->
-                <TextView
-                    android:id="@+id/text_teacher_original"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textSize="12sp"
-                    android:textColor="?attr/colorOutline"
-                    android:layout_marginStart="6dp"
-                    android:visibility="gone" />
-
             </LinearLayout>
-
-            <!-- Info / substitution text -->
-            <TextView
-                android:id="@+id/text_info"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textSize="12sp"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                android:layout_marginTop="4dp"
-                android:visibility="gone" />
-
-            <!-- notesForAll: NOTES_FOR_ALL from v1 timetable gridEntry.
-                 URLs are made clickable by the adapter (Linkify). -->
-            <TextView
-                android:id="@+id/text_notes_for_all"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textSize="12sp"
-                android:textColor="?attr/colorPrimary"
-                android:layout_marginTop="6dp"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                android:paddingTop="6dp"
-                android:paddingBottom="6dp"
-                android:background="@drawable/bg_notes_for_all"
-                android:lineSpacingMultiplier="1.3"
-                android:autoLink="web"
-                android:visibility="gone" />
-
         </LinearLayout>
 
-        <!-- Room chip -->
+        <!-- Pinned Notes (nur einzeilig & extrem klein) -->
         <TextView
-            android:id="@+id/text_room"
-            android:layout_width="wrap_content"
+            android:id="@+id/text_notes_for_all"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:fontFamily="monospace"
-            android:background="@drawable/bg_chip"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="4dp"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:visibility="gone" />
+            android:textSize="9sp"
+            android:textColor="?attr/colorPrimary"
+            android:layout_marginTop="1dp"
+            android:padding="1dp"
+            android:background="@drawable/bg_notes_for_all"
+            android:visibility="gone"
+            android:maxLines="1"
+            android:ellipsize="end" />
 
     </LinearLayout>
 

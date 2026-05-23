@@ -172,22 +172,24 @@ class WebUntisRepository @Inject constructor(
         }
     }
 
-    private suspend fun fetchBearerToken(): String? {
+    private suspend fun fetchBearerToken(): Result<String?> {
         return try {
             val resp = service().getBearerToken()
-            if (!resp.isSuccessful) return null
-            val raw = resp.body()?.string()?.trim() ?: return null
+            if (!resp.isSuccessful) return Result.success(null)
+            val raw = resp.body()?.string()?.trim() ?: return Result.success(null)
             val token = if (raw.startsWith("{")) {
                 JsonParser.parseString(raw).asJsonObject.get("token")?.asString ?: raw
             } else raw.trim('"')
-            token.also { bearerToken = it }
-        } catch (_: Exception) { null }
+            bearerToken = token
+            Result.success(token)
+        } catch (e: Exception) { Result.failure(e) }
     }
 
     private suspend fun callTimetableV1(
         startIso: String, endIso: String, classId: Int
     ): retrofit2.Response<okhttp3.ResponseBody> {
-        val token = bearerToken ?: fetchBearerToken()
+        val tokenResult = bearerToken?.let { Result.success(it) } ?: fetchBearerToken()
+        val token = tokenResult.getOrNull()
         val resp = if (token != null) {
             service().getTimetableV1Auth(
                 authorization = "Bearer $token",
@@ -201,7 +203,8 @@ class WebUntisRepository @Inject constructor(
             )
         }
         if (resp.code() in listOf(401, 403)) {
-            val fresh = fetchBearerToken() ?: return resp
+            val freshResult = fetchBearerToken()
+            val fresh = freshResult.getOrNull() ?: return resp
             return service().getTimetableV1Auth(
                 authorization = "Bearer $fresh",
                 start = startIso, end = endIso,
@@ -368,13 +371,69 @@ class WebUntisRepository @Inject constructor(
             .groupBy { it.date }.entries
             .filter { (d, _) -> !untisIntToDate(d).isBefore(today) && untisIntToDate(d).dayOfWeek.value <= 5 }
             .sortedBy { it.key }.take(numDays)
-            .map { (d, lessons) -> TimetableDay(untisIntToDate(d), lessons.sortedBy { it.startTime }) }
+            .map { (d, lessons) -> 
+                val merged = mergeOverlappingLessons(lessons)
+                TimetableDay(untisIntToDate(d), merged.sortedBy { it.startTime }) 
+            }
         Result.success(byDate)
     }
 
     private fun untisIntToDate(d: Int): LocalDate {
         val s = d.toString().padStart(8, '0')
         return LocalDate.of(s.substring(0,4).toInt(), s.substring(4,6).toInt(), s.substring(6,8).toInt())
+    }
+
+    /**
+     * Identifies lessons at the same time and attempts to logically merge them.
+     * If one lesson is cancelled and another is active, the active one is treated
+     * as a substitution for the cancelled one and the cancelled one is hidden.
+     * Also transfers teacher names to show who is being substituted.
+     */
+    private fun mergeOverlappingLessons(lessons: List<Lesson>): List<Lesson> {
+        if (lessons.size < 2) return lessons
+        
+        val result = mutableListOf<Lesson>()
+        val cancelledPool = lessons.filter { it.isCancelled }.toMutableList()
+        val active = lessons.filter { !it.isCancelled }
+
+        active.forEach { a ->
+            // Find ALL cancelled lessons that overlap significantly with this active one.
+            val overlapping = cancelledPool.filter { c ->
+                maxOf(a.startTime, c.startTime) < minOf(a.endTime, c.endTime)
+            }
+            
+            if (overlapping.isNotEmpty()) {
+                val insteadOf = overlapping.map { it.subjectName }.distinct().joinToString(", ")
+                
+                // Collect teacher names from the cancelled lessons being replaced
+                val replacedTeachers = overlapping.flatMap { c ->
+                    c.te?.mapNotNull { it.longname ?: it.name } ?: emptyList<String>()
+                }.distinct()
+                
+                // Combine with existing removed teachers
+                val combinedRemoved = ((a.removedTeachers ?: emptyList<String>()) + replacedTeachers).distinct()
+                
+                // Mark as substitution and set replaced subject
+                val newLstype = if (a.lstype == null || a.lstype == "ls") "subst" else a.lstype
+                
+                result.add(a.copy(
+                    replacedSubject = insteadOf, 
+                    lstype = newLstype,
+                    removedTeachers = combinedRemoved.ifEmpty { null }
+                ))
+                
+                // REMOVE from pool so they are not shown separately
+                val overlappingIds = overlapping.map { it.id }.toSet()
+                cancelledPool.removeAll { it.id in overlappingIds }
+            } else {
+                result.add(a)
+            }
+        }
+        
+        // Add remaining cancelled lessons that weren't replaced by an active one
+        result.addAll(cancelledPool)
+        
+        return result.sortedBy { it.startTime }
     }
 
     // ── Calendar Entry Detail enrichment ──────────────────────────────────────
@@ -384,7 +443,8 @@ class WebUntisRepository @Inject constructor(
         elementId: Int,
         elementType: Int
     ): List<Lesson> {
-        val token = bearerToken ?: fetchBearerToken() ?: return lessons
+        val tokenResult = bearerToken?.let { Result.success(it) } ?: fetchBearerToken()
+        val token = tokenResult.getOrNull() ?: return lessons
         val needsDetail = lessons.take(40)
 
         val detailMap = mutableMapOf<Int, CalendarEntryDetail>()
@@ -444,11 +504,14 @@ class WebUntisRepository @Inject constructor(
                 detail.isSubstitution        -> "subst"
                 else                         -> null
             }
+            
+            val mergedRemoved = ((lesson.removedTeachers ?: emptyList<String>()) + (removed ?: emptyList<String>())).distinct().ifEmpty { null }
+            
             lesson.copy(
                 substText           = newSubst,
                 info                = newInfo,
                 teachingContent     = newTeachingContent,
-                removedTeachers     = removed,
+                removedTeachers     = mergedRemoved,
                 substitutedTeachers = substituted,
                 code                = newCode,
                 lstype              = newLstype
@@ -586,8 +649,8 @@ class WebUntisRepository @Inject constructor(
                     val hasExamInfo = !entry.lessonInfo.isNullOrBlank() &&
                         entry.lessonInfo.contains(Regex("KA|Test|Klassenarbeit|Überpr|Arbeit", RegexOption.IGNORE_CASE))
                     if (isExam || hasExamInfo) {
-                        val startT = entry.duration?.start?.drop(11)?.take(5)?.replace(":", "")?.toIntOrNull() ?: 0
-                        val endT   = entry.duration?.end?.drop(11)?.take(5)?.replace(":", "")?.toIntOrNull() ?: 0
+                        val startT = startIsoToTimeInt(entry.duration?.start)
+                        val endT   = startIsoToTimeInt(entry.duration?.end)
                         val allPos = listOfNotNull(entry.position1, entry.position2, entry.position3, entry.position4)
                             .flatten().mapNotNull { it.current }
                         val subject = allPos.firstOrNull { it.type == "SUBJECT" }
@@ -609,6 +672,11 @@ class WebUntisRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
+    private fun startIsoToTimeInt(iso: String?): Int {
+        if (iso == null || iso.length < 16) return 0
+        return iso.substring(11, 16).replace(":", "").toIntOrNull() ?: 0
+    }
+
     // ── Messages ──────────────────────────────────────────────────────────────
 
     @Volatile private var secondBearerToken: String? = null
@@ -619,7 +687,8 @@ class WebUntisRepository @Inject constructor(
                        else service().getMessages()
             val effective = if (resp.code() in listOf(401, 403)) {
                 bearerToken = null
-                val fresh = fetchBearerToken()
+                val freshResult = fetchBearerToken()
+                val fresh = freshResult.getOrNull()
                 if (fresh != null) service().getMessagesAuth("Bearer $fresh")
                 else service().getMessages()
             } else resp
@@ -721,7 +790,8 @@ class WebUntisRepository @Inject constructor(
             val session      = sessionManager.session
             val primaryLabel = session?.personName?.takeIf { it.isNotBlank() }
                 ?: session?.accountTypeLabel ?: "Hauptaccount"
-            val token   = bearerToken ?: fetchBearerToken()
+            val tokenResult = bearerToken?.let { Result.success(it) } ?: fetchBearerToken()
+            val token = tokenResult.getOrNull()
 
             coroutineScope {
                 val primaryDeferred = async { fetchMessagesWithToken(token, primaryLabel).getOrDefault(emptyList()) }
@@ -787,7 +857,7 @@ class WebUntisRepository @Inject constructor(
                             subject      = o.get("subject")?.takeIf { !it.isJsonNull }?.asString,
                             content      = o.get("content")?.takeIf { !it.isJsonNull }?.asString,
                             sender       = sender,
-                            sentDateTime = o.get("sentDateTime")?.takeIf { !it.isJsonNull }?.asString,
+                            sentDateTime = o.get("sentDateTime")?.asString?.takeIf { it.isNotBlank() } ?: "",
                             storageAttachments = histAtts
                         )
                     } catch (_: Exception) { null }

@@ -57,10 +57,10 @@ object NetworkModule {
                 val session = sessionManager.session
 
                 if (session != null && session.sessionId.isNotEmpty()) {
-                    // Android 15 Fix: WebUntis REST endpoints are extremely sensitive to cookie flags.
-                    // We must ensure JSESSIONID and schoolname are present and matching the session.
-                    // We use path="/WebUntis" if the URL matches, otherwise "/" to be safe.
-                    val path = if (url.encodedPath.startsWith("/WebUntis")) "/WebUntis" else "/"
+                    // Android 15 Fix: Stricter cookie matching.
+                    // We must ensure JSESSIONID and schoolname are present with the Secure flag.
+                    // Path matching is also stricter; we try to match the base context.
+                    val path = if (url.encodedPath.contains("/WebUntis", ignoreCase = true)) "/WebUntis" else "/"
                     
                     // 1. JSESSIONID
                     stored.removeAll { it.name == "JSESSIONID" }
@@ -69,7 +69,7 @@ object NetworkModule {
                         .value(session.sessionId)
                         .domain(host)
                         .path(path)
-                        .secure() // Use Secure since we are on HTTPS
+                        .secure()
                         .httpOnly()
                         .build())
 
@@ -77,22 +77,11 @@ object NetworkModule {
                     stored.removeAll { it.name == "schoolname" }
                     stored.add(Cookie.Builder()
                         .name("schoolname")
-                        .value("\"${session.schoolname}\"") // WebUntis often quotes this value
+                        .value(session.schoolname) // Raw value, no quotes
                         .domain(host)
                         .path(path)
                         .secure()
                         .build())
-
-                    // 3. traceId
-                    if (stored.none { it.name == "traceId" }) {
-                        stored.add(Cookie.Builder()
-                            .name("traceId")
-                            .value("webuntis-dashboard-android")
-                            .domain(host)
-                            .path("/")
-                            .secure()
-                            .build())
-                    }
                 }
                 return stored
             }
@@ -101,10 +90,11 @@ object NetworkModule {
 
     private fun makeHeadersInterceptor(sessionManager: SessionManager) = Interceptor { chain ->
         val session = sessionManager.session
-        val host = chain.request().url.host
-        val builder = chain.request().newBuilder()
-            // Using a modern but stable User-Agent
-            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 7 Build/UD1A.230803.041) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+        val request = chain.request()
+        val host = request.url.host
+        val builder = request.newBuilder()
+            
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 15; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
             .header("Accept", "application/json, text/plain, */*")
             .header("Accept-Language", "de-DE,de;q=0.9,en-US;q=0.8")
             .header("X-Requested-With", "XMLHttpRequest")
@@ -112,7 +102,13 @@ object NetworkModule {
         if (session != null && session.sessionId.isNotEmpty()) {
             builder.header("Referer", "https://$host/WebUntis/")
         }
-        builder.header("Origin", "https://$host")
+        
+        // Android 15 Fix: Only add Origin/Referer for state-changing requests or when useful.
+        // Some servers reject GET requests with an Origin header if they don't expect it.
+        if (request.method != "GET") {
+            builder.header("Origin", "https://$host")
+        }
+
         chain.proceed(builder.build())
     }
 

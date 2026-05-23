@@ -43,7 +43,8 @@ data class Lesson(
     val removedTeachers: List<String>? = null,    // teachers with status REMOVED
     val substitutedTeachers: List<String>? = null, // teachers with status SUBSTITUTION
     // Directly from v1 gridEntry — no detail call needed
-    val notesForAll: String? = null
+    val notesForAll: String? = null,
+    val replacedSubject: String? = null
 ) {
     val isCancelled: Boolean get() = code == "cancelled" || lstype == "cancel"
     val isSubstitution: Boolean get() = code == "irregular" || lstype == "subst"

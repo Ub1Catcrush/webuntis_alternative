@@ -9,17 +9,21 @@ Native Android application (Kotlin) for student/parent WebUntis dashboards.
 
 ## Architecture
 - **Pattern:** MVVM + Hilt DI.
-- **Networking:** Retrofit2/OkHttp (JSON-RPC, REST v1/v2).
+- **Networking:** Retrofit2/OkHttp (JSON-RPC, REST v1/v2). Android 15 requires strict `Secure` cookie handling and modern User-Agents.
 - **UI:** Material 3, ViewBinding, Navigation Component.
 - **State:** `UiState` wrapper (Loading, Success, Error) with Kotlin Flow.
 
 ## Feature: Timetable
 - **Classic View:** ViewPager2 (one day per page).
 - **Compact View:** Horizontal RecyclerView showing days as columns.
-- **Interactions:** In Compact View, tapping a lesson opens a `MaterialAlertDialog` with details (Subject, Time, Room, Teacher, Teaching Content, Notes).
+- **Overlaps:** Overlapping lessons are merged. If an active lesson replaces a cancelled one, it is marked as a substitution and displays "statt [Old Subject]".
+- **Interactions:** Tapping a lesson (especially in Compact View) opens a `MaterialAlertDialog` with details (Subject, Time, Room, Teacher, Teaching Content, Notes).
 
 ## Key Components
-- `WebUntisRepository`: Singleton, handles parallel fetching and caching.
+- `WebUntisRepository`: Singleton, handles parallel fetching, caching, and logical merging of lessons.
 - `SessionManager`: Encrypted storage for credentials and plain storage for UI preferences.
-- `CompactWeekAdapter`: Handles the horizontal day columns.
-- `CompactLessonAdapter`: Handles the individual lesson cards within columns.
+- `NetworkModule`: Configures OkHttpClient with a custom `CookieJar` and `jsonSanitizer` to handle WebUntis session expiry (HTML-to-JSON conversion).
+
+## Current Status
+- **Version:** v0.0.12 (defined in `dependencies.gradle`).
+- **Target SDK:** 35 (Android 15).
