@@ -16,7 +16,11 @@ import com.webuntis.dashboard.model.Lesson
 class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(LessonDiff) {
 
     /** Set by the Fragment from SessionManager.showLongNames; triggers redraw when changed. */
-    var showLongNames: Boolean = false
+    var showLongSubjects: Boolean = false
+        set(value) { field = value; notifyDataSetChanged() }
+    var showLongTeachers: Boolean = false
+        set(value) { field = value; notifyDataSetChanged() }
+    var showLongRooms: Boolean = false
         set(value) { field = value; notifyDataSetChanged() }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): LessonViewHolder {
@@ -25,12 +29,12 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
     }
 
     override fun onBindViewHolder(holder: LessonViewHolder, position: Int) {
-        holder.bind(getItem(position), showLongNames)
+        holder.bind(getItem(position), showLongSubjects, showLongTeachers, showLongRooms)
     }
 
     class LessonViewHolder(private val b: ItemLessonBinding) : RecyclerView.ViewHolder(b.root) {
 
-        fun bind(lesson: Lesson, showLongNames: Boolean) {
+        fun bind(lesson: Lesson, showLongSubjects: Boolean, showLongTeachers: Boolean, showLongRooms: Boolean) {
             val ctx = b.root.context
 
             // Time
@@ -51,12 +55,12 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
             }
 
             // Subject
-            b.textSubject.text = lesson.displaySubject(showLongNames)
+            b.textSubject.text = lesson.displaySubject(showLongSubjects)
 
             // ── Teacher row ──────────────────────────────────────────────────
             // Active teachers (not REMOVED); strikethrough for removed ones
             // Uses detail-enriched removedTeachers when available, else orgname fallback.
-            val activeTeachers = lesson.displayTeachers(showLongNames)
+            val activeTeachers = lesson.displayTeachers(showLongTeachers)
             val removedNames   = lesson.removedTeachers
                 ?: lesson.te?.mapNotNull { it.orgname }?.filter { it.isNotEmpty() }
                     ?.takeIf { lesson.isSubstitution }
@@ -100,11 +104,12 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
             }
 
             // Room
-            b.textRoom.text = lesson.displayRooms(showLongNames)
-            b.textRoom.isVisible = lesson.displayRooms(showLongNames).isNotEmpty()
+            b.textRoom.text = lesson.displayRooms(showLongRooms)
+            b.textRoom.isVisible = lesson.displayRooms(showLongRooms).isNotEmpty()
 
             // Dot color
-            b.colorDot.isVisible = !lesson.isCancelled
+            // Keep space even when cancelled so layout stays stable (INVISIBLE not GONE)
+            b.colorDot.visibility = if (lesson.isCancelled) android.view.View.INVISIBLE else android.view.View.VISIBLE
             b.colorDot.setColorFilter(subjectColor(lesson.subjectName, ctx))
 
             // Status styling

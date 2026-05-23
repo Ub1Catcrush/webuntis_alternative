@@ -11,6 +11,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.lifecycle.Lifecycle
@@ -49,14 +50,22 @@ class MainActivity : AppCompatActivity() {
         // SDK 35+ enforces edge-to-edge; opt in explicitly for all API levels
         // so layout is consistent. WindowInsetsCompat handles the inset padding below.
         enableEdgeToEdge()
+        // Belt-and-suspenders: explicitly tell the window not to fit system windows
+        // so our inset listener has full control. Required on some OEM Android 15 builds.
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            // Apply top inset to root, bottom to nav bar — do NOT return CONSUMED so
+            // child views (fragments, dialogs) also receive their insets correctly.
+            // Returning CONSUMED here caused layout measurement loops on SDK 35+
+            // that manifest as the "Channel is unrecoverably broken" ADB crash.
             view.updatePadding(top = bars.top)
             binding.bottomNavContainer.updatePadding(bottom = bars.bottom)
-            WindowInsetsCompat.CONSUMED
+            // Pass insets through — child views handle their own insets
+            insets
         }
 
         val navHostFragment = supportFragmentManager

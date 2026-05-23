@@ -30,15 +30,23 @@ class TimetableViewModel @Inject constructor(
     private val _days = MutableStateFlow<UiState<List<SchoolDay>>>(UiState.Loading)
     val days: StateFlow<UiState<List<SchoolDay>>> = _days
 
-    val showLongNames: Boolean get() = repository.sessionManager.showLongNames
+    val showLongSubjects: Boolean get() = repository.sessionManager.showLongSubjects
+    val showLongTeachers: Boolean get() = repository.sessionManager.showLongTeachers
+    val showLongRooms:    Boolean get() = repository.sessionManager.showLongRooms
 
     init { loadAll() }
 
     fun loadAll(forceRefresh: Boolean = false) {
         viewModelScope.launch {
-            // Only show the loading spinner when there is no data to display yet.
-            // If the cache is hit instantly, the existing Success state stays visible
-            // and the user never sees a flash of the loading indicator.
+            // Skip entirely if we already have fresh cached data and no force-refresh.
+            // This prevents redundant state emissions when returning from another tab —
+            // the StateFlow already holds the correct Success value and nothing has changed.
+            if (!forceRefresh && repository.isTimetableCacheFresh()) {
+                // Cache is fresh — nothing to do. StateFlow already has the right data.
+                // Don't emit Loading (would cause flicker) and don't re-fetch.
+                return@launch
+            }
+            // Only show loading spinner when there is no data to display yet.
             if (forceRefresh || _days.value !is UiState.Success) {
                 _days.value = UiState.Loading
             }

@@ -55,7 +55,9 @@ class DayFragment : Fragment() {
         // Read the setting from SessionManager via the parent fragment's ViewModel
         val vm = androidx.lifecycle.ViewModelProvider(requireParentFragment())
             .get(TimetableViewModel::class.java)
-        adapter.showLongNames = vm.showLongNames
+        adapter.showLongSubjects = vm.showLongSubjects
+        adapter.showLongTeachers = vm.showLongTeachers
+        adapter.showLongRooms    = vm.showLongRooms
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
 

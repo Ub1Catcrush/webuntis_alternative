@@ -23,6 +23,7 @@ class EventsViewModel @Inject constructor(
 
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
+            if (!forceRefresh && repository.isEventsCacheFresh()) return@launch
             _state.value = UiState.Loading
             repository.getEvents(forceRefresh).fold(
                 onSuccess = { _state.value = UiState.Success(it) },

@@ -31,6 +31,7 @@ class MessagesViewModel @Inject constructor(
 
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
+            if (!forceRefresh && repository.isMessagesCacheFresh()) return@launch
             _state.value = UiState.Loading
             repository.getMessages(forceRefresh).fold(
                 onSuccess = { _state.value = UiState.Success(it) },

@@ -141,6 +141,17 @@ class WebUntisRepository @Inject constructor(
         cacheClassbook = null; cacheAbsences = null; cacheMessages = null
     }
 
+    /** True when the timetable cache exists and is within the configured TTL. */
+    fun isHomeworkCacheFresh():  Boolean { val e = cacheHomework  ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
+    fun isEventsCacheFresh():    Boolean { val e = cacheEvents    ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
+    fun isClassbookCacheFresh(): Boolean { val e = cacheClassbook ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
+    fun isAbsencesCacheFresh():  Boolean { val e = cacheAbsences  ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
+    fun isMessagesCacheFresh():  Boolean { val e = cacheMessages  ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
+    fun isTimetableCacheFresh(): Boolean {
+        val entry = cacheTimetable ?: return false
+        return sessionManager.isCacheFresh(entry.fetchedAt)
+    }
+
     private val gson: Gson = GsonBuilder()
         .setStrictness(Strictness.LENIENT)
         .setObjectToNumberStrategy(ToNumberPolicy.LONG_OR_DOUBLE)
@@ -167,12 +178,17 @@ class WebUntisRepository @Inject constructor(
     }
 
     private fun rawBody(r: retrofit2.Response<okhttp3.ResponseBody>): String? {
+        // Check the sentinel header set by jsonSanitizer for HTML/session-expired responses
+        if (r.headers()["X-WebUntis-Session-Expired"] == "true") throw SessionExpiredException()
         if (!r.isSuccessful) {
             val msg = tryExtractMessage(r.errorBody()?.string() ?: "") ?: "HTTP ${r.code()}"
             throw Exception(msg)
         }
         val raw = r.body()?.string()?.trim() ?: return null
+        // Fallback HTML check (in case the interceptor didn't run, e.g. cache hit)
         if (raw.contains("<html", ignoreCase = true)) throw SessionExpiredException()
+        // Check for WebUntis session-expired error code in JSON form
+        if (raw.contains("-32001")) throw SessionExpiredException()
         return raw.ifEmpty { null }
     }
 

@@ -23,6 +23,7 @@ class AbsencesViewModel @Inject constructor(
 
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
+            if (!forceRefresh && repository.isAbsencesCacheFresh()) return@launch
             _state.value = UiState.Loading
             repository.getAbsences(forceRefresh).fold(
                 onSuccess = { _state.value = UiState.Success(it) },

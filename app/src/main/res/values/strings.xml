@@ -116,8 +116,10 @@
     <string name="settings_second_error_prefix">Fehler: %s</string>
 
     <!-- Display settings -->
-    <string name="settings_show_long_names">Klarnamen anzeigen</string>
-    <string name="settings_show_long_names_hint">Zeigt z.B. „Mathematik" statt „Ma" und „Mustermann" statt „Mu", wenn verfügbar.</string>
+    <string name="settings_long_names_section">Klarnamen anzeigen</string>
+    <string name="settings_show_long_subjects">Fachname ausschreiben (z.B. „Mathematik")</string>
+    <string name="settings_show_long_teachers">Lehrername ausschreiben (z.B. „Mustermann")</string>
+    <string name="settings_show_long_rooms">Raumname ausschreiben (z.B. „Klassenraum 7c")</string>
 
     <string name="label_homework_attachment_download">Anhang herunterladen</string>
 

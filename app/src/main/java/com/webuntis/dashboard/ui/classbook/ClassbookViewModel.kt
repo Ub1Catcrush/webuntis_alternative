@@ -23,6 +23,7 @@ class ClassbookViewModel @Inject constructor(
 
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
+            if (!forceRefresh && repository.isClassbookCacheFresh()) return@launch
             _state.value = UiState.Loading
             repository.getClassbookEntries(forceRefresh).fold(
                 onSuccess = { _state.value = UiState.Success(it) },

@@ -9,6 +9,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.tabs.TabLayoutMediator
+import com.webuntis.dashboard.R
 import com.webuntis.dashboard.databinding.FragmentTimetableBinding
 import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.AndroidEntryPoint
@@ -46,16 +47,31 @@ class TimetableFragment : Fragment() {
                             val days = state.data
                             val count = days.size.coerceAtLeast(1)
 
-                            // Rebuild pager with correct day count
-                            tabMediator?.detach()
-                            binding.viewPager.adapter = TimetablePagerAdapter(this@TimetableFragment, count)
-
-                            tabMediator = TabLayoutMediator(
-                                binding.tabLayout, binding.viewPager
-                            ) { tab, position ->
-                                tab.text = days.getOrNull(position)?.tabLabel
-                                    ?: "Tag ${position + 1}"
-                            }.also { it.attach() }
+                            // Only rebuild the pager adapter when the day count actually changes.
+                            // Re-building it every time the StateFlow emits (e.g. on tab switch back)
+                            // destroys and recreates all DayFragments unnecessarily — even when the
+                            // data is identical and served from cache with zero network calls.
+                            val existingAdapter = binding.viewPager.adapter
+                            if (existingAdapter == null ||
+                                (existingAdapter as? TimetablePagerAdapter)?.itemCount != count) {
+                                tabMediator?.detach()
+                                binding.viewPager.adapter =
+                                    TimetablePagerAdapter(this@TimetableFragment, count)
+                                tabMediator = TabLayoutMediator(
+                                    binding.tabLayout, binding.viewPager
+                                ) { tab, position ->
+                                    tab.text = days.getOrNull(position)?.tabLabel
+                                        ?: getString(R.string.label_day_fallback, position + 1)
+                                }.also { it.attach() }
+                            } else {
+                                // Adapter exists with correct count — just refresh tab labels
+                                // (they may have changed if locale changed etc.)
+                                for (i in 0 until binding.tabLayout.tabCount) {
+                                    binding.tabLayout.getTabAt(i)?.text =
+                                        days.getOrNull(i)?.tabLabel
+                                            ?: getString(R.string.label_day_fallback, i + 1)
+                                }
+                            }
                         }
                         is UiState.Error -> {
                             binding.swipeRefresh.isRefreshing = false

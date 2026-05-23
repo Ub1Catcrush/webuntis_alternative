@@ -33,6 +33,7 @@ class HomeworkViewModel @Inject constructor(
 
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
+            if (!forceRefresh && repository.isHomeworkCacheFresh()) return@launch
             _state.value = UiState.Loading
             repository.getHomework(forceRefresh).fold(
                 onSuccess = { (homeworks, subjectMap) ->

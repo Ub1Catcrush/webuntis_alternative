@@ -69,14 +69,21 @@ class SettingsFragment : Fragment() {
             }
         )
 
-        // ── Long names toggle ────────────────────────────────────────────────
-        binding.switchLongNames.isChecked = loginViewModel.sessionManager.showLongNames
-        binding.switchLongNames.setOnCheckedChangeListener { _, checked ->
-            loginViewModel.sessionManager.showLongNames = checked
-            // Caches contain shortNames only in display strings — bust them so
-            // the adapter re-binds with the new setting on next load.
-            loginViewModel.clearAllCaches()
-            loginViewModel.refreshTimetable()
+        // ── Long names toggles (per type) ─────────────────────────────────
+        binding.switchLongSubjects.isChecked = loginViewModel.sessionManager.showLongSubjects
+        binding.switchLongSubjects.setOnCheckedChangeListener { _, checked ->
+            loginViewModel.sessionManager.showLongSubjects = checked
+            loginViewModel.clearAllCaches(); loginViewModel.refreshTimetable()
+        }
+        binding.switchLongTeachers.isChecked = loginViewModel.sessionManager.showLongTeachers
+        binding.switchLongTeachers.setOnCheckedChangeListener { _, checked ->
+            loginViewModel.sessionManager.showLongTeachers = checked
+            loginViewModel.clearAllCaches(); loginViewModel.refreshTimetable()
+        }
+        binding.switchLongRooms.isChecked = loginViewModel.sessionManager.showLongRooms
+        binding.switchLongRooms.setOnCheckedChangeListener { _, checked ->
+            loginViewModel.sessionManager.showLongRooms = checked
+            loginViewModel.clearAllCaches(); loginViewModel.refreshTimetable()
         }
 
         // ── Cache TTL slider ──────────────────────────────────────────────────

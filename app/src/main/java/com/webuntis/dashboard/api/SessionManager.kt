@@ -107,9 +107,7 @@ class SessionManager @Inject constructor(
 
     /** Bump the session timestamp without changing any other field (call after each successful request). */
     fun touchSession() {
-        if (prefs.contains(KEY_SESSION_TIME)) {
-            prefs.edit().putLong(KEY_SESSION_TIME, System.currentTimeMillis()).apply()
-        }
+        prefs.edit().putLong(KEY_SESSION_TIME, System.currentTimeMillis()).apply()
     }
 
     /** Clears only the primary session/credential keys. Second account is preserved. */
@@ -202,10 +200,20 @@ class SessionManager @Inject constructor(
                 .apply()
         }
 
-    /** Show long names (e.g. "Mathematik" instead of "Ma", "Mustermann" instead of "Mu") when available. */
-    var showLongNames: Boolean
-        get() = plainPrefs.getBoolean(KEY_SHOW_LONG_NAMES, false)
-        set(value) { plainPrefs.edit().putBoolean(KEY_SHOW_LONG_NAMES, value).apply() }
+    /** Show long subject names (e.g. "Mathematik" instead of "Ma") when available. */
+    var showLongSubjects: Boolean
+        get() = plainPrefs.getBoolean(KEY_SHOW_LONG_SUBJECTS, false)
+        set(value) { plainPrefs.edit().putBoolean(KEY_SHOW_LONG_SUBJECTS, value).apply() }
+
+    /** Show long teacher names (e.g. "Mustermann" instead of "Mu") when available. */
+    var showLongTeachers: Boolean
+        get() = plainPrefs.getBoolean(KEY_SHOW_LONG_TEACHERS, false)
+        set(value) { plainPrefs.edit().putBoolean(KEY_SHOW_LONG_TEACHERS, value).apply() }
+
+    /** Show long room names (e.g. "Klassenraum 7c" instead of "D.203") when available. */
+    var showLongRooms: Boolean
+        get() = plainPrefs.getBoolean(KEY_SHOW_LONG_ROOMS, false)
+        set(value) { plainPrefs.edit().putBoolean(KEY_SHOW_LONG_ROOMS, value).apply() }
 
     /**
      * How long cached API responses are considered fresh (in minutes).
@@ -251,7 +259,9 @@ class SessionManager @Inject constructor(
         const val MIN_TIMETABLE_DAYS     = 1
         const val MAX_TIMETABLE_DAYS     = 20
         private const val KEY_CACHE_TTL      = "cache_ttl_minutes"
-        private const val KEY_SHOW_LONG_NAMES = "show_long_names"
+        private const val KEY_SHOW_LONG_SUBJECTS = "show_long_subjects"
+        private const val KEY_SHOW_LONG_TEACHERS = "show_long_teachers"
+        private const val KEY_SHOW_LONG_ROOMS    = "show_long_rooms"
         const val DEFAULT_CACHE_TTL      = 5
         const val MIN_CACHE_TTL          = 0
         const val MAX_CACHE_TTL          = 60

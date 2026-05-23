@@ -155,23 +155,39 @@
                 android:max="19"
                 android:progress="4" />
 
-            <!-- Long names toggle -->
-            <com.google.android.material.materialswitch.MaterialSwitch
-                android:id="@+id/switch_long_names"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="4dp"
-                android:text="@string/settings_show_long_names"
-                android:textAppearance="?attr/textAppearanceBodyMedium" />
-
+            <!-- Long names toggles (per type) -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="8dp"
+                android:text="@string/settings_long_names_section"
+                android:textAppearance="?attr/textAppearanceLabelMedium"
+                android:textColor="?attr/colorPrimary" />
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switch_long_subjects"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp"
+                android:text="@string/settings_show_long_subjects"
+                android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switch_long_teachers"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp"
+                android:text="@string/settings_show_long_teachers"
+                android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switch_long_rooms"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_marginBottom="20dp"
-                android:text="@string/settings_show_long_names_hint"
-                android:textAppearance="?attr/textAppearanceBodySmall"
-                android:textColor="?attr/colorOnSurfaceVariant" />
+                android:text="@string/settings_show_long_rooms"
+                android:textAppearance="?attr/textAppearanceBodyMedium" />
 
             <!-- Cache TTL -->
             <LinearLayout
