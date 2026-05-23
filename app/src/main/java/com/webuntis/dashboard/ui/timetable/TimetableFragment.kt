@@ -32,7 +32,7 @@ class TimetableFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        binding.swipeRefresh.setOnRefreshListener { viewModel.loadAll() }
+        binding.swipeRefresh.setOnRefreshListener { viewModel.loadAll(forceRefresh = true) }
 
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {

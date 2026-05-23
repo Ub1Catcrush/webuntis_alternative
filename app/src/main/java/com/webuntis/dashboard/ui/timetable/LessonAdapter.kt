@@ -15,18 +15,22 @@ import com.webuntis.dashboard.model.Lesson
 
 class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(LessonDiff) {
 
+    /** Set by the Fragment from SessionManager.showLongNames; triggers redraw when changed. */
+    var showLongNames: Boolean = false
+        set(value) { field = value; notifyDataSetChanged() }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): LessonViewHolder {
         val binding = ItemLessonBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         return LessonViewHolder(binding)
     }
 
     override fun onBindViewHolder(holder: LessonViewHolder, position: Int) {
-        holder.bind(getItem(position))
+        holder.bind(getItem(position), showLongNames)
     }
 
     class LessonViewHolder(private val b: ItemLessonBinding) : RecyclerView.ViewHolder(b.root) {
 
-        fun bind(lesson: Lesson) {
+        fun bind(lesson: Lesson, showLongNames: Boolean) {
             val ctx = b.root.context
 
             // Time
@@ -47,12 +51,12 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
             }
 
             // Subject
-            b.textSubject.text = lesson.subjectName
+            b.textSubject.text = lesson.displaySubject(showLongNames)
 
             // ── Teacher row ──────────────────────────────────────────────────
             // Active teachers (not REMOVED); strikethrough for removed ones
             // Uses detail-enriched removedTeachers when available, else orgname fallback.
-            val activeTeachers = lesson.teacherNames   // already filters active from te[]
+            val activeTeachers = lesson.displayTeachers(showLongNames)
             val removedNames   = lesson.removedTeachers
                 ?: lesson.te?.mapNotNull { it.orgname }?.filter { it.isNotEmpty() }
                     ?.takeIf { lesson.isSubstitution }
@@ -96,8 +100,8 @@ class LessonAdapter : ListAdapter<Lesson, LessonAdapter.LessonViewHolder>(Lesson
             }
 
             // Room
-            b.textRoom.text = lesson.roomNames
-            b.textRoom.isVisible = lesson.roomNames.isNotEmpty()
+            b.textRoom.text = lesson.displayRooms(showLongNames)
+            b.textRoom.isVisible = lesson.displayRooms(showLongNames).isNotEmpty()
 
             // Dot color
             b.colorDot.isVisible = !lesson.isCancelled

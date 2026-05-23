@@ -38,6 +38,9 @@ class LoginViewModel @Inject constructor(
                     creds.first, creds.second
                 )
                 _loginState.value = LoginState.Idle
+                if (result.isSuccess) {
+                    repository.primeCachedElementIdIfNeeded()
+                }
                 _isLoggedIn.value = result.isSuccess
                 isLoggingIn = false
             }
@@ -54,6 +57,7 @@ class LoginViewModel @Inject constructor(
             val result = repository.login(cleanServer, schoolname.trim(), username.trim(), password)
             result.fold(
                 onSuccess = {
+                    viewModelScope.launch { repository.primeCachedElementIdIfNeeded() }
                     _isLoggedIn.value = true
                     _loginState.value = LoginState.Success
                     isLoggingIn = false
@@ -84,7 +88,12 @@ class LoginViewModel @Inject constructor(
      */
     /** Re-fetches the timetable after a settings change (e.g. day count). */
     fun refreshTimetable() {
-        viewModelScope.launch { repository.getTwoSchoolDays() }
+        viewModelScope.launch { repository.getTwoSchoolDays(forceRefresh = true) }
+    }
+
+    /** Clears all in-memory caches (e.g. after cache-TTL settings change). */
+    fun clearAllCaches() {
+        repository.clearAllCaches()
     }
 
     fun primeSecondAccountState() {

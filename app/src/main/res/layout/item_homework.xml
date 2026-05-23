@@ -64,6 +64,16 @@
             android:layout_marginStart="8dp"
             android:layout_marginTop="2dp" />
 
+        <!-- Homework attachments — shown as tappable chips, one per file -->
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/layout_attachments"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            app:singleLine="false"
+            android:visibility="gone"
+            xmlns:app="http://schemas.android.com/apk/res-auto" />
+
     </LinearLayout>
 
 </com.google.android.material.card.MaterialCardView>

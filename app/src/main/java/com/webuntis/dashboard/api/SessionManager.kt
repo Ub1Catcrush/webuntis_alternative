@@ -25,8 +25,37 @@ class SessionManager @Inject constructor(
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: Exception) {
-            // Fallback to regular prefs if encryption fails
-            context.getSharedPreferences("webuntis_session_plain", Context.MODE_PRIVATE)
+            // Encryption unavailable (e.g. corrupted KeyStore on some devices).
+            // Log clearly — credentials must NOT be stored in plaintext.
+            // App will work session-only (no stored credentials) until reboot clears the issue.
+            android.util.Log.e("SessionManager",
+                "EncryptedSharedPreferences unavailable — credentials will not be persisted", e)
+            // Return a no-op prefs that never persists sensitive keys
+            object : android.content.SharedPreferences {
+                private val mem = mutableMapOf<String, Any?>()
+                override fun getAll() = mem
+                override fun getString(k: String, d: String?) = mem[k] as? String ?: d
+                override fun getStringSet(k: String, d: MutableSet<String>?) = d
+                override fun getInt(k: String, d: Int) = mem[k] as? Int ?: d
+                override fun getLong(k: String, d: Long) = mem[k] as? Long ?: d
+                override fun getFloat(k: String, d: Float) = mem[k] as? Float ?: d
+                override fun getBoolean(k: String, d: Boolean) = mem[k] as? Boolean ?: d
+                override fun contains(k: String) = mem.containsKey(k)
+                override fun edit() = object : android.content.SharedPreferences.Editor {
+                    override fun putString(k: String, v: String?) = apply { mem[k] = v }
+                    override fun putStringSet(k: String, v: MutableSet<String>?) = apply { mem[k] = v }
+                    override fun putInt(k: String, v: Int) = apply { mem[k] = v }
+                    override fun putLong(k: String, v: Long) = apply { mem[k] = v }
+                    override fun putFloat(k: String, v: Float) = apply { mem[k] = v }
+                    override fun putBoolean(k: String, v: Boolean) = apply { mem[k] = v }
+                    override fun remove(k: String) = apply { mem.remove(k) }
+                    override fun clear() = apply { mem.clear() }
+                    override fun commit() = true
+                    override fun apply() {}
+                }
+                override fun registerOnSharedPreferenceChangeListener(l: android.content.SharedPreferences.OnSharedPreferenceChangeListener) {}
+                override fun unregisterOnSharedPreferenceChangeListener(l: android.content.SharedPreferences.OnSharedPreferenceChangeListener) {}
+            }
         }
     }
 
@@ -46,7 +75,7 @@ class SessionManager @Inject constructor(
         }
         set(value) {
             if (value == null) {
-                prefs.edit().clear().apply()
+                clearSession()
             } else {
                 prefs.edit()
                     .putString(KEY_SERVER, value.server)
@@ -57,11 +86,51 @@ class SessionManager @Inject constructor(
                     .putInt(KEY_CLASS_ID, value.classId)
                     .putString(KEY_PERSON_NAME, value.personName)
                     .putInt(KEY_PERSON_TYPE, value.personType)
+                    // Stamp the time so we can detect session expiry proactively
+                    .putLong(KEY_SESSION_TIME, System.currentTimeMillis())
                     .apply()
             }
         }
 
+    /**
+     * Returns true if the stored session is likely still valid.
+     * WebUntis sessions expire after ~60 min of inactivity on the server.
+     * We use a conservative 45-minute window to re-login proactively before
+     * the server actually rejects the request.
+     */
+    fun isSessionFresh(): Boolean {
+        val ts = prefs.getLong(KEY_SESSION_TIME, 0L)
+        if (ts == 0L) return false
+        val ageMs = System.currentTimeMillis() - ts
+        return ageMs < SESSION_TTL_MS
+    }
+
+    /** Bump the session timestamp without changing any other field (call after each successful request). */
+    fun touchSession() {
+        if (prefs.contains(KEY_SESSION_TIME)) {
+            prefs.edit().putLong(KEY_SESSION_TIME, System.currentTimeMillis()).apply()
+        }
+    }
+
+    /** Clears only the primary session/credential keys. Second account is preserved. */
     fun clearSession() {
+        prefs.edit()
+            .remove(KEY_SERVER)
+            .remove(KEY_SCHOOLNAME)
+            .remove(KEY_USERNAME)
+            .remove(KEY_SESSION_ID)
+            .remove(KEY_PERSON_ID)
+            .remove(KEY_CLASS_ID)
+            .remove(KEY_PERSON_NAME)
+            .remove(KEY_PERSON_TYPE)
+            .remove(KEY_STORED_USER)
+            .remove(KEY_STORED_PASS)
+            .remove(KEY_SESSION_TIME)
+            .apply()
+    }
+
+    /** Clears everything including the second account. Used only on explicit logout. */
+    fun clearAll() {
         prefs.edit().clear().apply()
     }
 
@@ -133,6 +202,30 @@ class SessionManager @Inject constructor(
                 .apply()
         }
 
+    /** Show long names (e.g. "Mathematik" instead of "Ma", "Mustermann" instead of "Mu") when available. */
+    var showLongNames: Boolean
+        get() = plainPrefs.getBoolean(KEY_SHOW_LONG_NAMES, false)
+        set(value) { plainPrefs.edit().putBoolean(KEY_SHOW_LONG_NAMES, value).apply() }
+
+    /**
+     * How long cached API responses are considered fresh (in minutes).
+     * 0 = no caching (always fetch from backend).
+     */
+    var cacheTtlMinutes: Int
+        get() = plainPrefs.getInt(KEY_CACHE_TTL, DEFAULT_CACHE_TTL)
+        set(value) {
+            plainPrefs.edit()
+                .putInt(KEY_CACHE_TTL, value.coerceIn(MIN_CACHE_TTL, MAX_CACHE_TTL))
+                .apply()
+        }
+
+    /** Returns true if caching is enabled and data fetched [ageMs] ago is still fresh. */
+    fun isCacheFresh(lastFetchMs: Long): Boolean {
+        val ttl = cacheTtlMinutes
+        if (ttl == 0 || lastFetchMs == 0L) return false
+        return (System.currentTimeMillis() - lastFetchMs) < ttl * 60_000L
+    }
+
     private val plainPrefs by lazy {
         context.getSharedPreferences("webuntis_settings", android.content.Context.MODE_PRIVATE)
     }
@@ -157,5 +250,13 @@ class SessionManager @Inject constructor(
         const val DEFAULT_TIMETABLE_DAYS = 5
         const val MIN_TIMETABLE_DAYS     = 1
         const val MAX_TIMETABLE_DAYS     = 20
+        private const val KEY_CACHE_TTL      = "cache_ttl_minutes"
+        private const val KEY_SHOW_LONG_NAMES = "show_long_names"
+        const val DEFAULT_CACHE_TTL      = 5
+        const val MIN_CACHE_TTL          = 0
+        const val MAX_CACHE_TTL          = 60
+        private const val KEY_SESSION_TIME = "session_time"
+        /** 45 minutes — conservative margin before the ~60 min server TTL */
+        private const val SESSION_TTL_MS   = 45 * 60 * 1000L
     }
 }

@@ -30,12 +30,19 @@ class TimetableViewModel @Inject constructor(
     private val _days = MutableStateFlow<UiState<List<SchoolDay>>>(UiState.Loading)
     val days: StateFlow<UiState<List<SchoolDay>>> = _days
 
+    val showLongNames: Boolean get() = repository.sessionManager.showLongNames
+
     init { loadAll() }
 
-    fun loadAll() {
+    fun loadAll(forceRefresh: Boolean = false) {
         viewModelScope.launch {
-            _days.value = UiState.Loading
-            _days.value = repository.getTwoSchoolDays().fold(
+            // Only show the loading spinner when there is no data to display yet.
+            // If the cache is hit instantly, the existing Success state stays visible
+            // and the user never sees a flash of the loading indicator.
+            if (forceRefresh || _days.value !is UiState.Success) {
+                _days.value = UiState.Loading
+            }
+            _days.value = repository.getTwoSchoolDays(forceRefresh).fold(
                 onSuccess = { list -> UiState.Success(list.map { SchoolDay(it) }) },
                 onFailure = { UiState.Error(it.message ?: "Fehler beim Laden") }
             )

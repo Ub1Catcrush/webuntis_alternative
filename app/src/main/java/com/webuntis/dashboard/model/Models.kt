@@ -52,6 +52,23 @@ data class Lesson(
     val subjectName: String get() = su?.firstOrNull()?.name ?: su?.firstOrNull()?.longname ?: "–"
     val teacherNames: String get() = te?.mapNotNull { it.name }?.joinToString(", ") ?: ""
     val roomNames: String get() = ro?.mapNotNull { it.name }?.joinToString(", ") ?: ""
+
+    /** Long name when available, falls back to short name — used with showLongNames setting. */
+    val subjectLongName: String
+        get() = su?.firstOrNull()?.let { it.longname?.takeIf(String::isNotBlank) ?: it.name } ?: "–"
+    val teacherLongNames: String
+        get() = te?.mapNotNull { t ->
+            (t.longname?.takeIf(String::isNotBlank) ?: t.name)
+        }?.joinToString(", ") ?: ""
+    val roomLongNames: String
+        get() = ro?.mapNotNull { r ->
+            (r.longname?.takeIf(String::isNotBlank) ?: r.name)
+        }?.joinToString(", ") ?: ""
+
+    /** Returns the appropriate name depending on the showLongNames preference. */
+    fun displaySubject(long: Boolean) = if (long) subjectLongName else subjectName
+    fun displayTeachers(long: Boolean) = if (long) teacherLongNames else teacherNames
+    fun displayRooms(long: Boolean) = if (long) roomLongNames else roomNames
     val startTimeFormatted: String get() = formatTime(startTime)
     val endTimeFormatted: String get() = formatTime(endTime)
     private fun formatTime(t: Int): String {
@@ -107,7 +124,8 @@ data class TimetableV1Entry(
             TeacherItem(
                 id       = null,
                 name     = pos.current?.shortName,
-                orgname  = pos.removed?.shortName,
+                orgname  = pos.removed?.longName?.takeIf(String::isNotBlank)
+                           ?: pos.removed?.shortName,
                 longname = pos.current?.longName
             )
         }.filter { it.name != null }
@@ -230,6 +248,14 @@ data class HomeworkRecord(val homeworkId: Int?, val teacherId: Int?, val element
 data class HomeworkTeacher(val id: Int?, val name: String?)
 data class HomeworkLesson(val id: Int?, val subject: String?, val lessonType: String?)
 
+data class HomeworkAttachment(
+    val id: String?,
+    val name: String?,
+    val uploadedFileName: String?,  // original filename
+    val contentType: String?,       // MIME type e.g. "application/pdf"
+    val size: Long?                 // bytes
+)
+
 data class Homework(
     val id: Int,
     val lessonId: Int?,
@@ -238,8 +264,11 @@ data class Homework(
     val subject: String?,
     val text: String?,
     val remark: String?,
-    val attachments: List<Any>?
+    // Homework attachments are served via api/homeworks/{id}/attachments —
+    // NOT the storage-attachment/S3 path used for messages.
+    val attachments: List<HomeworkAttachment>? = null
 ) {
+    val hasAttachments: Boolean get() = !attachments.isNullOrEmpty()
     val displayText: String get() = text ?: remark ?: "–"
     val dueDateFormatted: String? get() = dueDate?.let { formatDate(it) }
     private fun formatDate(d: Int): String {
@@ -260,7 +289,9 @@ data class ClassbookRow(
     val text: String?, val elemType: String?
 ) {
     fun toClassbookEntry() = ClassbookEntry(
-        id = id, date = createDate, subject = subjectName,
+        id = id, date = createDate,
+        subject = subjectName,
+        elementName = elementName,          // long/display name of the element (lesson/subject)
         category = categoryName, entryType = elemType, text = text,
         remark = null, teacher = creatorName, teacherName = creatorName,
         reasonText = eventReasonName, type = elemType, typeName = categoryName, lessonObj = null
@@ -272,6 +303,7 @@ data class ClassbookData(val classRegEntries: List<ClassbookEntry>?)
 
 data class ClassbookEntry(
     val id: Int, val date: Int?, val subject: String?,
+    val elementName: String? = null,       // preferred display name when available
     @SerializedName("category")    val category: String?,
     @SerializedName("entryType")   val entryType: String?,
     val text: String?, val remark: String?,
@@ -285,6 +317,9 @@ data class ClassbookEntry(
     val displayText: String     get() = text ?: reasonText ?: remark ?: "–"
     val displayCategory: String get() = typeName ?: category ?: entryType ?: type ?: "Eintrag"
     val displayTeacher: String  get() = teacherName ?: teacher ?: ""
+    /** elementName when filled, then subject (shortName). */
+    val displaySubjectOrElement: String
+        get() = elementName?.takeIf(String::isNotBlank) ?: subject ?: "–"
     val dateFormatted: String?  get() = date?.let {
         val s = it.toString()
         if (s.length == 8) "${s.substring(6)}.${s.substring(4,6)}.${s.substring(0,4)}" else s
@@ -386,6 +421,19 @@ data class AttachmentStorageUrl(
     val additionalHeaders: List<AttachmentStorageHeader>?
 )
 
+/** A single entry in the reply thread, from GET /messages/{id} replyHistory array. */
+data class ReplyMessage(
+    val id: Int?,
+    val subject: String?,
+    val content: String?,
+    val sender: MessageSender?,
+    val sentDateTime: String?,
+    val storageAttachments: List<Attachment>? = null
+) {
+    val sentDateFormatted: String? get() = sentDateTime?.take(10)?.split("-")
+        ?.let { if (it.size == 3) "${it[2]}.${it[1]}.${it[0]}" else sentDateTime }
+}
+
 data class Message(
     val id: Int,
     val subject: String?,
@@ -399,7 +447,8 @@ data class Message(
     @com.google.gson.annotations.SerializedName("_accountLabel")
     val accountLabel: String? = null,
     @com.google.gson.annotations.SerializedName("_attachments")
-    val attachmentList: List<Attachment>? = null
+    val attachmentList: List<Attachment>? = null,
+    val replyHistory: List<ReplyMessage>? = null   // populated by getMessageWithAttachments
 ) {
     val attachments: List<Attachment> get() = attachmentList ?: emptyList()
     val label: String get() = accountLabel ?: ""

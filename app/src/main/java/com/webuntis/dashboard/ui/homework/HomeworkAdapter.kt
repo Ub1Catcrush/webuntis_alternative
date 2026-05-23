@@ -4,6 +4,7 @@ import android.graphics.Paint
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -13,7 +14,9 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 class HomeworkAdapter(
-    private val onToggle: (Int) -> Unit
+    private val onToggle: (Int) -> Unit,
+    private val onAttachmentClick: (homework: com.webuntis.dashboard.model.Homework,
+                                    attachment: com.webuntis.dashboard.model.HomeworkAttachment) -> Unit = { _, _ -> }
 ) : ListAdapter<HomeworkUiItem, HomeworkAdapter.VH>(Diff) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -55,6 +58,28 @@ class HomeworkAdapter(
             }
 
             b.checkBox.setOnClickListener { onToggle(hw.id) }
+
+            // ── Attachments ────────────────────────────────────────────────
+            val atts = hw.attachments
+            if (!atts.isNullOrEmpty()) {
+                b.layoutAttachments.isVisible = true
+                b.layoutAttachments.removeAllViews()
+                atts.forEach { att ->
+                    val chip = com.google.android.material.chip.Chip(b.root.context).apply {
+                        isCheckable = false
+                        isCloseIconVisible = false
+                    }
+                    chip.text = att.name ?: att.uploadedFileName ?: b.root.context.getString(
+                        com.webuntis.dashboard.R.string.label_attachment_fallback)
+                    chip.chipIcon = androidx.core.content.ContextCompat.getDrawable(
+                        b.root.context, android.R.drawable.ic_menu_save)
+                    chip.isChipIconVisible = true
+                    chip.setOnClickListener { onAttachmentClick(hw, att) }
+                    b.layoutAttachments.addView(chip)
+                }
+            } else {
+                b.layoutAttachments.isVisible = false
+            }
 
             // Subject chip color
             val colorRes = subjectColorRes(item.subjectName)

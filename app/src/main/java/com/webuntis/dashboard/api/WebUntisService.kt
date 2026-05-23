@@ -80,6 +80,28 @@ interface WebUntisService {
         @Query("endDate") endDate: String
     ): Response<ResponseBody>
 
+    /**
+     * List attachments for a homework entry.
+     * Returns a JSON array of attachment objects (id, name, contentType, size etc.)
+     * Homework attachments are NOT the same as message storage attachments —
+     * they are served directly, no presigned URL / S3 step needed.
+     */
+    @GET("api/homeworks/{homeworkId}/attachments")
+    suspend fun getHomeworkAttachments(
+        @Path("homeworkId") homeworkId: Int
+    ): Response<ResponseBody>
+
+    /**
+     * Download a homework attachment directly as a byte stream.
+     * The server responds with the file content and Content-Disposition header.
+     */
+    @GET("api/homeworks/{homeworkId}/attachments/{attachmentId}")
+    @Streaming
+    suspend fun downloadHomeworkAttachment(
+        @Path("homeworkId")   homeworkId:   Int,
+        @Path("attachmentId") attachmentId: String
+    ): Response<ResponseBody>
+
     // ── Exams / Events ────────────────────────────────────────────────────────
     @GET("api/exams")
     suspend fun getExamsForStudent(

@@ -64,8 +64,43 @@ class SettingsFragment : Fragment() {
                 override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
                     val days = (sb?.progress ?: 0) + SessionManager.MIN_TIMETABLE_DAYS
                     loginViewModel.sessionManager.timetableDays = days
-                    // Trigger timetable reload so the new count takes effect immediately
                     loginViewModel.refreshTimetable()
+                }
+            }
+        )
+
+        // ── Long names toggle ────────────────────────────────────────────────
+        binding.switchLongNames.isChecked = loginViewModel.sessionManager.showLongNames
+        binding.switchLongNames.setOnCheckedChangeListener { _, checked ->
+            loginViewModel.sessionManager.showLongNames = checked
+            // Caches contain shortNames only in display strings — bust them so
+            // the adapter re-binds with the new setting on next load.
+            loginViewModel.clearAllCaches()
+            loginViewModel.refreshTimetable()
+        }
+
+        // ── Cache TTL slider ──────────────────────────────────────────────────
+        fun cacheTtlLabel(min: Int) = if (min == 0)
+            getString(R.string.settings_cache_off)
+        else
+            getString(R.string.settings_cache_minutes, min)
+
+        val currentTtl = loginViewModel.sessionManager.cacheTtlMinutes
+        binding.seekerCacheTtl.max = SessionManager.MAX_CACHE_TTL      // 0..60
+        binding.seekerCacheTtl.progress = currentTtl
+        binding.textCacheTtlValue.text = cacheTtlLabel(currentTtl)
+
+        binding.seekerCacheTtl.setOnSeekBarChangeListener(
+            object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                    binding.textCacheTtlValue.text = cacheTtlLabel(progress)
+                }
+                override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
+                override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                    val ttl = sb?.progress ?: SessionManager.DEFAULT_CACHE_TTL
+                    loginViewModel.sessionManager.cacheTtlMinutes = ttl
+                    // Invalidate all caches so the new TTL takes effect immediately
+                    loginViewModel.clearAllCaches()
                 }
             }
         )
@@ -206,6 +241,7 @@ class SettingsFragment : Fragment() {
             }
         }
         // Clear old session so RetrofitFactory uses the new server
+        // Clear only the primary session — second account is intentionally preserved
         loginViewModel.sessionManager.clearSession()
         loginViewModel.login(server, schoolname, username, password)
     }

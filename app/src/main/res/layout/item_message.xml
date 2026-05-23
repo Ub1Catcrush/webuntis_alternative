@@ -98,7 +98,7 @@
             android:ellipsize="end"
             android:lineSpacingMultiplier="1.3" />
 
-        <!-- Expanded section -->
+        <!-- Expanded section (visible on tap; text_preview already shows the content) -->
         <LinearLayout
             android:id="@+id/layout_expanded"
             android:layout_width="match_parent"
@@ -106,30 +106,13 @@
             android:orientation="vertical"
             android:visibility="gone">
 
-            <!-- Divider -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginTop="10dp"
-                android:layout_marginBottom="10dp"
-                android:background="?attr/colorOutlineVariant" />
-
-            <!-- Full preview text -->
-            <TextView
-                android:id="@+id/text_full_preview"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textSize="13sp"
-                android:textColor="?attr/colorOnSurface"
-                android:lineSpacingMultiplier="1.4" />
-
             <!-- Attachments container -->
             <LinearLayout
                 android:id="@+id/layout_attachments"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="8dp"
                 android:visibility="gone" />
 
             <!-- Attachment loading indicator -->
@@ -138,6 +121,15 @@
                 android:layout_width="20dp"
                 android:layout_height="20dp"
                 android:layout_marginTop="8dp"
+                android:visibility="gone" />
+
+            <!-- Reply history — shown oldest-first, each in a tinted card -->
+            <LinearLayout
+                android:id="@+id/layout_reply_history"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="12dp"
                 android:visibility="gone" />
 
         </LinearLayout>

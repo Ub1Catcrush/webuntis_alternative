@@ -155,6 +155,59 @@
                 android:max="19"
                 android:progress="4" />
 
+            <!-- Long names toggle -->
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switch_long_names"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="4dp"
+                android:text="@string/settings_show_long_names"
+                android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:text="@string/settings_show_long_names_hint"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+
+            <!-- Cache TTL -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="4dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/settings_cache_label"
+                    android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                <TextView
+                    android:id="@+id/text_cache_ttl_value"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="72dp"
+                    android:gravity="end"
+                    android:textAppearance="?attr/textAppearanceTitleMedium"
+                    android:text="5 Minuten" />
+
+            </LinearLayout>
+
+            <SeekBar
+                android:id="@+id/seeker_cache_ttl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                android:max="60"
+                android:progress="5" />
+
             <!-- ── Zweiter Account (Schüler) ──────────────────────────────── -->
             <View
                 android:layout_width="match_parent"

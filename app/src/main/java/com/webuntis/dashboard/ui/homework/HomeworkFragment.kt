@@ -32,10 +32,13 @@ class HomeworkFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val adapter = HomeworkAdapter { id -> viewModel.toggleDone(id) }
+        val adapter = HomeworkAdapter(
+            onToggle = { id -> viewModel.toggleDone(id) },
+            onAttachmentClick = { hw, att -> viewModel.downloadAttachment(hw, att, requireContext()) }
+        )
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
-        binding.swipeRefresh.setOnRefreshListener { viewModel.load() }
+        binding.swipeRefresh.setOnRefreshListener { viewModel.load(forceRefresh = true) }
 
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {

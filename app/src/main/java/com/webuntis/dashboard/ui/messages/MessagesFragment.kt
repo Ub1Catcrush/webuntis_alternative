@@ -24,6 +24,7 @@ import com.webuntis.dashboard.databinding.FragmentMessagesBinding
 import com.webuntis.dashboard.databinding.ItemMessageBinding
 import com.webuntis.dashboard.model.Attachment
 import com.webuntis.dashboard.model.Message
+import com.webuntis.dashboard.model.ReplyMessage
 import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
@@ -54,7 +55,7 @@ class MessagesFragment : Fragment() {
         )
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
-        binding.swipeRefresh.setOnRefreshListener { viewModel.load() }
+        binding.swipeRefresh.setOnRefreshListener { viewModel.load(forceRefresh = true) }
 
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -148,12 +149,16 @@ class MessagesFragment : Fragment() {
                 }
                 try { startActivity(intent) } catch (_: Exception) {}
             } else {
+                // Pre-Q fallback (API 26-28 only); MediaStore.Downloads not available there.
                 @Suppress("DEPRECATION")
-                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val dir = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS)
                 dir.mkdirs()
                 val file = java.io.File(dir, filename)
                 file.writeBytes(bytes)
-                Toast.makeText(ctx, "✓ Gespeichert: ${file.absolutePath}", Toast.LENGTH_LONG).show()
+                Toast.makeText(ctx,
+                    "✓ Gespeichert: ${file.absolutePath}",
+                    Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
             Toast.makeText(requireContext(),
@@ -205,13 +210,23 @@ class MessageAdapter(
             val expandedMsg = expanded[msg.id]
             val isExpanded  = expandedMsg != null
 
-            b.textPreview.maxLines = if (isExpanded) Int.MAX_VALUE else 2
-            b.textPreview.ellipsize = if (isExpanded) null else android.text.TextUtils.TruncateAt.END
             b.layoutExpanded.isVisible = isExpanded
 
-            if (isExpanded) {
-                b.textFullPreview.text = msg.contentPreview ?: ""
+            // Expand text_preview to full (no line limit) when open — no duplicate text needed
+            b.textPreview.maxLines   = if (isExpanded) Int.MAX_VALUE else 2
+            b.textPreview.ellipsize  = if (isExpanded) null else android.text.TextUtils.TruncateAt.END
+            b.textPreview.setTextColor(
+                android.util.TypedValue().let { tv ->
+                    val attrRes = if (isExpanded)
+                        com.google.android.material.R.attr.colorOnSurface
+                    else
+                        com.google.android.material.R.attr.colorOnSurfaceVariant
+                    b.root.context.theme.resolveAttribute(attrRes, tv, true)
+                    tv.data
+                }
+            )
 
+            if (isExpanded) {
                 // Attachments
                 val atts = expandedMsg.attachments
                 if (msg.hasAttachments == true) {
@@ -228,9 +243,73 @@ class MessageAdapter(
                     b.attachmentsProgress.isVisible = false
                     b.layoutAttachments.isVisible   = false
                 }
+
+                // Reply history — show oldest first, each as an indented bubble
+                val history = expandedMsg.replyHistory
+                if (!history.isNullOrEmpty()) {
+                    b.layoutReplyHistory.isVisible = true
+                    b.layoutReplyHistory.removeAllViews()
+                    history.reversed().forEach { reply ->
+                        buildReplyBubble(b.layoutReplyHistory, reply)
+                    }
+                } else {
+                    b.layoutReplyHistory.isVisible = false
+                }
             }
 
             b.root.setOnClickListener { onToggleExpand(msg) }
+        }
+
+        private fun buildReplyBubble(container: LinearLayout, reply: com.webuntis.dashboard.model.ReplyMessage) {
+            val ctx = container.context
+            val bubble = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                val bgColor = android.util.TypedValue().let { tv ->
+                    ctx.theme.resolveAttribute(
+                        com.google.android.material.R.attr.colorSurfaceContainerHigh, tv, true)
+                    tv.data
+                }
+                setBackgroundColor(bgColor)
+                val dp8 = (8 * ctx.resources.displayMetrics.density).toInt()
+                val dp12 = (12 * ctx.resources.displayMetrics.density).toInt()
+                setPadding(dp12, dp8, dp12, dp8)
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { setMargins(0, dp8, 0, 0) }
+                layoutParams = lp
+                background = androidx.core.content.ContextCompat.getDrawable(ctx, com.webuntis.dashboard.R.drawable.bg_notes_for_all)
+            }
+
+            // Header: sender · date
+            val header = TextView(ctx).apply {
+                text = buildString {
+                    val name = reply.sender?.displayName ?: "–"
+                    append(name)
+                    reply.sentDateFormatted?.let { append("  ·  $it") }
+                }
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                textSize = 12f
+                setTextColor(androidx.core.content.ContextCompat.getColor(
+                    ctx, android.R.color.darker_gray))
+            }
+
+            // Content
+            val dp4 = (4 * ctx.resources.displayMetrics.density).toInt()
+            val content = TextView(ctx).apply {
+                text = reply.content ?: ""
+                textSize = 13f
+                setLineSpacing(0f, 1.3f)
+            }
+            content.layoutParams = (content.layoutParams as? LinearLayout.LayoutParams
+                ?: LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT)
+                ).apply { topMargin = dp4 }
+
+            bubble.addView(header)
+            bubble.addView(content)
+            container.addView(bubble)
         }
 
         private fun buildAttachmentRows(container: LinearLayout, atts: List<Attachment>, msg: Message) {

@@ -52,6 +52,10 @@ class DayFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         val adapter = LessonAdapter()
+        // Read the setting from SessionManager via the parent fragment's ViewModel
+        val vm = androidx.lifecycle.ViewModelProvider(requireParentFragment())
+            .get(TimetableViewModel::class.java)
+        adapter.showLongNames = vm.showLongNames
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
 

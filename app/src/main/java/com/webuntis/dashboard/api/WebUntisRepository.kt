@@ -15,19 +15,131 @@ import java.io.StringReader
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Singleton
 
 @Singleton
+/** Thrown when the server rejects a request due to an expired/invalid session. */
+class SessionExpiredException(message: String = "Session abgelaufen") : Exception(message)
+
 class WebUntisRepository @Inject constructor(
     private val retrofitFactory: RetrofitFactory,
-    private val sessionManager: SessionManager
+    internal val sessionManager: SessionManager
 ) {
     private val dateFmt = DateTimeFormatter.ofPattern("yyyyMMdd")
     private val isoFmt  = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
-    @Volatile var cachedClassElementId: Int? = null
-    @Volatile private var bearerToken: String? = null
+    private val _cachedClassElementId = AtomicReference<Int?>(null)
+    var cachedClassElementId: Int?
+        get() = _cachedClassElementId.get()
+        set(v) { _cachedClassElementId.set(v) }
+    private val _bearerToken = AtomicReference<String?>(null)
+    private var bearerToken: String?
+        get() = _bearerToken.get()
+        set(v) { _bearerToken.set(v) }
     private val loginMutex = Mutex()
+
+    /**
+     * Proactively re-authenticates if the session is older than SESSION_TTL_MS (45 min).
+     * Thread-safe via loginMutex so parallel coroutines don't race.
+     */
+    /**
+     * Internal re-auth used by withSessionRetry and reLoginIfNeeded.
+     * Does NOT acquire loginMutex — callers that need it should acquire it themselves.
+     * Does NOT call any data-fetch functions to avoid re-entrancy.
+     */
+    private suspend fun reAuthSilently(
+        server: String, schoolname: String, username: String, password: String
+    ): Result<SessionData> {
+        val rpc = loginViaJsonRpc(server, schoolname, username, password)
+        val result = if (rpc.isSuccess) { rpc } else {
+            kotlinx.coroutines.yield()
+            loginViaRest(server, schoolname, username, password)
+        }
+        if (result.isSuccess) {
+            sessionManager.storedCredentials = Pair(username, password)
+            fetchBearerToken()
+        }
+        return result
+    }
+
+    private suspend fun reLoginIfNeeded() {
+        if (sessionManager.isSessionFresh()) return
+        val creds   = sessionManager.storedCredentials ?: return
+        val session = sessionManager.session ?: return
+        loginMutex.withLock {
+            if (sessionManager.isSessionFresh()) return@withLock  // already refreshed
+            android.util.Log.i("WebUntis", "Session stale — re-authenticating silently")
+            reAuthSilently(session.server, session.schoolname, creds.first, creds.second)
+        }
+    }
+
+    /**
+     * Runs [block], and if a [SessionExpiredException] is thrown performs a silent
+     * re-login and retries exactly once. On success [touchSession] is called.
+     */
+    /**
+     * Returns cached data if still fresh (per SessionManager.isCacheFresh),
+     * otherwise delegates to [withSessionRetry] and stores the new result.
+     *
+     * @param forceRefresh when true the cache is bypassed unconditionally.
+     * @param cache        lambda returning the current cache entry (nullable).
+     * @param store        lambda storing a new cache entry.
+     * @param block        the actual network call (same as withSessionRetry's block).
+     */
+    private suspend fun <T> withCacheOrFetch(
+        forceRefresh: Boolean = false,
+        cache: () -> CacheEntry<T>?,
+        store: (CacheEntry<T>) -> Unit,
+        block: suspend () -> Result<T>
+    ): Result<T> {
+        val entry = cache()
+        if (!forceRefresh && entry != null && sessionManager.isCacheFresh(entry.fetchedAt)) {
+            return entry.data
+        }
+        val result = withSessionRetry(block)
+        store(CacheEntry(System.currentTimeMillis(), result))
+        return result
+    }
+
+    private suspend fun <T> withSessionRetry(block: suspend () -> Result<T>): Result<T> {
+        return@withSessionRetry try {
+            reLoginIfNeeded()
+            val result = block()
+            if (result.isSuccess) sessionManager.touchSession()
+            result
+        } catch (e: SessionExpiredException) {
+            android.util.Log.w("WebUntis", "Session expired mid-request — retrying after re-login")
+            val creds   = sessionManager.storedCredentials
+            val session = sessionManager.session
+            if (creds == null || session == null) return@withSessionRetry Result.failure(e)
+            if (reAuthSilently(session.server, session.schoolname, creds.first, creds.second).isFailure)
+                return@withSessionRetry Result.failure(e)
+            try {
+                val retry = block()
+                if (retry.isSuccess) sessionManager.touchSession()
+                retry
+            } catch (e2: Exception) {
+                Result.failure(e2)
+            }
+        }
+    }
+
+    // ── In-memory cache ───────────────────────────────────────────────────────
+    private data class CacheEntry<T>(val fetchedAt: Long, val data: Result<T>)
+
+    private var cacheTimetable:  CacheEntry<List<TimetableDay>>?                        = null
+    private var cacheHomework:   CacheEntry<Pair<List<Homework>, Map<String, String>>>? = null
+    private var cacheEvents:     CacheEntry<List<SchoolEvent>>?                         = null
+    private var cacheClassbook:  CacheEntry<List<ClassbookEntry>>?                      = null
+    private var cacheAbsences:   CacheEntry<List<Absence>>?                             = null
+    private var cacheMessages:   CacheEntry<List<Message>>?                             = null
+
+    /** Clears all in-memory caches (e.g. after logout or settings change). */
+    fun clearAllCaches() {
+        cacheTimetable = null; cacheHomework = null; cacheEvents = null
+        cacheClassbook = null; cacheAbsences = null; cacheMessages = null
+    }
 
     private val gson: Gson = GsonBuilder()
         .setStrictness(Strictness.LENIENT)
@@ -60,7 +172,7 @@ class WebUntisRepository @Inject constructor(
             throw Exception(msg)
         }
         val raw = r.body()?.string()?.trim() ?: return null
-        if (raw.contains("<html", ignoreCase = true)) throw Exception("Session abgelaufen")
+        if (raw.contains("<html", ignoreCase = true)) throw SessionExpiredException()
         return raw.ifEmpty { null }
     }
 
@@ -136,11 +248,42 @@ class WebUntisRepository @Inject constructor(
             if (rest.isSuccess) sessionManager.storedCredentials = Pair(username, password)
             rest
         }
-        if (result.isSuccess && result.getOrNull()?.personType == 12) {
+        if (result.isSuccess) {
+            // For students/teachers the login response contains a usable ID directly.
+            // For parents (personType=12) klasseId is always 0 — the child's element ID
+            // is only available from the homework API response. We seed what we can here
+            // and fetch homework below (outside the mutex) for the parent case.
+            val session = result.getOrNull()
+            if (session != null && cachedClassElementId == null) {
+                val id = when {
+                    session.classId  > 0 -> session.classId   // student
+                    session.personId > 0 -> session.personId  // teacher
+                    else                 -> null
+                }
+                if (id != null) cachedClassElementId = id
+            }
+            // Fetch bearer token for message/detail API calls.
+            // Do NOT call any other data-fetch functions here — they go through
+            // withCacheOrFetch → withSessionRetry → reLoginIfNeeded → loginMutex
+            // which would deadlock since we're already inside loginMutex.withLock.
             fetchBearerToken()
-            getHomework()
         }
         result
+    }
+
+    /**
+     * For parent accounts (personType=12) the child's element ID is not included
+     * in the login response — it only comes from the homework API.
+     * Call this once after login to prime cachedClassElementId so that timetable,
+     * events, absences, and classbook all work immediately.
+     */
+    suspend fun primeCachedElementIdIfNeeded() {
+        val session = sessionManager.session ?: return
+        if (session.personType != 12) return          // only needed for parents
+        if (cachedClassElementId != null && cachedClassElementId != 0) return  // already set
+        android.util.Log.i("WebUntis", "Parent account — fetching homework to prime element ID")
+        getHomework(forceRefresh = true)
+        android.util.Log.i("WebUntis", "Element ID after priming: $cachedClassElementId")
     }
 
     private suspend fun loginViaJsonRpc(
@@ -197,9 +340,11 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun logout() {
         try { service().logout() } catch (_: Exception) {}
-        cachedClassElementId = null
-        bearerToken = null
-        sessionManager.clearSession()
+        _cachedClassElementId.set(null)
+        _bearerToken.set(null)
+        clearAllCaches()
+        // Full logout: clear primary session AND second account
+        sessionManager.clearAll()
     }
 
     // ── Timetable ─────────────────────────────────────────────────────────────
@@ -212,20 +357,30 @@ class WebUntisRepository @Inject constructor(
         val classId = cachedClassElementId ?: 0
 
         if (session.personType == 12) {
-            if (classId == 0) return Result.failure(Exception("Schüler-ID nicht verfügbar"))
+            // classId was captured before priming — re-read after priming to get the fresh value
+            var effectiveClassId = classId
+            if (effectiveClassId == 0) {
+                android.util.Log.i("WebUntis", "Timetable: element ID missing for parent — priming via homework")
+                getHomework(forceRefresh = false)
+                effectiveClassId = cachedClassElementId ?: 0
+                if (effectiveClassId == 0) return Result.failure(Exception("Schüler-ID nicht verfügbar"))
+                android.util.Log.i("WebUntis", "Timetable: element ID after priming = $effectiveClassId")
+            }
             val startIso = "${startDate.substring(0,4)}-${startDate.substring(4,6)}-${startDate.substring(6,8)}"
             val endIso   = "${endDate.substring(0,4)}-${endDate.substring(4,6)}-${endDate.substring(6,8)}"
             return try {
-                val response = callTimetableV1(startIso, endIso, classId)
+                val response = callTimetableV1(startIso, endIso, effectiveClassId)
                 if (!response.isSuccessful)
                     return Result.failure(Exception("Stundenplan HTTP ${response.code()}"))
                 val raw = response.body()?.string()?.trim()
                     ?: return Result.failure(Exception("Leere Antwort"))
                 if (raw.contains("<html", ignoreCase = true))
-                    return Result.failure(Exception("Session abgelaufen"))
+                    throw SessionExpiredException()
                 val ttResp: TimetableV1Response = parseJson(raw)
                 val lessons = ttResp.toLessons()
-                val enriched = enrichLessonsWithDetail(lessons, classId, session.personType)
+                // For parent accounts, the detail endpoint requires elementType=5 (STUDENT)
+                // using the child's element ID — passing personType=12 causes HTTP 500.
+                val enriched = enrichLessonsWithDetail(lessons, effectiveClassId, 5)
                 Result.success(enriched)
             } catch (e: Exception) {
                 Result.failure(Exception("Stundenplan: ${e.message}", e))
@@ -252,20 +407,24 @@ class WebUntisRepository @Inject constructor(
         }
     }
 
-    suspend fun getTwoSchoolDays(): Result<List<TimetableDay>> {
+    suspend fun getTwoSchoolDays(forceRefresh: Boolean = false): Result<List<TimetableDay>> = withCacheOrFetch(
+        forceRefresh = forceRefresh,
+        cache = { cacheTimetable },
+        store = { cacheTimetable = it },
+    ) {
         val numDays = sessionManager.timetableDays
         val today = LocalDate.now()
         // Fetch enough data: worst case every day is a weekend/holiday, so request
         // 3× the desired days to guarantee we can fill numDays school days.
         val fetchDays = (numDays * 3).coerceAtLeast(21).toLong()
         val rangeResult = fetchLessonsInRange(today.toUntis(), today.plusDays(fetchDays).toUntis())
-        if (rangeResult.isFailure) return Result.failure(rangeResult.exceptionOrNull()!!)
+        if (rangeResult.isFailure) return@withCacheOrFetch Result.failure(rangeResult.exceptionOrNull()!!)
         val byDate = rangeResult.getOrThrow()
             .groupBy { it.date }.entries
             .filter { (d, _) -> !untisIntToDate(d).isBefore(today) && untisIntToDate(d).dayOfWeek.value <= 5 }
             .sortedBy { it.key }.take(numDays)
             .map { (d, lessons) -> TimetableDay(untisIntToDate(d), lessons.sortedBy { it.startTime }) }
-        return Result.success(byDate)
+        return@withCacheOrFetch Result.success(byDate)
     }
 
     private fun untisIntToDate(d: Int): LocalDate {
@@ -286,14 +445,24 @@ class WebUntisRepository @Inject constructor(
         elementType: Int
     ): List<Lesson> {
         val token = bearerToken ?: fetchBearerToken() ?: return lessons
+
         // Enrich all lessons — teaching content, teacher substitution status,
         // and notes are only available via the v2 detail endpoint regardless of lesson type.
         val needsDetail = lessons
+
+        // Track consecutive failures: if the first batch all return 500, the endpoint
+        // is unsupported for this account/server — bail out early.
+        val failureCount = java.util.concurrent.atomic.AtomicInteger(0)
+        val successCount = java.util.concurrent.atomic.AtomicInteger(0)
 
         val detailMap = mutableMapOf<Int, CalendarEntryDetail>()
 
         kotlinx.coroutines.coroutineScope {
             needsDetail.chunked(8).forEach { batch ->
+                // If the first full batch produced only failures and no successes, stop.
+                if (batch !== needsDetail.take(batch.size) &&
+                    successCount.get() == 0 && failureCount.get() >= 8) return@forEach
+
                 val jobs = batch.map { lesson ->
                     async(kotlinx.coroutines.Dispatchers.IO) {
                         try {
@@ -316,8 +485,9 @@ class WebUntisRepository @Inject constructor(
                             val detail: CalendarEntryDetailResponse = parseJson(raw)
                             detail.calendarEntries?.firstOrNull()?.let { entry ->
                                 synchronized(detailMap) { detailMap[lesson.id] = entry }
-                            }
-                        } catch (_: Exception) {}
+                                successCount.incrementAndGet()
+                            } ?: failureCount.incrementAndGet()
+                        } catch (_: Exception) { failureCount.incrementAndGet() }
                     }
                 }
                 jobs.forEach { it.await() }
@@ -374,12 +544,16 @@ class WebUntisRepository @Inject constructor(
 
         // ── Homework ──────────────────────────────────────────────────────────────
 
-    suspend fun getHomework(): Result<Pair<List<Homework>, Map<String, String>>> {
-        return try {
+    suspend fun getHomework(forceRefresh: Boolean = false): Result<Pair<List<Homework>, Map<String, String>>> = withCacheOrFetch(
+        forceRefresh = forceRefresh,
+        cache = { cacheHomework },
+        store = { cacheHomework = it },
+    ) {
+        try {
             val start = LocalDate.now().minusDays(14).toUntis()
             val end   = LocalDate.now().plusDays(21).toUntis()
             val response = service().getHomework(start, end)
-            val raw = rawBody(response) ?: return Result.success(Pair(emptyList(), emptyMap()))
+            val raw = rawBody(response) ?: return@withCacheOrFetch Result.success(Pair(emptyList(), emptyMap()))
             val hwResp: HomeworkResponse = parseJson(raw)
             hwResp.data?.records?.firstOrNull()?.elementIds?.firstOrNull()?.let {
                 if (it != 0) cachedClassElementId = it
@@ -388,18 +562,45 @@ class WebUntisRepository @Inject constructor(
                 ?.filter { it.id != null && !it.subject.isNullOrBlank() }
                 ?.associate { it.id.toString() to (it.subject ?: "") }
                 ?: emptyMap()
-            Result.success(Pair(hwResp.data?.homeworks ?: emptyList(), lessonMap))
+            val rawHomeworks = hwResp.data?.homeworks ?: emptyList()
+            // Only fetch attachment details when the homework signals it has attachments.
+            // The list response contains an `attachments` array — if empty, skip the call
+            // to avoid spurious 404s from the attachment endpoint.
+            val enriched = rawHomeworks.map { hw ->
+                if (hw.attachments.isNullOrEmpty()) return@map hw
+                try {
+                    val attResp = service().getHomeworkAttachments(hw.id)
+                    if (attResp.isSuccessful) {
+                        val attRaw = attResp.body()?.string()?.trim()
+                        if (!attRaw.isNullOrBlank() && attRaw.startsWith("[")) {
+                            val atts: List<HomeworkAttachment> = parseJson(attRaw)
+                            hw.copy(attachments = atts.ifEmpty { null })
+                        } else hw
+                    } else hw
+                } catch (_: Exception) { hw }
+            }
+            Result.success(Pair(enriched, lessonMap))
         } catch (e: Exception) { Result.failure(Exception("Hausaufgaben: ${e.message}", e)) }
     }
 
     // ── Classbook ─────────────────────────────────────────────────────────────
 
-    suspend fun getClassbookEntries(): Result<List<ClassbookEntry>> {
-        return try {
+    suspend fun getClassbookEntries(forceRefresh: Boolean = false): Result<List<ClassbookEntry>> = withCacheOrFetch(
+        forceRefresh = forceRefresh,
+        cache = { cacheClassbook },
+        store = { cacheClassbook = it },
+    ) {
+        try {
             val start = LocalDate.now().minusDays(30).toUntis()
             val end   = LocalDate.now().toUntis()
             val session = sessionManager.session
-                ?: return Result.failure(Exception("Nicht angemeldet"))
+                ?: return@withCacheOrFetch Result.failure(Exception("Nicht angemeldet"))
+            // For parent accounts the child ID comes only from the homework API.
+            // If it hasn't been primed yet, do it now (lazy fallback).
+            if (session.personType == 12 && (cachedClassElementId == null || cachedClassElementId == 0)) {
+                android.util.Log.i("WebUntis", "Classbook: element ID missing for parent — priming via homework")
+                getHomework(forceRefresh = false)
+            }
             val studentId = cachedClassElementId
             val response = when {
                 session.personType == 12 && studentId != null ->
@@ -409,7 +610,7 @@ class WebUntisRepository @Inject constructor(
                     if (r.isSuccessful) r else service().getClassbookEntries(start, end)
                 }
             }
-            val raw = rawBody(response) ?: return Result.success(emptyList())
+            val raw = rawBody(response) ?: return@withCacheOrFetch Result.success(emptyList())
             val entries: List<ClassbookEntry> = try {
                 val root = JsonParser.parseString(raw).asJsonObject
                 val dataEl = root.get("data")
@@ -441,16 +642,26 @@ class WebUntisRepository @Inject constructor(
 
     // ── Events ────────────────────────────────────────────────────────────────
 
-    suspend fun getEvents(): Result<List<SchoolEvent>> {
-        return try {
+    suspend fun getEvents(forceRefresh: Boolean = false): Result<List<SchoolEvent>> = withCacheOrFetch(
+        forceRefresh = forceRefresh,
+        cache = { cacheEvents },
+        store = { cacheEvents = it },
+    ) {
+        try {
+            // For parent accounts prime the child ID if not yet available
+            val eventSession = sessionManager.session
+            if (eventSession?.personType == 12 && (cachedClassElementId == null || cachedClassElementId == 0)) {
+                android.util.Log.i("WebUntis", "Events: element ID missing for parent — priming via homework")
+                getHomework(forceRefresh = false)
+            }
             val classId = cachedClassElementId ?: 0
-            if (classId == 0) return Result.success(emptyList())
+            if (classId == 0) return@withCacheOrFetch Result.success(emptyList())
             val start = LocalDate.now()
             val end   = start.plusDays(90)
             val resp = callTimetableV1(start.toIso(), end.toIso(), classId)
-            if (!resp.isSuccessful) return Result.success(emptyList())
-            val raw = resp.body()?.string()?.trim() ?: return Result.success(emptyList())
-            if (raw.isBlank() || raw.contains("<html", ignoreCase = true)) return Result.success(emptyList())
+            if (!resp.isSuccessful) return@withCacheOrFetch Result.success(emptyList())
+            val raw = resp.body()?.string()?.trim() ?: return@withCacheOrFetch Result.success(emptyList())
+            if (raw.isBlank() || raw.contains("<html", ignoreCase = true)) return@withCacheOrFetch Result.success(emptyList())
             val ttResp: TimetableV1Response = parseJson(raw)
             val events = mutableListOf<SchoolEvent>()
             ttResp.days?.forEach { day ->
@@ -589,8 +800,12 @@ class WebUntisRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
-    suspend fun getMessages(): Result<List<Message>> {
-        return try {
+    suspend fun getMessages(forceRefresh: Boolean = false): Result<List<Message>> = withCacheOrFetch(
+        forceRefresh = forceRefresh,
+        cache = { cacheMessages },
+        store = { cacheMessages = it },
+    ) {
+        try {
             val session      = sessionManager.session
             val primaryLabel = session?.personName?.takeIf { it.isNotBlank() }
                 ?: session?.accountTypeLabel ?: "Hauptaccount"
@@ -618,11 +833,11 @@ class WebUntisRepository @Inject constructor(
     }
 
     /** Fetch storageAttachments using the correct account token. */
-    suspend fun getMessageWithAttachments(msg: Message): Result<Message> {
-        return try {
-            val token = tokenForMessage(msg) ?: return Result.success(msg)
+    suspend fun getMessageWithAttachments(msg: Message): Result<Message> = withSessionRetry {
+        try {
+            val token = tokenForMessage(msg) ?: return@withSessionRetry Result.success(msg)
             val resp  = service().getMessageDetail(msg.id, "Bearer $token")
-            val raw   = rawBody(resp) ?: return Result.success(msg)
+            val raw   = rawBody(resp) ?: return@withSessionRetry Result.success(msg)
             val obj   = com.google.gson.JsonParser.parseString(raw).asJsonObject
             val atts  = obj.getAsJsonArray("storageAttachments")
                 ?.mapNotNull { el ->
@@ -632,7 +847,36 @@ class WebUntisRepository @Inject constructor(
                         name = o.get("name")?.takeIf { !it.isJsonNull }?.asString
                     )
                 } ?: emptyList()
-            Result.success(msg.copy(attachmentList = atts))
+            val history = obj.getAsJsonArray("replyHistory")
+                ?.mapNotNull { el ->
+                    try {
+                        val o = el.asJsonObject
+                        val sender = o.getAsJsonObject("sender")?.let { s ->
+                            MessageSender(
+                                displayName = s.get("displayName")?.takeIf { !it.isJsonNull }?.asString,
+                                userId      = s.get("userId")?.takeIf { !it.isJsonNull }?.asInt,
+                                imageUrl    = s.get("imageUrl")?.takeIf { !it.isJsonNull }?.asString
+                            )
+                        }
+                        val histAtts = o.getAsJsonArray("storageAttachments")
+                            ?.mapNotNull { ae ->
+                                val ao = ae.asJsonObject
+                                Attachment(
+                                    id   = ao.get("id")?.takeIf   { !it.isJsonNull }?.asString,
+                                    name = ao.get("name")?.takeIf { !it.isJsonNull }?.asString
+                                )
+                            }
+                        ReplyMessage(
+                            id           = o.get("id")?.takeIf { !it.isJsonNull }?.asInt,
+                            subject      = o.get("subject")?.takeIf { !it.isJsonNull }?.asString,
+                            content      = o.get("content")?.takeIf { !it.isJsonNull }?.asString,
+                            sender       = sender,
+                            sentDateTime = o.get("sentDateTime")?.takeIf { !it.isJsonNull }?.asString,
+                            storageAttachments = histAtts
+                        )
+                    } catch (_: Exception) { null }
+                }?.takeIf { it.isNotEmpty() }
+            Result.success(msg.copy(attachmentList = atts, replyHistory = history))
         } catch (e: Exception) { Result.success(msg) }
     }
 
@@ -641,19 +885,19 @@ class WebUntisRepository @Inject constructor(
      * 1. GET /{uuid}/attachmentstorageurl  → presigned S3 URL + encryption headers
      * 2. GET the S3 URL with those headers
      */
-    suspend fun downloadAttachment(attachmentId: String, msg: Message): Result<ByteArray> {
-        return try {
+    suspend fun downloadAttachment(attachmentId: String, msg: Message): Result<ByteArray> = withSessionRetry {
+        try {
             val token = tokenForMessage(msg)
-                ?: return Result.failure(Exception("Nicht angemeldet"))
+                ?: return@withSessionRetry Result.failure(Exception("Nicht angemeldet"))
 
             // Step 1: get presigned URL + encryption headers
             val urlResp = service().getAttachmentStorageUrl(attachmentId, "Bearer $token")
             val urlRaw  = rawBody(urlResp)
-                ?: return Result.failure(Exception("Keine Download-URL"))
+                ?: return@withSessionRetry Result.failure(Exception("Keine Download-URL"))
             val storageUrl: AttachmentStorageUrl = parseJson(urlRaw)
 
             val downloadUrl = storageUrl.downloadUrl
-                ?: return Result.failure(Exception("Keine URL in Antwort"))
+                ?: return@withSessionRetry Result.failure(Exception("Keine URL in Antwort"))
 
             val headers   = storageUrl.additionalHeaders?.associate { it.key!! to it.value!! } ?: emptyMap()
             val algorithm = headers["x-amz-server-side-encryption-customer-algorithm"] ?: ""
@@ -663,12 +907,12 @@ class WebUntisRepository @Inject constructor(
             // Step 2: download from S3
             val dlResp = service().downloadFromStorage(downloadUrl, algorithm, encKey, encKeyMd5)
             val bytes  = dlResp.body()?.bytes()
-                ?: return Result.failure(Exception("Leere Antwort vom Speicher"))
+                ?: return@withSessionRetry Result.failure(Exception("Leere Antwort vom Speicher"))
             Result.success(bytes)
         } catch (e: Exception) { Result.failure(e) }
     }
 
-        suspend fun getUnreadMessageCount(): Int {
+    suspend fun getUnreadMessageCount(): Int {
         return try {
             val resp = service().getMessagesStatus()
             if (!resp.isSuccessful) return 0
@@ -677,18 +921,49 @@ class WebUntisRepository @Inject constructor(
         } catch (_: Exception) { 0 }
     }
 
+    /**
+     * Downloads a homework attachment directly as raw bytes.
+     * Unlike message attachments, no presigned URL or S3 step is needed —
+     * the content is served directly from the WebUntis server.
+     */
+    suspend fun downloadHomeworkAttachment(homeworkId: Int, attachment: HomeworkAttachment): Result<Pair<ByteArray, String>> {
+        return try {
+            val attId = attachment.id ?: return Result.failure(Exception("Keine Anhang-ID"))
+            val resp = service().downloadHomeworkAttachment(homeworkId, attId)
+            if (!resp.isSuccessful) return Result.failure(Exception("HTTP ${resp.code()}"))
+            val bytes = resp.body()?.bytes() ?: return Result.failure(Exception("Leere Antwort"))
+            // Derive filename: Content-Disposition > attachment.name > fallback
+            val disposition = resp.headers()["Content-Disposition"] ?: ""
+            val filename = Regex("""filename\*?=(?:UTF-8'')?["']?([^"';
+]+)""", RegexOption.IGNORE_CASE)
+                .find(disposition)?.groupValues?.get(1)?.trim()
+                ?: attachment.name ?: attachment.uploadedFileName ?: "anhang"
+            Result.success(Pair(bytes, filename))
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
     // ── Absences ──────────────────────────────────────────────────────────────
 
-    suspend fun getAbsences(): Result<List<Absence>> {
-        return try {
+    suspend fun getAbsences(forceRefresh: Boolean = false): Result<List<Absence>> = withCacheOrFetch(
+        forceRefresh = forceRefresh,
+        cache = { cacheAbsences },
+        store = { cacheAbsences = it },
+    ) {
+        try {
+            // For parent accounts prime the child ID if not yet available
+            val session = sessionManager.session
+            if (session?.personType == 12 && (cachedClassElementId == null || cachedClassElementId == 0)) {
+                android.util.Log.i("WebUntis", "Absences: element ID missing for parent — priming via homework")
+                getHomework(forceRefresh = false)
+            }
             val studentId = cachedClassElementId ?: 0
-            if (studentId == 0) return Result.success(emptyList())
+            if (studentId == 0) return@withCacheOrFetch Result.success(emptyList())
             val today = LocalDate.now()
             val yearStart = if (today.monthValue >= 8) today.year else today.year - 1
             val startDate = "${yearStart}0801"
             val endDate   = "${yearStart + 1}0731"
             val resp = service().getAbsences(startDate, endDate, studentId)
-            val raw = rawBody(resp) ?: return Result.success(emptyList())
+            val raw = rawBody(resp) ?: return@withCacheOrFetch Result.success(emptyList())
             val absResp: AbsencesResponse = parseJson(raw)
             Result.success(
                 (absResp.data?.absences ?: emptyList())

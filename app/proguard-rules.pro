@@ -1,35 +1,46 @@
-# WebUntis Dashboard ProGuard Rules
+# WebUntis Dashboard — ProGuard Rules
 
-# Allgemeine Attribute für Reflection & Annotationen
--keepattributes Signature, InnerClasses, EnclosingMethod, Exceptions, *Annotation*, RuntimeVisibleAnnotations, RuntimeInvisibleAnnotations, RuntimeVisibleParameterAnnotations, RuntimeInvisibleParameterAnnotations
+# ── Kotlin & coroutines ───────────────────────────────────────────────────────
+-keepattributes Signature, InnerClasses, EnclosingMethod, Exceptions, *Annotation*
 
-# OkHttp
+# ── OkHttp / Okio ────────────────────────────────────────────────────────────
 -dontwarn okhttp3.**
 -dontwarn okio.**
 -dontwarn javax.annotation.**
 -dontwarn org.conscrypt.**
--keep class okhttp3.** { *; }
+# Keep service method annotations (Retrofit reads them at runtime via reflection)
+-keepclassmembers class * {
+    @okhttp3.* <methods>;
+}
 
-# Retrofit
+# ── Retrofit ─────────────────────────────────────────────────────────────────
 -dontwarn retrofit2.**
--keep class retrofit2.** { *; }
--keep class com.webuntis.dashboard.api.LoginRequest { *; }
--keep interface com.webuntis.dashboard.api.** { *; }
+# Retrofit uses reflection on interface methods; keep interface declarations
+-keep,allowobfuscation interface com.webuntis.dashboard.api.WebUntisService
+-keepclassmembers,allowobfuscation interface com.webuntis.dashboard.api.WebUntisService {
+    <methods>;
+}
 
-# Gson & WebUntis Models
--keep class com.webuntis.dashboard.model.** { *; }
-
-#-keep class com.webuntis.dashboard.model.** { <fields>; <methods>; }
+# ── Gson / JSON models ────────────────────────────────────────────────────────
+# All data classes used for JSON (de)serialization must keep their fields
+-keep,allowobfuscation class com.webuntis.dashboard.model.** { *; }
 -keepclassmembers class com.webuntis.dashboard.model.** { *; }
-#-keepclassmembers class * {
-#    @com.google.gson.annotations.SerializedName <fields>;
-#}
+-keepclassmembers class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
 
-# Hilt (Sicherheitshalber)
+# ── Hilt ─────────────────────────────────────────────────────────────────────
 -keep class dagger.hilt.** { *; }
 -keep class javax.inject.** { *; }
 -keep @dagger.hilt.android.HiltAndroidApp class * { *; }
 -keep @dagger.hilt.android.AndroidEntryPoint class * { *; }
 
-# Navigation Safe Args
+# ── Navigation Safe Args ──────────────────────────────────────────────────────
 -keep class * extends androidx.navigation.NavArgs
+
+# ── Security: strip logging from release builds ───────────────────────────────
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+}

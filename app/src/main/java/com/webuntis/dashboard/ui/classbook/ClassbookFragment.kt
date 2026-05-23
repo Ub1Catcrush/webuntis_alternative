@@ -40,7 +40,7 @@ class ClassbookFragment : Fragment() {
         val adapter = ClassbookAdapter()
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
-        binding.swipeRefresh.setOnRefreshListener { viewModel.load() }
+        binding.swipeRefresh.setOnRefreshListener { viewModel.load(forceRefresh = true) }
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
@@ -94,7 +94,7 @@ class ClassbookAdapter : ListAdapter<ClassbookEntry, ClassbookAdapter.VH>(Diff) 
 
     class VH(private val b: ItemClassbookBinding) : RecyclerView.ViewHolder(b.root) {
         fun bind(entry: ClassbookEntry) {
-            b.textSubject.text = entry.subject ?: "–"
+            b.textSubject.text = entry.displaySubjectOrElement
             b.textContent.text = entry.displayText
             b.textDate.text = entry.dateFormatted ?: ""
             b.textTeacher.text = entry.teacher ?: ""

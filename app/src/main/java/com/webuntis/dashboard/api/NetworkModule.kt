@@ -1,6 +1,7 @@
 package com.webuntis.dashboard.api
 
 import android.util.Log
+import com.webuntis.dashboard.BuildConfig
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -140,11 +141,16 @@ object NetworkModule {
         OkHttpClient.Builder()
             .cookieJar(cookieJar)
             .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             .addInterceptor(makeHeadersInterceptor(sessionManager))
             .addInterceptor(jsonSanitizer)
-            .addInterceptor(HttpLoggingInterceptor(SanitizingLogger()).apply {
-                level = HttpLoggingInterceptor.Level.BODY
-            })
+            .apply {
+                if (BuildConfig.DEBUG) {
+                    addInterceptor(HttpLoggingInterceptor(SanitizingLogger()).apply {
+                        level = HttpLoggingInterceptor.Level.BODY
+                    })
+                }
+            }
             .build()
 }

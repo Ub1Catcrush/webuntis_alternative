@@ -21,10 +21,10 @@ class ClassbookViewModel @Inject constructor(
 
     init { load() }
 
-    fun load() {
+    fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
             _state.value = UiState.Loading
-            repository.getClassbookEntries().fold(
+            repository.getClassbookEntries(forceRefresh).fold(
                 onSuccess = { _state.value = UiState.Success(it) },
                 onFailure = { _state.value = UiState.Error(it.message ?: "Fehler beim Laden") }
             )

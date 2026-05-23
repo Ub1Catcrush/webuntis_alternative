@@ -35,7 +35,7 @@ class EventsFragment : Fragment() {
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
 
-        binding.swipeRefresh.setOnRefreshListener { viewModel.load() }
+        binding.swipeRefresh.setOnRefreshListener { viewModel.load(forceRefresh = true) }
 
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {

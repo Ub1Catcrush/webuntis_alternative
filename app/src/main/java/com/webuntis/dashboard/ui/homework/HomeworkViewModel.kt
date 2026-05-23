@@ -31,10 +31,10 @@ class HomeworkViewModel @Inject constructor(
 
     init { load() }
 
-    fun load() {
+    fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
             _state.value = UiState.Loading
-            repository.getHomework().fold(
+            repository.getHomework(forceRefresh).fold(
                 onSuccess = { (homeworks, subjectMap) ->
                     val todayInt = LocalDate.now()
                         .format(DateTimeFormatter.ofPattern("yyyyMMdd")).toInt()
@@ -63,4 +63,68 @@ class HomeworkViewModel @Inject constructor(
     }
 
     suspend fun getUnreadCount(): Int = repository.getUnreadMessageCount()
+
+    fun downloadAttachment(
+        hw: com.webuntis.dashboard.model.Homework,
+        att: com.webuntis.dashboard.model.HomeworkAttachment,
+        context: android.content.Context
+    ) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val result = repository.downloadHomeworkAttachment(hw.id, att)
+            result.fold(
+                onSuccess = { (bytes, filename) ->
+                    try {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                            // API 29+ : MediaStore.Downloads (no WRITE_EXTERNAL_STORAGE needed)
+                            val values = android.content.ContentValues().apply {
+                                put(android.provider.MediaStore.Downloads.DISPLAY_NAME, filename)
+                                put(android.provider.MediaStore.Downloads.MIME_TYPE,
+                                    att.contentType ?: "application/octet-stream")
+                                put(android.provider.MediaStore.Downloads.RELATIVE_PATH,
+                                    android.os.Environment.DIRECTORY_DOWNLOADS)
+                                put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+                            }
+                            val uri = context.contentResolver.insert(
+                                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                                ?: return@launch
+                            context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                            values.clear()
+                            values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
+                            context.contentResolver.update(uri, values, null, null)
+
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, att.contentType ?: "*/*")
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                runCatching { context.startActivity(intent) }
+                            }
+                        } else {
+                            // API 26-28: legacy external storage (requires WRITE_EXTERNAL_STORAGE)
+                            @Suppress("DEPRECATION")
+                            val dir = android.os.Environment.getExternalStoragePublicDirectory(
+                                android.os.Environment.DIRECTORY_DOWNLOADS)
+                            dir.mkdirs()
+                            val file = java.io.File(dir, filename)
+                            file.writeBytes(bytes)
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                val uri = androidx.core.content.FileProvider.getUriForFile(
+                                    context, context.packageName + ".fileprovider", file)
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, att.contentType ?: "*/*")
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                runCatching { context.startActivity(intent) }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("Homework", "Download save failed", e)
+                    }
+                },
+                onFailure = { e ->
+                    android.util.Log.e("Homework", "Download failed: ${e.message}")
+                }
+            )
+        }
+    }
 }
