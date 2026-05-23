@@ -23,8 +23,12 @@ class EventsViewModel @Inject constructor(
 
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
-            if (!forceRefresh && repository.isEventsCacheFresh()) return@launch
-            _state.value = UiState.Loading
+            // Guard removed: repository handles cache internally.
+            // Local StateFlow must be updated even if data comes from cache
+            // so that newly created ViewModels (on tab switch) receive the data.
+            if (forceRefresh || _state.value !is UiState.Success) {
+                _state.value = UiState.Loading
+            }
             repository.getEvents(forceRefresh).fold(
                 onSuccess = { _state.value = UiState.Success(it) },
                 onFailure = { _state.value = UiState.Error(it.message ?: "Fehler beim Laden") }

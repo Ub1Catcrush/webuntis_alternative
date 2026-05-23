@@ -24,7 +24,6 @@ class SettingsFragment : Fragment() {
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = _binding!!
 
-    // Share the same LoginViewModel as MainActivity so logout propagates
     private val loginViewModel: LoginViewModel by viewModels(
         ownerProducer = { requireActivity() }
     )
@@ -39,7 +38,6 @@ class SettingsFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Populate fields from stored session/credentials
         val creds = loginViewModel.sessionManager.storedCredentials
         binding.inputPassword.hint = if (creds != null)
             getString(R.string.login_password_saved_hint)
@@ -69,6 +67,14 @@ class SettingsFragment : Fragment() {
             }
         )
 
+        // ── Compact Week View toggle ──────────────────────────────────────────
+        binding.switchCompactWeekView.isChecked = loginViewModel.sessionManager.useCompactWeekView
+        binding.switchCompactWeekView.setOnCheckedChangeListener { _, checked ->
+            loginViewModel.sessionManager.useCompactWeekView = checked
+            // No need to clear cache, just refresh UI
+            loginViewModel.refreshTimetable()
+        }
+
         // ── Long names toggles (per type) ─────────────────────────────────
         binding.switchLongSubjects.isChecked = loginViewModel.sessionManager.showLongSubjects
         binding.switchLongSubjects.setOnCheckedChangeListener { _, checked ->
@@ -93,7 +99,7 @@ class SettingsFragment : Fragment() {
             getString(R.string.settings_cache_minutes, min)
 
         val currentTtl = loginViewModel.sessionManager.cacheTtlMinutes
-        binding.seekerCacheTtl.max = SessionManager.MAX_CACHE_TTL      // 0..60
+        binding.seekerCacheTtl.max = SessionManager.MAX_CACHE_TTL
         binding.seekerCacheTtl.progress = currentTtl
         binding.textCacheTtlValue.text = cacheTtlLabel(currentTtl)
 
@@ -106,7 +112,6 @@ class SettingsFragment : Fragment() {
                 override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
                     val ttl = sb?.progress ?: SessionManager.DEFAULT_CACHE_TTL
                     loginViewModel.sessionManager.cacheTtlMinutes = ttl
-                    // Invalidate all caches so the new TTL takes effect immediately
                     loginViewModel.clearAllCaches()
                 }
             }
@@ -121,10 +126,6 @@ class SettingsFragment : Fragment() {
         }
 
         // ── Second account ────────────────────────────────────────────────────
-        // If an account is already stored, prime the StateFlow with Saved so the
-        // collector below is the single source of truth and updates the UI correctly
-        // when the fragment opens — regardless of whether we just saved it or it was
-        // already there from a previous session.
         val second = loginViewModel.sessionManager.secondAccount
         if (second != null) {
             loginViewModel.primeSecondAccountState()
@@ -163,8 +164,6 @@ class SettingsFragment : Fragment() {
                             binding.btnRemoveSecond.isVisible = true
                             binding.statusSecond.text = "✓ ${state.info}"
                             binding.statusSecond.isVisible = true
-                            // Populate input fields from stored account so the user
-                            // sees what is saved (covers the "primed on open" case)
                             val stored = loginViewModel.sessionManager.secondAccount
                             if (stored != null) {
                                 if (binding.inputSecondLabel.text.isNullOrBlank())
@@ -219,7 +218,6 @@ class SettingsFragment : Fragment() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 loginViewModel.isLoggedIn.collect { loggedIn ->
                     if (!loggedIn) {
-                        // Logged out → navigate back to login
                         findNavController().navigate(R.id.loginFragment)
                     }
                 }
@@ -237,7 +235,6 @@ class SettingsFragment : Fragment() {
         else typed
 
         if (server.isBlank() || schoolname.isBlank() || username.isBlank() || password.isBlank()) {
-            // Password may be blank if user wants to keep stored password - that's fine
             val effectivePassword = password.ifBlank {
                 loginViewModel.sessionManager.storedCredentials?.second
             }
@@ -247,8 +244,6 @@ class SettingsFragment : Fragment() {
                 return
             }
         }
-        // Clear old session so RetrofitFactory uses the new server
-        // Clear only the primary session — second account is intentionally preserved
         loginViewModel.sessionManager.clearSession()
         loginViewModel.login(server, schoolname, username, password)
     }

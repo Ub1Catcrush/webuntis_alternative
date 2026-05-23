@@ -33,8 +33,11 @@ class HomeworkViewModel @Inject constructor(
 
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
-            if (!forceRefresh && repository.isHomeworkCacheFresh()) return@launch
-            _state.value = UiState.Loading
+            // Guard removed: repository.getHomework handles cache internally via withCacheOrFetch.
+            // We MUST proceed to ensure the local StateFlow receives data even if it's from cache.
+            if (forceRefresh || _state.value !is UiState.Success) {
+                _state.value = UiState.Loading
+            }
             repository.getHomework(forceRefresh).fold(
                 onSuccess = { (homeworks, subjectMap) ->
                     val todayInt = LocalDate.now()

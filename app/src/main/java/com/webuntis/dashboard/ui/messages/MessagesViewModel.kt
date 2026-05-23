@@ -20,6 +20,9 @@ class MessagesViewModel @Inject constructor(
     private val _state = MutableStateFlow<UiState<List<Message>>>(UiState.Loading)
     val state: StateFlow<UiState<List<Message>>> = _state
 
+    private val _unreadCount = MutableStateFlow(0)
+    val unreadCount: StateFlow<Int> = _unreadCount
+
     // Expanded message id → Message with attachments loaded
     private val _expanded = MutableStateFlow<Map<Int, Message>>(emptyMap())
     val expanded: StateFlow<Map<Int, Message>> = _expanded
@@ -27,16 +30,32 @@ class MessagesViewModel @Inject constructor(
     private val _downloadState = MutableStateFlow<DownloadState>(DownloadState.Idle)
     val downloadState: StateFlow<DownloadState> = _downloadState
 
-    init { load() }
+    init {
+        load()
+        refreshUnreadCount()
+    }
 
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
-            if (!forceRefresh && repository.isMessagesCacheFresh()) return@launch
-            _state.value = UiState.Loading
+            // Guard removed: repository handles cache internally.
+            // Local StateFlow must be updated even if data comes from cache.
+            if (forceRefresh || _state.value !is UiState.Success) {
+                _state.value = UiState.Loading
+            }
             repository.getMessages(forceRefresh).fold(
-                onSuccess = { _state.value = UiState.Success(it) },
+                onSuccess = {
+                    _state.value = UiState.Success(it)
+                    // Also refresh unread count whenever we load messages
+                    refreshUnreadCount()
+                },
                 onFailure = { _state.value = UiState.Error(it.message ?: "Fehler beim Laden") }
             )
+        }
+    }
+
+    fun refreshUnreadCount() {
+        viewModelScope.launch {
+            _unreadCount.value = repository.getUnreadMessageCount()
         }
     }
 

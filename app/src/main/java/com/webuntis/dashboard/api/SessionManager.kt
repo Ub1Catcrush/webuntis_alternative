@@ -26,11 +26,8 @@ class SessionManager @Inject constructor(
             )
         } catch (e: Exception) {
             // Encryption unavailable (e.g. corrupted KeyStore on some devices).
-            // Log clearly — credentials must NOT be stored in plaintext.
-            // App will work session-only (no stored credentials) until reboot clears the issue.
             android.util.Log.e("SessionManager",
                 "EncryptedSharedPreferences unavailable — credentials will not be persisted", e)
-            // Return a no-op prefs that never persists sensitive keys
             object : android.content.SharedPreferences {
                 private val mem = mutableMapOf<String, Any?>()
                 override fun getAll() = mem
@@ -86,18 +83,16 @@ class SessionManager @Inject constructor(
                     .putInt(KEY_CLASS_ID, value.classId)
                     .putString(KEY_PERSON_NAME, value.personName)
                     .putInt(KEY_PERSON_TYPE, value.personType)
-                    // Stamp the time so we can detect session expiry proactively
                     .putLong(KEY_SESSION_TIME, System.currentTimeMillis())
                     .apply()
             }
         }
 
-    /**
-     * Returns true if the stored session is likely still valid.
-     * WebUntis sessions expire after ~60 min of inactivity on the server.
-     * We use a conservative 45-minute window to re-login proactively before
-     * the server actually rejects the request.
-     */
+    /** Persistent storage for the student/element ID (especially critical for Parent accounts). */
+    var studentId: Int
+        get() = prefs.getInt(KEY_STUDENT_ID, 0)
+        set(v) = prefs.edit().putInt(KEY_STUDENT_ID, v).apply()
+
     fun isSessionFresh(): Boolean {
         val ts = prefs.getLong(KEY_SESSION_TIME, 0L)
         if (ts == 0L) return false
@@ -105,29 +100,19 @@ class SessionManager @Inject constructor(
         return ageMs < SESSION_TTL_MS
     }
 
-    /** Bump the session timestamp without changing any other field (call after each successful request). */
     fun touchSession() {
         prefs.edit().putLong(KEY_SESSION_TIME, System.currentTimeMillis()).apply()
     }
 
-    /** Clears only the primary session/credential keys. Second account is preserved. */
     fun clearSession() {
         prefs.edit()
-            .remove(KEY_SERVER)
-            .remove(KEY_SCHOOLNAME)
-            .remove(KEY_USERNAME)
-            .remove(KEY_SESSION_ID)
-            .remove(KEY_PERSON_ID)
-            .remove(KEY_CLASS_ID)
-            .remove(KEY_PERSON_NAME)
-            .remove(KEY_PERSON_TYPE)
-            .remove(KEY_STORED_USER)
-            .remove(KEY_STORED_PASS)
-            .remove(KEY_SESSION_TIME)
+            .remove(KEY_SERVER).remove(KEY_SCHOOLNAME).remove(KEY_USERNAME)
+            .remove(KEY_SESSION_ID).remove(KEY_PERSON_ID).remove(KEY_CLASS_ID)
+            .remove(KEY_PERSON_NAME).remove(KEY_PERSON_TYPE).remove(KEY_STORED_USER)
+            .remove(KEY_STORED_PASS).remove(KEY_SESSION_TIME).remove(KEY_STUDENT_ID)
             .apply()
     }
 
-    /** Clears everything including the second account. Used only on explicit logout. */
     fun clearAll() {
         prefs.edit().clear().apply()
     }
@@ -157,9 +142,7 @@ class SessionManager @Inject constructor(
         val personName: String = ""
     ) {
         val accountTypeLabel: String get() = when (personType) {
-            2    -> "Lehrer"
-            5    -> "Schüler"
-            12   -> "Eltern"
+            2    -> "Lehrer"; 5 -> "Schüler"; 12 -> "Eltern"
             else -> ""
         }
     }
@@ -191,7 +174,6 @@ class SessionManager @Inject constructor(
             }
         }
 
-    /** Number of school days shown in the timetable. Stored in plain prefs (not sensitive). */
     var timetableDays: Int
         get() = plainPrefs.getInt(KEY_TIMETABLE_DAYS, DEFAULT_TIMETABLE_DAYS)
         set(value) {
@@ -200,25 +182,22 @@ class SessionManager @Inject constructor(
                 .apply()
         }
 
-    /** Show long subject names (e.g. "Mathematik" instead of "Ma") when available. */
     var showLongSubjects: Boolean
         get() = plainPrefs.getBoolean(KEY_SHOW_LONG_SUBJECTS, false)
         set(value) { plainPrefs.edit().putBoolean(KEY_SHOW_LONG_SUBJECTS, value).apply() }
 
-    /** Show long teacher names (e.g. "Mustermann" instead of "Mu") when available. */
     var showLongTeachers: Boolean
         get() = plainPrefs.getBoolean(KEY_SHOW_LONG_TEACHERS, false)
         set(value) { plainPrefs.edit().putBoolean(KEY_SHOW_LONG_TEACHERS, value).apply() }
 
-    /** Show long room names (e.g. "Klassenraum 7c" instead of "D.203") when available. */
     var showLongRooms: Boolean
         get() = plainPrefs.getBoolean(KEY_SHOW_LONG_ROOMS, false)
         set(value) { plainPrefs.edit().putBoolean(KEY_SHOW_LONG_ROOMS, value).apply() }
 
-    /**
-     * How long cached API responses are considered fresh (in minutes).
-     * 0 = no caching (always fetch from backend).
-     */
+    var useCompactWeekView: Boolean
+        get() = plainPrefs.getBoolean(KEY_USE_COMPACT_WEEK_VIEW, false)
+        set(value) { plainPrefs.edit().putBoolean(KEY_USE_COMPACT_WEEK_VIEW, value).apply() }
+
     var cacheTtlMinutes: Int
         get() = plainPrefs.getInt(KEY_CACHE_TTL, DEFAULT_CACHE_TTL)
         set(value) {
@@ -227,7 +206,6 @@ class SessionManager @Inject constructor(
                 .apply()
         }
 
-    /** Returns true if caching is enabled and data fetched [ageMs] ago is still fresh. */
     fun isCacheFresh(lastFetchMs: Long): Boolean {
         val ttl = cacheTtlMinutes
         if (ttl == 0 || lastFetchMs == 0L) return false
@@ -255,6 +233,8 @@ class SessionManager @Inject constructor(
         private const val KEY_SECOND_TYPE  = "second_type"
         private const val KEY_SECOND_NAME  = "second_name"
         private const val KEY_TIMETABLE_DAYS = "timetable_days"
+        private const val KEY_STUDENT_ID     = "student_id"
+        private const val KEY_USE_COMPACT_WEEK_VIEW = "use_compact_week_view"
         const val DEFAULT_TIMETABLE_DAYS = 5
         const val MIN_TIMETABLE_DAYS     = 1
         const val MAX_TIMETABLE_DAYS     = 20
@@ -266,7 +246,6 @@ class SessionManager @Inject constructor(
         const val MIN_CACHE_TTL          = 0
         const val MAX_CACHE_TTL          = 60
         private const val KEY_SESSION_TIME = "session_time"
-        /** 45 minutes — conservative margin before the ~60 min server TTL */
         private const val SESSION_TTL_MS   = 45 * 60 * 1000L
     }
 }

@@ -41,8 +41,20 @@
     <string name="label_day_fallback">Tag %d</string>
     <string name="label_no_lessons_today">Heute keine Stunden 🎉</string>
     <string name="label_no_lessons_tomorrow">Morgen keine Stunden 🎉</string>
+    <string name="label_no_lessons_generic">Keine Stunden 🎉</string>
     <string name="error_timetable">Stundenplan konnte nicht geladen werden</string>
     <string name="error_timetable_prefix">Stundenplan: %s</string>
+
+    <!-- Timetable Detail Popup -->
+    <string name="timetable_detail_title">Stundendetails</string>
+    <string name="timetable_detail_time">Zeit:</string>
+    <string name="timetable_detail_teacher">Lehrer:</string>
+    <string name="timetable_detail_room">Raum:</string>
+    <string name="timetable_detail_info">Info:</string>
+    <string name="timetable_detail_content">Lehrstoff:</string>
+    <string name="timetable_detail_notes">Notizen:</string>
+    <string name="timetable_detail_close">Schließen</string>
+    <string name="timetable_time_range">%1$s - %2$s</string>
 
     <!-- Homework -->
     <string name="label_no_homework">Keine Hausaufgaben eingetragen ✅</string>
@@ -62,8 +74,7 @@
     <string name="error_events_prefix">Termine: %s</string>
 
     <!-- Classbook -->
-    <string name="label_no_classbook">Keine Klassenbucheinträge verfügbar 📖
-(Für diesen Benutzertyp nicht zugänglich)</string>
+    <string name="label_no_classbook">Keine Klassenbucheinträge verfügbar 📖\n(Für diesen Benutzertyp nicht zugänglich)</string>
     <string name="error_classbook_prefix">Klassenbuch: %s</string>
     <string name="label_entry_type_homework">Hausaufgabe</string>
     <string name="label_entry_type_absence">Abwesenheit</string>
@@ -120,6 +131,7 @@
     <string name="settings_show_long_subjects">Fachname ausschreiben (z.B. „Mathematik")</string>
     <string name="settings_show_long_teachers">Lehrername ausschreiben (z.B. „Mustermann")</string>
     <string name="settings_show_long_rooms">Raumname ausschreiben (z.B. „Klassenraum 7c")</string>
+    <string name="settings_use_compact_week_view">Wochenansicht kompakt nebeneinander</string>
 
     <string name="label_homework_attachment_download">Anhang herunterladen</string>
 

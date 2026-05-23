@@ -23,8 +23,11 @@ class AbsencesViewModel @Inject constructor(
 
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
-            if (!forceRefresh && repository.isAbsencesCacheFresh()) return@launch
-            _state.value = UiState.Loading
+            // Guard removed: repository handles cache internally.
+            // Local StateFlow must be updated even if data comes from cache.
+            if (forceRefresh || _state.value !is UiState.Success) {
+                _state.value = UiState.Loading
+            }
             repository.getAbsences(forceRefresh).fold(
                 onSuccess = { _state.value = UiState.Success(it) },
                 onFailure = { _state.value = UiState.Error(it.message ?: "Fehler beim Laden") }

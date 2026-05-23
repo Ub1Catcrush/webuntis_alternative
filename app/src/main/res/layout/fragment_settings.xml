@@ -115,7 +115,7 @@
                 android:layout_height="wrap_content"
                 android:text="@string/settings_logout_button" />
 
-            <!-- ── Stundenplan-Tage ──────────────────────────────────────── -->
+            <!-- ── Stundenplan-Einstellungen ────────────────────────────── -->
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
@@ -154,6 +154,15 @@
                 android:layout_marginBottom="24dp"
                 android:max="19"
                 android:progress="4" />
+
+            <!-- Compact Week View Toggle -->
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switch_compact_week_view"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:text="@string/settings_use_compact_week_view"
+                android:textAppearance="?attr/textAppearanceBodyMedium" />
 
             <!-- Long names toggles (per type) -->
             <TextView
