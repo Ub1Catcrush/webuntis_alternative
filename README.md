@@ -8,18 +8,19 @@ Native Kotlin Android App für WebUntis-Schüler und Eltern mit Stundenplan, Hau
 
 | Tool | Version |
 |---|---|
-| Android Studio | Hedgehog 2023.1.1+ |
+| Android Studio | Ladybug+ |
 | JDK | 17+ |
-| Android SDK | API 26+ (minSdk) / API 34 (compileSdk) |
-| Kotlin | 1.9.23 |
+| Android SDK | API 26+ (minSdk) / API 35 (compileSdk) |
+| Kotlin | 2.1.20 |
+| Gradle | 8.9+ |
 
 ---
 
 ## Projekt öffnen
 
-1. ZIP entpacken
+1. Repository klonen oder ZIP entpacken
 2. Android Studio → **Open** → Projektordner wählen
-3. Gradle sync abwarten (erste Ausführung lädt ~300 MB)
+3. Gradle sync abwarten
 4. Gerät / Emulator auswählen → **▶ Run**
 
 ---
@@ -37,22 +38,22 @@ Native Kotlin Android App für WebUntis-Schüler und Eltern mit Stundenplan, Hau
 
 Zugangsdaten werden mit **EncryptedSharedPreferences** (AES-256) lokal gespeichert und verlassen das Gerät nicht.
 
-### Zweiter Account
+### Multi-Account Support
 
-In den Einstellungen kann ein zweiter Account (z. B. für ein Kind) hinterlegt werden. Nachrichten beider Accounts werden zusammengeführt angezeigt.
+In den Einstellungen kann ein zweiter Account (z. B. für ein zweites Kind oder als Elternteil zusätzlich zum Schüler-Account) hinterlegt werden. Die Nachrichten beider Accounts werden in einem gemeinsamen Posteingang zusammengeführt.
 
 ---
 
-## Screens
+## Screens & Funktionen
 
 | Screen | Beschreibung |
 |---|---|
-| **Stundenplan** | Konfigurierbare Anzahl Schultage (1–20, Standard 5) mit Vertretungs-Info, Unterrichtsinhalt und Notizen für alle |
-| **Hausaufgaben** | Liste mit Abhak-Funktion, Fälligkeits-Ampel und Fachfarben |
-| **Nachrichten** | Posteingang inkl. Anhang-Download (beide Accounts zusammengeführt) |
-| **Abwesenheiten** | Entschuldigungs-Status mit Übersicht offener Einträge |
-| **Klassenbuch** | Einträge der letzten 30 Tage kategorisiert nach Typ |
-| **Termine** | Prüfungen, Ferien und Veranstaltungen der nächsten 90 Tage |
+| **Stundenplan** | Konfigurierbare Anzahl Schultage (1–20) mit Vertretungs-Info, Unterrichtsinhalt, Lehrer-Notizen und farbigen Status-Badges. |
+| **Hausaufgaben** | Liste mit Abhak-Funktion, Fälligkeits-Ampel, Fachfarben und **Anhang-Download**. |
+| **Nachrichten** | Posteingang inkl. **Anhang-Download**, Anzeige des **Nachrichtenverlaufs (Reply History)** und Account-Labeling. |
+| **Abwesenheiten** | Übersicht aller Fehlzeiten des aktuellen Schuljahres mit Entschuldigungs-Status. |
+| **Klassenbuch** | Einträge der letzten 30 Tage (Lob, Tadel, Hausaufgaben-Vergessen etc.) inkl. Typ-Kategorisierung. |
+| **Termine** | Kombinierte Ansicht aus Prüfungen (Klassenarbeiten/Tests) und allgemeinen Schulereignissen der nächsten 90 Tage. |
 
 ---
 
@@ -61,67 +62,66 @@ In den Einstellungen kann ein zweiter Account (z. B. für ein Kind) hinterlegt w
 ```
 app/
 ├── api/
-│   ├── WebUntisService.kt       # Retrofit Interface (JSON-RPC + REST v1/v2)
-│   ├── WebUntisRepository.kt    # Datenzugriff & Anreicherung
-│   ├── SessionManager.kt        # Verschlüsselte Session & Einstellungen
-│   ├── RetrofitFactory.kt       # Dynamische Base-URL
-│   └── NetworkModule.kt         # Hilt DI, CookieJar, Interceptors
+│   ├── WebUntisService.kt       # Retrofit Interface (JSON-RPC, REST v1/v2, S3-Download)
+│   ├── WebUntisRepository.kt    # Zentrale Datenlogik, Caching & Multi-Account-Merging
+│   ├── SessionManager.kt        # Verschlüsselte Session & Präferenzen
+│   ├── RetrofitFactory.kt       # Dynamische Base-URL & Interceptor-Setup
+│   └── NetworkModule.kt         # Hilt DI, Cookie-Handling (Android 15 Fix)
 ├── model/
-│   └── Models.kt                # Alle Datenklassen
+│   └── Models.kt                # GSON-kompatible Datenklassen für alle API-Versionen
 └── ui/
-    ├── login/                   # Login & LoginViewModel
-    ├── timetable/               # Stundenplan (ViewPager2)
-    ├── homework/                # Hausaufgaben
-    ├── messages/                # Nachrichten & Anhänge
-    ├── absences/                # Abwesenheiten
+    ├── login/                   # Login-Flow & Validierung
+    ├── timetable/               # Stundenplan (ViewPager2 + Detail-Enrichment)
+    ├── homework/                # Hausaufgaben inkl. Datei-Handling
+    ├── messages/                # Nachrichten, Anhänge & History
+    ├── absences/                # Abwesenheiten-Liste
     ├── events/                  # Termine & Prüfungen
-    ├── classbook/               # Klassenbuch
-    └── settings/                # Einstellungen
+    ├── classbook/               # Klassenbuch-Einträge
+    └── settings/                # Account-Verwaltung & App-Konfiguration
 ```
 
-**Stack:** MVVM · Hilt DI · Retrofit2 · OkHttp3 · Coroutines/Flow · Navigation Component · Material 3 · ViewBinding
+**Stack:** MVVM · Hilt DI · Retrofit2 · OkHttp3 · Coroutines/Flow · Navigation Component · Material 3 · ViewBinding · DataStore
 
 ---
 
 ## Features
 
-- ✅ Material 3 Design (Light + Dark Mode)
-- ✅ Verschlüsselte Credential-Speicherung (AES-256)
-- ✅ Zweiter Account (z. B. Kind) mit zusammengeführten Nachrichten
-- ✅ Stundenplan: einstellbare Tagesanzahl (1–20), Standard 5
-- ✅ Stundenplan: Unterrichtsinhalt (`📖`) und Notizen für alle (`📌`) direkt in der Stundenkarte
-- ✅ Stundenplan: Vertretungsinfo mit durchgestrichenem Original-Lehrer
-- ✅ Klickbare URLs in Lehrer-Notizen (Linkify)
-- ✅ Status-Badges: Ausfall / Vertretung / Zusatz / Klassenarbeit
-- ✅ Pull-to-Refresh auf allen Screens
-- ✅ Hausaufgaben abhaken (Session-lokal)
-- ✅ Fälligkeitsdatum-Ampel bei Hausaufgaben
-- ✅ Farbkodierung nach Fach
-- ✅ Anhang-Download aus Nachrichten
-- ✅ Login ohne Neustart nach Einstellungsänderung (Integration Reload)
+- ✅ **Material 3 Design:** Volle Unterstützung für Light + Dark Mode.
+- ✅ **Sicherheit:** AES-256 verschlüsselte Speicherung der Zugangsdaten.
+- ✅ **Multi-Account:** Nachrichten-Aggregation von zwei verschiedenen WebUntis-Profilen.
+- ✅ **Intelligenter Stundenplan:**
+    - Einstellbare Tagesanzahl (1–20).
+    - Automatische Anreicherung mit Detail-Infos (Lehrstoff, Notizen).
+    - Visualisierung von Vertretungen (durchgestrichene Lehrer, Fachwechsel).
+    - Status-Badges: Ausfall, Vertretung, Zusatz, Prüfung.
+- ✅ **Hausaufgaben-Management:**
+    - Lokaler Abhak-Status (Session-basiert).
+    - **Neu:** Download von Anhängen direkt aus der Hausaufgabe.
+- ✅ **Verbesserte Nachrichten:**
+    - Download von Anhängen (inkl. Presigned S3-URL Handling).
+    - Anzeige von vorherigen Nachrichten im Verlauf.
+- ✅ **Eltern-Support:** Automatische Ermittlung der Schüler-ID (Priming) bei Eltern-Accounts.
+- ✅ **Performance:** In-Memory Caching mit intelligentem TTL-Management (Time-to-Live).
+- ✅ **Robustheit:** Automatischer Silent-Re-Login bei abgelaufenen Sessions.
 
 ---
 
 ## Bekannte Einschränkungen
 
-- WebUntis-API ist nicht offiziell dokumentiert – Endpunkte können sich ändern
-- Session-Token läuft nach Serverinaktivität ab → App meldet sich automatisch neu an
-- Hausaufgaben-Abhakstatus ist nicht persistent (wird bei App-Neustart zurückgesetzt)
+- Hausaufgaben-Abhakstatus ist zurzeit nicht persistent (wird bei App-Neustart zurückgesetzt).
+- Die WebUntis-API ist inoffiziell; Änderungen serverseitig können Funktionen beeinträchtigen.
 
 ---
 
 ## Kompatibilität
 
-Getestet auf Android 10 (API 29), Android 15 (API 35) und Android 17 (API 37).  
-Der Login-Fix für **Android 15** behebt ein Cookie-Handling-Problem (`Secure`-Flag) das zu einem 403 auf dem zweiten Login-Endpunkt führte.
+Optimiert für moderne Android-Versionen (getestet bis Android 15/17). Enthält spezifische Fixes für das Cookie-Handling unter Android 15 (`Secure`-Flag Problem), um 403-Fehler bei Cross-API Aufrufen zu vermeiden.
 
 ---
 
-## Build Release APK
+## Build
 
 ```bash
-./gradlew assembleRelease
-# Output: app/build/outputs/apk/release/app-release.apk
+./gradlew assembleDebug
 ```
-
-Für Google Play: Keystore erstellen und in `build.gradle.kts` eintragen.
+Die aktuelle Version ist **v0.0.9** (definiert in `dependencies.gradle`).
