@@ -57,13 +57,13 @@ object NetworkModule {
                 val session = sessionManager.session
 
                 if (session != null && session.sessionId.isNotEmpty()) {
-                    // Android 15 Fix: Stricter cookie matching.
-                    // We must ensure JSESSIONID and schoolname are present with the Secure flag.
-                    // Path matching is also stricter; we try to match the base context.
+                    // Stricter path matching for WebUntis.
                     val path = if (url.encodedPath.contains("/WebUntis", ignoreCase = true)) "/WebUntis" else "/"
                     
-                    // 1. JSESSIONID
-                    stored.removeAll { it.name == "JSESSIONID" }
+                    // Force authenticated session cookies. 
+                    // This prevents anonymous session IDs (from redirects) from sticking.
+                    stored.removeAll { it.name == "JSESSIONID" || it.name == "schoolname" }
+                    
                     stored.add(Cookie.Builder()
                         .name("JSESSIONID")
                         .value(session.sessionId)
@@ -73,11 +73,9 @@ object NetworkModule {
                         .httpOnly()
                         .build())
 
-                    // 2. schoolname
-                    stored.removeAll { it.name == "schoolname" }
                     stored.add(Cookie.Builder()
                         .name("schoolname")
-                        .value(session.schoolname) // Raw value, no quotes
+                        .value(session.schoolname)
                         .domain(host)
                         .path(path)
                         .secure()
@@ -103,8 +101,6 @@ object NetworkModule {
             builder.header("Referer", "https://$host/WebUntis/")
         }
         
-        // Android 15 Fix: Only add Origin/Referer for state-changing requests or when useful.
-        // Some servers reject GET requests with an Origin header if they don't expect it.
         if (request.method != "GET") {
             builder.header("Origin", "https://$host")
         }
@@ -113,29 +109,30 @@ object NetworkModule {
     }
 
     private val jsonSanitizer = Interceptor { chain ->
-        val response = chain.proceed(chain.request())
-        val contentType = response.header("Content-Type") ?: ""
+        val originalRequest = chain.request()
+        val response = chain.proceed(originalRequest)
         
+        val contentType = response.header("Content-Type") ?: ""
         val body = response.body
         val rawBody = body?.string() ?: ""
 
         val isJson = contentType.contains("json", ignoreCase = true)
         val looksLikeJson = rawBody.trimStart().let { it.startsWith("{") || it.startsWith("[") }
         
-        val isExpiredHtml = rawBody.contains("login.do", ignoreCase = true) && 
-                           rawBody.contains("<html", ignoreCase = true)
+        // Detection of session expiry/redirect for API calls.
+        val requestPath = originalRequest.url.encodedPath
+        val responsePath = response.request.url.encodedPath
+        
+        val isApiCall = requestPath.contains("/api/") || requestPath.contains(".do")
+        val redirectedToAuth = responsePath.contains("index.do") || responsePath.contains("login.do")
+        val isHtml = rawBody.contains("<html", ignoreCase = true) || rawBody.contains("<!DOCTYPE", ignoreCase = true)
 
-        if ((!isJson && !looksLikeJson && rawBody.isNotEmpty()) || isExpiredHtml) {
-            val safeMessage = if (isExpiredHtml) "Session abgelaufen" else {
-                rawBody.replace(Regex("<[^>]+>"), " ")
-                    .replace(Regex("\\s+"), " ")
-                    .trim().take(200).replace("\"", "'")
-            }
-            
-            val errorCode = if (isExpiredHtml) -32001 else -1
-            val errorJson = """{"error":{"code":$errorCode,"message":"$safeMessage"}}"""
+        if (isApiCall && (redirectedToAuth || (isHtml && !isJson && !looksLikeJson))) {
+            // Signal auth failure clearly to trigger retry logic in repository.
+            val errorJson = """{"error":{"code":-32001,"message":"Session abgelaufen (Redirect)"}}"""
             response.newBuilder()
-                .header("X-WebUntis-Session-Expired", if (isExpiredHtml) "true" else "false")
+                .header("X-WebUntis-Session-Expired", "true")
+                .code(401)
                 .body(errorJson.toResponseBody("application/json".toMediaType()))
                 .build()
         } else {

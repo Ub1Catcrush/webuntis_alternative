@@ -76,28 +76,27 @@ interface WebUntisService {
     // ── Homework ──────────────────────────────────────────────────────────────
     @GET("api/homeworks/lessons")
     suspend fun getHomework(
+        @Header("Authorization") authorization: String?,
         @Query("startDate") startDate: String,
         @Query("endDate") endDate: String
     ): Response<ResponseBody>
 
     /**
      * List attachments for a homework entry.
-     * Returns a JSON array of attachment objects (id, name, contentType, size etc.)
-     * Homework attachments are NOT the same as message storage attachments —
-     * they are served directly, no presigned URL / S3 step needed.
      */
     @GET("api/homeworks/{homeworkId}/attachments")
     suspend fun getHomeworkAttachments(
+        @Header("Authorization") authorization: String?,
         @Path("homeworkId") homeworkId: Int
     ): Response<ResponseBody>
 
     /**
      * Download a homework attachment directly as a byte stream.
-     * The server responds with the file content and Content-Disposition header.
      */
     @GET("api/homeworks/{homeworkId}/attachments/{attachmentId}")
     @Streaming
     suspend fun downloadHomeworkAttachment(
+        @Header("Authorization") authorization: String?,
         @Path("homeworkId")   homeworkId:   Int,
         @Path("attachmentId") attachmentId: String
     ): Response<ResponseBody>
@@ -105,6 +104,7 @@ interface WebUntisService {
     // ── Exams / Events ────────────────────────────────────────────────────────
     @GET("api/exams")
     suspend fun getExamsForStudent(
+        @Header("Authorization") authorization: String?,
         @Query("startDate") startDate: String,
         @Query("endDate") endDate: String,
         @Query("studentId") studentId: Int
@@ -112,6 +112,7 @@ interface WebUntisService {
 
     @GET("api/calendar-entry/list/student")
     suspend fun getCalendarEvents(
+        @Header("Authorization") authorization: String?,
         @Query("rangeStart") rangeStart: String,
         @Query("rangeEnd") rangeEnd: String
     ): Response<ResponseBody>
@@ -119,6 +120,7 @@ interface WebUntisService {
     // ── Classbook ─────────────────────────────────────────────────────────────
     @GET("api/classreg/classregevents")
     suspend fun getClassbookEntriesForParent(
+        @Header("Authorization") authorization: String?,
         @Query("startDate") startDate: String,
         @Query("endDate") endDate: String,
         @Query("studentId") studentId: Int
@@ -126,20 +128,19 @@ interface WebUntisService {
 
     @GET("api/classreg/entriesForStudent")
     suspend fun getClassbookEntriesForStudent(
+        @Header("Authorization") authorization: String?,
         @Query("startDate") startDate: String,
         @Query("endDate") endDate: String
     ): Response<ResponseBody>
 
     @GET("api/classreg/entries")
     suspend fun getClassbookEntries(
+        @Header("Authorization") authorization: String?,
         @Query("startDate") startDate: String,
         @Query("endDate") endDate: String
     ): Response<ResponseBody>
 
     // ── Messages ──────────────────────────────────────────────────────────────
-    @GET("api/rest/view/v1/messages")
-    suspend fun getMessages(): Response<ResponseBody>
-
     @GET("api/rest/view/v1/messages")
     suspend fun getMessagesAuth(
         @Header("Authorization") authorization: String
@@ -166,11 +167,14 @@ interface WebUntisService {
     ): Response<ResponseBody>
 
     @GET("api/rest/view/v1/messages/status")
-    suspend fun getMessagesStatus(): Response<ResponseBody>
+    suspend fun getMessagesStatus(
+        @Header("Authorization") authorization: String?
+    ): Response<ResponseBody>
 
     // ── Absences ──────────────────────────────────────────────────────────────
     @GET("api/classreg/absences/students")
     suspend fun getAbsences(
+        @Header("Authorization") authorization: String?,
         @Query("startDate") startDate: String,
         @Query("endDate") endDate: String,
         @Query("studentId") studentId: Int,
@@ -178,7 +182,7 @@ interface WebUntisService {
     ): Response<ResponseBody>
 }
 
-@Keep // Verhindert, dass R8 die Klasse anrührt
+@Keep
 data class JsonRpcRequest(
     @SerializedName("jsonrpc") val jsonrpc: String = "2.0",
     @SerializedName("method") val method: String,
@@ -186,7 +190,7 @@ data class JsonRpcRequest(
     @SerializedName("id") val id: String = System.currentTimeMillis().toString()
 )
 
-@Keep // Verhindert, dass R8 die Klasse anrührt
+@Keep
 data class LoginRequest(
     @SerializedName("user") val user: String,
     @SerializedName("password") val password: String,

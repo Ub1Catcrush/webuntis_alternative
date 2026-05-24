@@ -37,6 +37,11 @@ class WebUntisRepository @Inject constructor(
         set(v) { _bearerToken.set(v) }
     private val loginMutex = Mutex()
 
+    private suspend fun getAuthHeader(): String? {
+        val token = bearerToken ?: fetchBearerToken().getOrNull()
+        return token?.let { "Bearer $it" }
+    }
+
     private suspend fun reAuthSilently(
         server: String, schoolname: String, username: String, password: String
     ): Result<SessionData> {
@@ -188,11 +193,10 @@ class WebUntisRepository @Inject constructor(
     private suspend fun callTimetableV1(
         startIso: String, endIso: String, classId: Int
     ): retrofit2.Response<okhttp3.ResponseBody> {
-        val tokenResult = bearerToken?.let { Result.success(it) } ?: fetchBearerToken()
-        val token = tokenResult.getOrNull()
+        val token = getAuthHeader()
         val resp = if (token != null) {
             service().getTimetableV1Auth(
-                authorization = "Bearer $token",
+                authorization = token,
                 start = startIso, end = endIso,
                 resourceType = "STUDENT", resources = classId.toString()
             )
@@ -203,10 +207,10 @@ class WebUntisRepository @Inject constructor(
             )
         }
         if (resp.code() in listOf(401, 403)) {
-            val freshResult = fetchBearerToken()
-            val fresh = freshResult.getOrNull() ?: return resp
+            bearerToken = null
+            val fresh = getAuthHeader() ?: return resp
             return service().getTimetableV1Auth(
-                authorization = "Bearer $fresh",
+                authorization = fresh,
                 start = startIso, end = endIso,
                 resourceType = "STUDENT", resources = classId.toString()
             )
@@ -443,8 +447,7 @@ class WebUntisRepository @Inject constructor(
         elementId: Int,
         elementType: Int
     ): List<Lesson> {
-        val tokenResult = bearerToken?.let { Result.success(it) } ?: fetchBearerToken()
-        val token = tokenResult.getOrNull() ?: return lessons
+        val token = getAuthHeader() ?: return lessons
         val needsDetail = lessons.take(40)
 
         val detailMap = mutableMapOf<Int, CalendarEntryDetail>()
@@ -464,7 +467,7 @@ class WebUntisRepository @Inject constructor(
                             val startDt = "${dateIso}T${startHH.toString().padStart(2,'0')}:${startMM.toString().padStart(2,'0')}:00"
                             val endDt   = "${dateIso}T${endHH.toString().padStart(2,'0')}:${endMM.toString().padStart(2,'0')}:00"
                             val resp = service().getCalendarEntryDetail(
-                                authorization = "Bearer $token",
+                                authorization = token,
                                 elementId     = elementId,
                                 elementType   = elementType,
                                 startDateTime = startDt,
@@ -527,9 +530,10 @@ class WebUntisRepository @Inject constructor(
         store = { cacheHomework = it },
     ) {
         try {
+            val token = getAuthHeader()
             val start = LocalDate.now().minusDays(14).toUntis()
             val end   = LocalDate.now().plusDays(21).toUntis()
-            val response = service().getHomework(start, end)
+            val response = service().getHomework(token, start, end)
             val raw = rawBody(response) ?: return@withCacheOrFetch Result.success(Pair(emptyList<Homework>(), emptyMap<String, String>()))
             val hwResp: HomeworkResponse = parseJson(raw)
             hwResp.data?.records?.firstOrNull()?.elementIds?.firstOrNull()?.let {
@@ -548,7 +552,7 @@ class WebUntisRepository @Inject constructor(
                         if (hw.attachments.isNullOrEmpty()) return@async hw
                         semaphore.withPermit {
                             try {
-                                val attResp = service().getHomeworkAttachments(hw.id)
+                                val attResp = service().getHomeworkAttachments(token, hw.id)
                                 if (attResp.isSuccessful) {
                                     val attRaw = attResp.body()?.string()?.trim()
                                     if (!attRaw.isNullOrBlank() && attRaw.startsWith("[")) {
@@ -573,6 +577,7 @@ class WebUntisRepository @Inject constructor(
         store = { cacheClassbook = it },
     ) {
         try {
+            val token = getAuthHeader()
             val start = LocalDate.now().minusDays(30).toUntis()
             val end   = LocalDate.now().toUntis()
             val session = sessionManager.session
@@ -583,10 +588,10 @@ class WebUntisRepository @Inject constructor(
             val studentId = sessionManager.studentId
             val response = when {
                 session.personType == 12 && studentId != 0 ->
-                    service().getClassbookEntriesForParent(start, end, studentId)
+                    service().getClassbookEntriesForParent(token, start, end, studentId)
                 else -> {
-                    val r = service().getClassbookEntriesForStudent(start, end)
-                    if (r.isSuccessful) r else service().getClassbookEntries(start, end)
+                    val r = service().getClassbookEntriesForStudent(token, start, end)
+                    if (r.isSuccessful) r else service().getClassbookEntries(token, start, end)
                 }
             }
             val raw = rawBody(response) ?: return@withCacheOrFetch Result.success(emptyList<ClassbookEntry>())
@@ -627,6 +632,7 @@ class WebUntisRepository @Inject constructor(
         store = { cacheEvents = it },
     ) {
         try {
+            val token = getAuthHeader()
             val eventSession = sessionManager.session
             if (eventSession?.personType == 12 && sessionManager.studentId == 0) {
                 getHomework(forceRefresh = false)
@@ -683,14 +689,12 @@ class WebUntisRepository @Inject constructor(
 
     private suspend fun fetchMessagesWithToken(token: String?, label: String): Result<List<Message>> {
         return try {
-            val resp = if (token != null) service().getMessagesAuth("Bearer $token")
-                       else service().getMessages()
+            val resp = service().getMessagesAuth(token ?: "")
             val effective = if (resp.code() in listOf(401, 403)) {
                 bearerToken = null
-                val freshResult = fetchBearerToken()
-                val fresh = freshResult.getOrNull()
-                if (fresh != null) service().getMessagesAuth("Bearer $fresh")
-                else service().getMessages()
+                val fresh = getAuthHeader()
+                if (fresh != null) service().getMessagesAuth(fresh)
+                else resp
             } else resp
             val raw = rawBody(effective) ?: return Result.success(emptyList())
             val parsed: MessagesResponse = parseJson(raw)
@@ -790,8 +794,7 @@ class WebUntisRepository @Inject constructor(
             val session      = sessionManager.session
             val primaryLabel = session?.personName?.takeIf { it.isNotBlank() }
                 ?: session?.accountTypeLabel ?: "Hauptaccount"
-            val tokenResult = bearerToken?.let { Result.success(it) } ?: fetchBearerToken()
-            val token = tokenResult.getOrNull()
+            val token = getAuthHeader()
 
             coroutineScope {
                 val primaryDeferred = async { fetchMessagesWithToken(token, primaryLabel).getOrDefault(emptyList()) }
@@ -883,19 +886,21 @@ class WebUntisRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
-    suspend fun getUnreadMessageCount(): Int {
-        return try {
-            val resp = service().getMessagesStatus()
-            if (!resp.isSuccessful) return 0
-            val raw = resp.body()?.string()?.trim() ?: return 0
-            parseJson<MessagesStatusResponse>(raw).unreadMessagesCount
-        } catch (_: Exception) { 0 }
-    }
+    suspend fun getUnreadMessageCount(): Int = withSessionRetry {
+        try {
+            val token = getAuthHeader()
+            val resp = service().getMessagesStatus(token)
+            if (!resp.isSuccessful) return@withSessionRetry Result.success(0)
+            val raw = resp.body()?.string()?.trim() ?: return@withSessionRetry Result.success(0)
+            Result.success(parseJson<MessagesStatusResponse>(raw).unreadMessagesCount)
+        } catch (_: Exception) { Result.success(0) }
+    }.getOrDefault(0)
 
     suspend fun downloadHomeworkAttachment(homeworkId: Int, attachment: HomeworkAttachment): Result<Pair<ByteArray, String>> {
         return try {
+            val token = getAuthHeader()
             val attId = attachment.id ?: return Result.failure(Exception("Keine Anhang-ID"))
-            val resp = service().downloadHomeworkAttachment(homeworkId, attId)
+            val resp = service().downloadHomeworkAttachment(token, homeworkId, attId)
             if (!resp.isSuccessful) return Result.failure(Exception("HTTP ${resp.code()}"))
             val bytes = resp.body()?.bytes() ?: return Result.failure(Exception("Leere Antwort"))
             val disposition = resp.headers()["Content-Disposition"] ?: ""
@@ -913,6 +918,7 @@ class WebUntisRepository @Inject constructor(
         store = { cacheAbsences = it },
     ) {
         try {
+            val token = getAuthHeader()
             val session = sessionManager.session
             if (session?.personType == 12 && sessionManager.studentId == 0) {
                 getHomework(forceRefresh = false)
@@ -923,7 +929,7 @@ class WebUntisRepository @Inject constructor(
             val yearStart = if (today.monthValue >= 8) today.year else today.year - 1
             val startDate = "${yearStart}0801"
             val endDate   = "${yearStart + 1}0731"
-            val resp = service().getAbsences(startDate, endDate, studentId)
+            val resp = service().getAbsences(token, startDate, endDate, studentId)
             val raw = rawBody(resp) ?: return@withCacheOrFetch Result.success(emptyList<Absence>())
             val absResp: AbsencesResponse = parseJson(raw)
             Result.success(
