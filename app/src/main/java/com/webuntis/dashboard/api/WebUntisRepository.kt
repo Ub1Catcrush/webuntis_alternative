@@ -114,10 +114,12 @@ class WebUntisRepository @Inject constructor(
     private var cacheClassbook:  CacheEntry<List<ClassbookEntry>>?                      = null
     private var cacheAbsences:   CacheEntry<List<Absence>>?                             = null
     private var cacheMessages:   CacheEntry<List<Message>>?                             = null
+    private var cacheAbsencesMeta: CacheEntry<AbsencesMetaData>?                        = null
 
     fun clearAllCaches() {
         cacheTimetable = null; cacheHomework = null; cacheEvents = null
         cacheClassbook = null; cacheAbsences = null; cacheMessages = null
+        cacheAbsencesMeta = null
     }
 
     fun isHomeworkCacheFresh():  Boolean { val e = cacheHomework  ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
@@ -696,8 +698,12 @@ class WebUntisRepository @Inject constructor(
                 if (fresh != null) service().getMessagesAuth(fresh)
                 else resp
             } else resp
-            val raw = rawBody(effective) ?: return Result.success(emptyList())
-            val parsed: MessagesResponse = parseJson(raw)
+            val raw = rawBody(effective) ?: Result.success(emptyList<Message>()).getOrThrow().let { "" } // Should not happen with rawBody logic
+            // Re-evaluating rawBody usage. rawBody throws on HTML/error.
+            val rawActual = try { rawBody(effective) ?: "" } catch(e: Exception) { throw e }
+            if (rawActual.isEmpty()) return Result.success(emptyList())
+
+            val parsed: MessagesResponse = parseJson(rawActual)
             Result.success((parsed.incomingMessages ?: emptyList()).map { it.copy(accountLabel = label) })
         } catch (e: Exception) { Result.failure(e) }
     }
@@ -912,7 +918,9 @@ class WebUntisRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
-    suspend fun getAbsences(forceRefresh: Boolean = false): Result<List<Absence>> = withCacheOrFetch(
+    // ── Absences ──────────────────────────────────────────────────────────────
+
+    suspend fun getAbsences(forceRefresh: Boolean = false, excuseStatusId: Int = -1): Result<List<Absence>> = withCacheOrFetch(
         forceRefresh = forceRefresh,
         cache = { cacheAbsences },
         store = { cacheAbsences = it },
@@ -928,14 +936,67 @@ class WebUntisRepository @Inject constructor(
             val today = LocalDate.now()
             val yearStart = if (today.monthValue >= 8) today.year else today.year - 1
             val startDate = "${yearStart}0801"
-            val endDate   = "${yearStart + 1}0731"
-            val resp = service().getAbsences(token, startDate, endDate, studentId)
+            val endDate   = "${yearStart + 1}1231" // End of next calendar year to be safe
+            val resp = service().getAbsences(token, startDate, endDate, studentId, excuseStatusId)
             val raw = rawBody(resp) ?: return@withCacheOrFetch Result.success(emptyList<Absence>())
             val absResp: AbsencesResponse = parseJson(raw)
             Result.success(
                 (absResp.data?.absences ?: emptyList())
                     .sortedByDescending { it.startDate ?: 0 }
             )
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun getAbsencesMeta(forceRefresh: Boolean = false): Result<AbsencesMetaData> = withCacheOrFetch(
+        forceRefresh = forceRefresh,
+        cache = { cacheAbsencesMeta },
+        store = { cacheAbsencesMeta = it },
+    ) {
+        try {
+            val token = getAuthHeader()
+            val resp = service().getAbsencesMeta(token)
+            val raw = rawBody(resp) ?: return@withCacheOrFetch Result.failure(Exception("Keine Daten"))
+            val metaResp: AbsencesMetaResponse = parseJson(raw)
+            metaResp.data?.let { Result.success(it) } ?: Result.failure(Exception("Ungültige Daten"))
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun createAbsence(req: CreateAbsenceRequest): Result<Absence> = withSessionRetry {
+        try {
+            val token = getAuthHeader()
+            val resp = service().createAbsence(token, req)
+            val raw = rawBody(resp) ?: return@withSessionRetry Result.failure(Exception("Fehler beim Erstellen"))
+            val json = JsonParser.parseString(raw).asJsonObject
+            val resultObj = json.getAsJsonObject("data")?.getAsJsonObject("result")
+            if (resultObj != null) {
+                Result.success(parseJson(resultObj.toString(), object : TypeToken<Absence>() {}))
+            } else {
+                Result.failure(Exception("Fehler: " + (json.getAsJsonObject("data")?.getAsJsonArray("conflicts")?.toString() ?: "Unbekannter Fehler")))
+            }
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun updateAbsence(id: Int, req: CreateAbsenceRequest): Result<Absence> = withSessionRetry {
+        try {
+            val token = getAuthHeader()
+            val resp = service().updateAbsence(token, id, req)
+            val raw = rawBody(resp) ?: return@withSessionRetry Result.failure(Exception("Fehler beim Aktualisieren"))
+            val json = JsonParser.parseString(raw).asJsonObject
+            val resultObj = json.getAsJsonObject("data")?.getAsJsonObject("result")
+            if (resultObj != null) {
+                Result.success(parseJson(resultObj.toString(), object : TypeToken<Absence>() {}))
+            } else {
+                Result.failure(Exception("Fehler beim Aktualisieren"))
+            }
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun deleteAbsence(id: Int): Result<Unit> = withSessionRetry {
+        try {
+            val token = getAuthHeader()
+            val resp = service().deleteAbsence(token, id)
+            if (resp.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Löschen fehlgeschlagen"))
         } catch (e: Exception) { Result.failure(e) }
     }
 }

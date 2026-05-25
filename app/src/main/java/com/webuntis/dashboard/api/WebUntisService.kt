@@ -180,6 +180,30 @@ interface WebUntisService {
         @Query("studentId") studentId: Int,
         @Query("excuseStatusId") excuseStatusId: Int = -1
     ): Response<ResponseBody>
+
+    @GET("api/classreg/absences/meta")
+    suspend fun getAbsencesMeta(
+        @Header("Authorization") authorization: String?
+    ): Response<ResponseBody>
+
+    @POST("api/classreg/absences/students/self")
+    suspend fun createAbsence(
+        @Header("Authorization") authorization: String?,
+        @Body body: CreateAbsenceRequest
+    ): Response<ResponseBody>
+
+    @PUT("api/classreg/absences/students/self/{id}")
+    suspend fun updateAbsence(
+        @Header("Authorization") authorization: String?,
+        @Path("id") id: Int,
+        @Body body: CreateAbsenceRequest
+    ): Response<ResponseBody>
+
+    @DELETE("api/classreg/absences/students/self/{id}")
+    suspend fun deleteAbsence(
+        @Header("Authorization") authorization: String?,
+        @Path("id") id: Int
+    ): Response<ResponseBody>
 }
 
 @Keep
@@ -195,4 +219,15 @@ data class LoginRequest(
     @SerializedName("user") val user: String,
     @SerializedName("password") val password: String,
     @SerializedName("client") val client: String = "android"
+)
+
+@Keep
+data class CreateAbsenceRequest(
+    val startDate: Int,
+    val startTime: Int,
+    val endDate: Int,
+    val endTime: Int,
+    val text: String,
+    val reasonId: Int,
+    val studentId: Int
 )

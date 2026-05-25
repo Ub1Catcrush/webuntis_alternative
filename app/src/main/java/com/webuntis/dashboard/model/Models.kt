@@ -483,7 +483,9 @@ data class Absence(
     val studentName: String?,
     val excuseStatus: String?,
     val isExcused: Boolean?,
-    val createdUser: String?, val updatedUser: String?
+    val createdUser: String?, val updatedUser: String?,
+    val canEdit: Boolean? = false,
+    val reasonId: Int? = 0
 ) {
     val dateLabel: String get() {
         val s = startDate?.toString() ?: return ""
@@ -501,3 +503,17 @@ data class Absence(
     }
     val isFullDay: Boolean get() = startTime == 800 && (endTime == 1600 || endTime == 2000)
 }
+
+data class AbsencesMetaResponse(val data: AbsencesMetaData?)
+data class AbsencesMetaData(
+    val excuseStatuses: List<ExcuseStatus>?,
+    val absenceReasons: List<AbsenceReason>?,
+    val defaultAbsenceReason: Int?,
+    val defaultDate: Int?,
+    val defaultStartTime: Int?,
+    val defaultEndTime: Int?,
+    val canReportAbsence: Boolean?
+)
+
+data class ExcuseStatus(val id: String, val label: String)
+data class AbsenceReason(val id: Int, val name: String)

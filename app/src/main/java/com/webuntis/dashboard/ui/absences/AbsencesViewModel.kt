@@ -2,8 +2,10 @@ package com.webuntis.dashboard.ui.absences
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.webuntis.dashboard.api.CreateAbsenceRequest
 import com.webuntis.dashboard.api.WebUntisRepository
 import com.webuntis.dashboard.model.Absence
+import com.webuntis.dashboard.model.AbsencesMetaData
 import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,19 +21,75 @@ class AbsencesViewModel @Inject constructor(
     private val _state = MutableStateFlow<UiState<List<Absence>>>(UiState.Loading)
     val state: StateFlow<UiState<List<Absence>>> = _state
 
-    init { load() }
+    private val _meta = MutableStateFlow<AbsencesMetaData?>(null)
+    val meta: StateFlow<AbsencesMetaData?> = _meta
+
+    private var currentFilterId: Int = -1
+
+    val isParent: Boolean get() = repository.sessionManager.session?.isParent == true
+    val studentId: Int get() = repository.sessionManager.studentId
+
+    init {
+        load(forceRefresh = false)
+        loadMeta()
+    }
 
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
-            // Guard removed: repository handles cache internally.
-            // Local StateFlow must be updated even if data comes from cache.
             if (forceRefresh || _state.value !is UiState.Success) {
                 _state.value = UiState.Loading
             }
-            repository.getAbsences(forceRefresh).fold(
+            repository.getAbsences(forceRefresh, currentFilterId).fold(
                 onSuccess = { _state.value = UiState.Success(it) },
                 onFailure = { _state.value = UiState.Error(it.message ?: "Fehler beim Laden") }
             )
+        }
+    }
+
+    private fun loadMeta() {
+        viewModelScope.launch {
+            repository.getAbsencesMeta().onSuccess {
+                _meta.value = it
+            }
+        }
+    }
+
+    fun setFilter(statusId: Int) {
+        if (currentFilterId == statusId) return
+        currentFilterId = statusId
+        load(forceRefresh = true)
+    }
+
+    fun createAbsence(req: CreateAbsenceRequest, onResult: (Result<Absence>) -> Unit) {
+        viewModelScope.launch {
+            val res = repository.createAbsence(req)
+            if (res.isSuccess) {
+                repository.clearAllCaches() // Invalidate cache to see new item
+                load(forceRefresh = true)
+            }
+            onResult(res)
+        }
+    }
+
+    fun updateAbsence(id: Int, req: CreateAbsenceRequest, onResult: (Result<Absence>) -> Unit) {
+        viewModelScope.launch {
+            val res = repository.updateAbsence(id, req)
+            if (res.isSuccess) {
+                repository.clearAllCaches()
+                load(forceRefresh = true)
+            }
+            onResult(res)
+        }
+    }
+
+    fun deleteAbsence(id: Int, onResult: (Result<Unit>) -> Unit) {
+        viewModelScope.launch {
+            val res = repository.deleteAbsence(id)
+            if (res.isSuccess) {
+                repository.clearAllCaches()
+                load(forceRefresh = true)
+            }
+            onResult(res)
         }
     }
 }
