@@ -584,6 +584,32 @@ class WebUntisRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
+    suspend fun downloadHomeworkAttachment(
+        homeworkId: Int,
+        attachment: HomeworkAttachment
+    ): Result<Pair<ByteArray, String>> = withSessionRetry {
+        try {
+            val token = getAuthHeader()
+            val attachmentId = attachment.id ?: return@withSessionRetry Result.failure(Exception("Anhang-ID fehlt"))
+            val resp = service().downloadHomeworkAttachment(token, homeworkId, attachmentId)
+            
+            if (resp.headers()["X-WebUntis-Session-Expired"] == "true" || resp.code() == 401) {
+                throw SessionExpiredException()
+            }
+            
+            if (!resp.isSuccessful) {
+                return@withSessionRetry Result.failure(Exception("HTTP ${resp.code()}"))
+            }
+            
+            val bytes = resp.body()?.bytes() ?: return@withSessionRetry Result.failure(Exception("Keine Daten"))
+            val filename = attachment.uploadedFileName ?: attachment.name ?: "Anhang"
+            Result.success(Pair(bytes, filename))
+        } catch (e: Exception) {
+            if (e is SessionExpiredException) throw e
+            Result.failure(e)
+        }
+    }
+
     suspend fun getClassbookEntries(forceRefresh: Boolean = false): Result<List<ClassbookEntry>> = withCacheOrFetch(
         forceRefresh = forceRefresh,
         cache = { cacheClassbook },
@@ -768,6 +794,103 @@ class WebUntisRepository @Inject constructor(
             val resp = service().deleteAbsence(token, id)
             if (resp.isSuccessful) Result.success(Unit)
             else Result.failure(Exception("Löschen fehlgeschlagen"))
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun getMessages(forceRefresh: Boolean = false): Result<List<Message>> = withCacheOrFetch(
+        forceRefresh = forceRefresh,
+        cache = { cacheMessages },
+        store = { cacheMessages = it },
+    ) {
+        try {
+            val token = getAuthHeader() ?: return@withCacheOrFetch Result.failure(Exception("Nicht authentifiziert"))
+            val resp = service().getMessagesAuth(token)
+            val raw = rawBody(resp) ?: return@withCacheOrFetch Result.success(emptyList())
+            val msgsResp: MessagesResponse = parseJson(raw)
+            val messages = ((msgsResp.incomingMessages ?: emptyList()) +
+                    (msgsResp.readConfirmationMessages ?: emptyList()))
+                .sortedByDescending { it.sentDateTime }
+            Result.success(messages)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun getMessageWithAttachments(msg: Message): Result<Message> = withSessionRetry {
+        try {
+            val token = getAuthHeader() ?: return@withSessionRetry Result.failure(Exception("Nicht authentifiziert"))
+            val resp = service().getMessageDetail(msg.id, token)
+            val raw = rawBody(resp) ?: return@withSessionRetry Result.success(msg)
+            val detail: Message = parseJson(raw)
+            Result.success(detail)
+        } catch (e: Exception) {
+            if (e is SessionExpiredException) throw e
+            Result.success(msg) // fall back to original on error
+        }
+    }
+
+    suspend fun downloadAttachment(attachmentId: String, msg: Message): Result<ByteArray> = withSessionRetry {
+        try {
+            val token = getAuthHeader() ?: return@withSessionRetry Result.failure(Exception("Nicht authentifiziert"))
+            val urlResp = service().getAttachmentStorageUrl(attachmentId, token)
+            val urlRaw = rawBody(urlResp) ?: return@withSessionRetry Result.failure(Exception("Keine Download-URL"))
+            val storageUrl: AttachmentStorageUrl = parseJson(urlRaw)
+            val downloadUrl = storageUrl.downloadUrl
+                ?: return@withSessionRetry Result.failure(Exception("Download-URL fehlt"))
+            val headers = storageUrl.additionalHeaders ?: emptyList()
+            val encAlg = headers.firstOrNull { it.key == "x-amz-server-side-encryption-customer-algorithm" }?.value ?: ""
+            val encKey = headers.firstOrNull { it.key == "x-amz-server-side-encryption-customer-key" }?.value ?: ""
+            val encMd5 = headers.firstOrNull { it.key == "x-amz-server-side-encryption-customer-key-md5" }?.value ?: ""
+            val dlResp = service().downloadFromStorage(downloadUrl, encAlg, encKey, encMd5)
+            if (!dlResp.isSuccessful) return@withSessionRetry Result.failure(Exception("HTTP ${dlResp.code()}"))
+            val bytes = dlResp.body()?.bytes() ?: return@withSessionRetry Result.failure(Exception("Keine Daten"))
+            Result.success(bytes)
+        } catch (e: Exception) {
+            if (e is SessionExpiredException) throw e
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Verifies the given credentials against the WebUntis server and, if successful,
+     * saves them as the second account in [SessionManager].
+     * Returns a human-readable summary string for the UI on success.
+     */
+    suspend fun verifyAndSaveSecondAccount(username: String, password: String, label: String): Result<String> {
+        val session = sessionManager.session
+            ?: return Result.failure(Exception("Nicht angemeldet — bitte zuerst einloggen"))
+        return try {
+            val rpc = loginViaJsonRpc(session.server, session.schoolname, username, password)
+            val result = if (rpc.isSuccess) rpc else loginViaRest(session.server, session.schoolname, username, password)
+            result.fold(
+                onSuccess = { sessionData ->
+                    val second = SessionManager.SecondAccount(
+                        username   = username,
+                        password   = password,
+                        label      = label.trim(),
+                        personType = sessionData.personType,
+                        personName = sessionData.personName
+                    )
+                    sessionManager.secondAccount = second
+                    // Restore primary session so the main account stays logged in
+                    login(session.server, session.schoolname,
+                        sessionManager.storedCredentials?.first ?: session.username,
+                        sessionManager.storedCredentials?.second ?: "")
+                    val info = buildString {
+                        if (second.personName.isNotBlank()) append(second.personName)
+                        if (second.accountTypeLabel.isNotBlank()) {
+                            if (isNotEmpty()) append(" · ")
+                            append(second.accountTypeLabel)
+                        }
+                        if (second.label.isNotBlank()) {
+                            if (isNotEmpty()) append(" (")
+                            append(second.label)
+                            append(")")
+                        }
+                        if (isEmpty()) append(username)
+                    }
+                    Result.success(info)
+                },
+                onFailure = { Result.failure(it) }
+            )
         } catch (e: Exception) { Result.failure(e) }
     }
 }

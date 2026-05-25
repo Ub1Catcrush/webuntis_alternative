@@ -1,14 +1,27 @@
 package com.webuntis.dashboard.ui.homework
 
+import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.util.Log
+import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.webuntis.dashboard.api.WebUntisRepository
 import com.webuntis.dashboard.model.Homework
+import com.webuntis.dashboard.model.HomeworkAttachment
 import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
@@ -46,7 +59,9 @@ class HomeworkViewModel @Inject constructor(
                 _state.value = UiState.Loading
             }
             repository.getHomework(forceRefresh).fold(
-                onSuccess = { (homeworks, subjectMap) ->
+                onSuccess = { data: Pair<List<Homework>, Map<String, String>> ->
+                    val homeworks = data.first
+                    val subjectMap = data.second
                     val todayInt = LocalDate.now()
                         .format(DateTimeFormatter.ofPattern("yyyyMMdd")).toInt()
                     
@@ -69,7 +84,9 @@ class HomeworkViewModel @Inject constructor(
                         }
                     _state.value = UiState.Success(items)
                 },
-                onFailure = { _state.value = UiState.Error(it.message ?: "Fehler beim Laden") }
+                onFailure = { e: Throwable ->
+                    _state.value = UiState.Error(e.message ?: "Fehler beim Laden")
+                }
             )
         }
     }
@@ -85,62 +102,63 @@ class HomeworkViewModel @Inject constructor(
     suspend fun getUnreadCount(): Int = repository.getUnreadMessageCount()
 
     fun downloadAttachment(
-        hw: com.webuntis.dashboard.model.Homework,
-        att: com.webuntis.dashboard.model.HomeworkAttachment,
-        context: android.content.Context
+        hw: Homework,
+        att: HomeworkAttachment,
+        context: Context
     ) {
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val result = repository.downloadHomeworkAttachment(hw.id, att)
-            result.fold(
-                onSuccess = { (bytes, filename) ->
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.downloadHomeworkAttachment(hw.id, att).fold(
+                onSuccess = { res: Pair<ByteArray, String> ->
+                    val bytes = res.first
+                    val filename = res.second
                     try {
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                            val values = android.content.ContentValues().apply {
-                                put(android.provider.MediaStore.Downloads.DISPLAY_NAME, filename)
-                                put(android.provider.MediaStore.Downloads.MIME_TYPE,
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            val values = ContentValues().apply {
+                                put(MediaStore.Downloads.DISPLAY_NAME, filename)
+                                put(MediaStore.Downloads.MIME_TYPE,
                                     att.contentType ?: "application/octet-stream")
-                                put(android.provider.MediaStore.Downloads.RELATIVE_PATH,
-                                    android.os.Environment.DIRECTORY_DOWNLOADS)
-                                put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+                                put(MediaStore.Downloads.RELATIVE_PATH,
+                                    Environment.DIRECTORY_DOWNLOADS)
+                                put(MediaStore.Downloads.IS_PENDING, 1)
                             }
-                            val uri = context.contentResolver.insert(
-                                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                                ?: return@launch
+                            val uri: Uri = context.contentResolver.insert(
+                                MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                                ?: return@fold
                             context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
                             values.clear()
-                            values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
+                            values.put(MediaStore.Downloads.IS_PENDING, 0)
                             context.contentResolver.update(uri, values, null, null)
 
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                            withContext(Dispatchers.Main) {
+                                val intent = Intent(Intent.ACTION_VIEW).apply {
                                     setDataAndType(uri, att.contentType ?: "*/*")
-                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
                                 runCatching { context.startActivity(intent) }
                             }
                         } else {
                             @Suppress("DEPRECATION")
-                            val dir = android.os.Environment.getExternalStoragePublicDirectory(
-                                android.os.Environment.DIRECTORY_DOWNLOADS)
+                            val dir = Environment.getExternalStoragePublicDirectory(
+                                Environment.DIRECTORY_DOWNLOADS)
                             dir.mkdirs()
-                            val file = java.io.File(dir, filename)
+                            val file = File(dir, filename)
                             file.writeBytes(bytes)
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                val uri = androidx.core.content.FileProvider.getUriForFile(
+                            withContext(Dispatchers.Main) {
+                                val uri = FileProvider.getUriForFile(
                                     context, context.packageName + ".fileprovider", file)
-                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                val intent = Intent(Intent.ACTION_VIEW).apply {
                                     setDataAndType(uri, att.contentType ?: "*/*")
-                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
                                 runCatching { context.startActivity(intent) }
                             }
                         }
                     } catch (e: Exception) {
-                        android.util.Log.e("Homework", "Download save failed", e)
+                        Log.e("Homework", "Download save failed", e)
                     }
                 },
-                onFailure = { e ->
-                    android.util.Log.e("Homework", "Download failed: ${e.message}")
+                onFailure = { e: Throwable ->
+                    Log.e("Homework", "Download failed: ${e.message}")
                 }
             )
         }

@@ -140,7 +140,14 @@ class SessionManager @Inject constructor(
         val label: String,
         val personType: Int = 0,
         val personName: String = ""
-    )
+    ) {
+        val accountTypeLabel: String get() = when (personType) {
+            2    -> "Lehrer"
+            5    -> "Schüler"
+            12   -> "Eltern"
+            else -> "Unbekannt"
+        }
+    }
 
     var secondAccount: SecondAccount?
         get() {
