@@ -65,6 +65,10 @@
     <string name="label_homework_open">%d offen</string>
     <string name="label_homework_all_done">Alles erledigt ✓</string>
     <string name="label_no_homework_short">Keine Hausaufgaben</string>
+    <string name="label_no_homework_past">Keine vergangenen Hausaufgaben gefunden</string>
+    <string name="label_homework_past_count">%d erledigt / vergangen</string>
+    <string name="label_tab_homework_current">Aktuelle</string>
+    <string name="label_tab_homework_past">Vergangene</string>
     <string name="error_homework_prefix">Hausaufgaben: %s</string>
 
     <!-- Events / Termine -->

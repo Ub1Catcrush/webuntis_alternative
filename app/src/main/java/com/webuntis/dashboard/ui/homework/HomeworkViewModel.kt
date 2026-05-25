@@ -27,14 +27,21 @@ class HomeworkViewModel @Inject constructor(
     private val _state = MutableStateFlow<UiState<List<HomeworkUiItem>>>(UiState.Loading)
     val state: StateFlow<UiState<List<HomeworkUiItem>>> = _state
 
+    private val _showPast = MutableStateFlow(false)
+    val showPast: StateFlow<Boolean> = _showPast
+
     private val doneIds = mutableSetOf<Int>()
 
     init { load() }
 
+    fun setShowPast(show: Boolean) {
+        if (_showPast.value == show) return
+        _showPast.value = show
+        load(forceRefresh = false)
+    }
+
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
-            // Guard removed: repository.getHomework handles cache internally via withCacheOrFetch.
-            // We MUST proceed to ensure the local StateFlow receives data even if it's from cache.
             if (forceRefresh || _state.value !is UiState.Success) {
                 _state.value = UiState.Loading
             }
@@ -42,9 +49,18 @@ class HomeworkViewModel @Inject constructor(
                 onSuccess = { (homeworks, subjectMap) ->
                     val todayInt = LocalDate.now()
                         .format(DateTimeFormatter.ofPattern("yyyyMMdd")).toInt()
+                    
                     val items = homeworks
-                        .filter { hw -> (hw.dueDate ?: Int.MAX_VALUE) >= todayInt }
-                        .sortedBy { hw -> hw.dueDate ?: Int.MAX_VALUE }
+                        .filter { hw -> 
+                            if (_showPast.value) {
+                                (hw.dueDate ?: 0) < todayInt
+                            } else {
+                                (hw.dueDate ?: Int.MAX_VALUE) >= todayInt
+                            }
+                        }
+                        .sortedBy { hw -> 
+                            if (_showPast.value) -(hw.dueDate ?: 0) else (hw.dueDate ?: Int.MAX_VALUE)
+                        }
                         .map { hw ->
                             val subject = subjectMap[hw.lessonId?.toString()]
                                 ?: hw.subject
@@ -79,7 +95,6 @@ class HomeworkViewModel @Inject constructor(
                 onSuccess = { (bytes, filename) ->
                     try {
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                            // API 29+ : MediaStore.Downloads (no WRITE_EXTERNAL_STORAGE needed)
                             val values = android.content.ContentValues().apply {
                                 put(android.provider.MediaStore.Downloads.DISPLAY_NAME, filename)
                                 put(android.provider.MediaStore.Downloads.MIME_TYPE,
@@ -104,7 +119,6 @@ class HomeworkViewModel @Inject constructor(
                                 runCatching { context.startActivity(intent) }
                             }
                         } else {
-                            // API 26-28: legacy external storage (requires WRITE_EXTERNAL_STORAGE)
                             @Suppress("DEPRECATION")
                             val dir = android.os.Environment.getExternalStoragePublicDirectory(
                                 android.os.Environment.DIRECTORY_DOWNLOADS)

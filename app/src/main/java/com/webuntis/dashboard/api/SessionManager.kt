@@ -25,7 +25,6 @@ class SessionManager @Inject constructor(
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: Exception) {
-            // Encryption unavailable (e.g. corrupted KeyStore on some devices).
             android.util.Log.e("SessionManager",
                 "EncryptedSharedPreferences unavailable — credentials will not be persisted", e)
             object : android.content.SharedPreferences {
@@ -88,7 +87,6 @@ class SessionManager @Inject constructor(
             }
         }
 
-    /** Persistent storage for the student/element ID (especially critical for Parent accounts). */
     var studentId: Int
         get() = prefs.getInt(KEY_STUDENT_ID, 0)
         set(v) = prefs.edit().putInt(KEY_STUDENT_ID, v).apply()
@@ -99,6 +97,8 @@ class SessionManager @Inject constructor(
         val ageMs = System.currentTimeMillis() - ts
         return ageMs < SESSION_TTL_MS
     }
+
+    fun getSessionTime(): Long = prefs.getLong(KEY_SESSION_TIME, 0L)
 
     fun touchSession() {
         prefs.edit().putLong(KEY_SESSION_TIME, System.currentTimeMillis()).apply()
@@ -140,12 +140,7 @@ class SessionManager @Inject constructor(
         val label: String,
         val personType: Int = 0,
         val personName: String = ""
-    ) {
-        val accountTypeLabel: String get() = when (personType) {
-            2    -> "Lehrer"; 5 -> "Schüler"; 12 -> "Eltern"
-            else -> ""
-        }
-    }
+    )
 
     var secondAccount: SecondAccount?
         get() {

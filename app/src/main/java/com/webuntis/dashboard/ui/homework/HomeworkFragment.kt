@@ -9,6 +9,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.tabs.TabLayout
 import com.webuntis.dashboard.R
 import com.webuntis.dashboard.databinding.FragmentHomeworkBinding
 import com.webuntis.dashboard.model.UiState
@@ -40,6 +41,14 @@ class HomeworkFragment : Fragment() {
         binding.recyclerView.adapter = adapter
         binding.swipeRefresh.setOnRefreshListener { viewModel.load(forceRefresh = true) }
 
+        binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                viewModel.setShowPast(tab?.position == 1)
+            }
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
+
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.state.collect { state ->
@@ -52,13 +61,20 @@ class HomeworkFragment : Fragment() {
                         }
                         is UiState.Success -> {
                             binding.progressBar.isVisible = false
-                            val open = state.data.count { !it.isDone }
-                            binding.toolbar.subtitle =
-                                if (open > 0) getString(R.string.label_homework_open, open) else getString(R.string.label_homework_all_done)
+                            
+                            val isPast = viewModel.showPast.value
+                            if (isPast) {
+                                binding.toolbar.subtitle = getString(R.string.label_homework_past_count, state.data.size)
+                            } else {
+                                val open = state.data.count { !it.isDone }
+                                binding.toolbar.subtitle =
+                                    if (open > 0) getString(R.string.label_homework_open, open) else getString(R.string.label_homework_all_done)
+                            }
+
                             if (state.data.isEmpty()) {
                                 binding.recyclerView.isVisible = false
                                 binding.emptyView.isVisible = true
-                                binding.emptyView.text = getString(R.string.label_no_homework_short)
+                                binding.emptyView.text = if (isPast) "Keine vergangenen Hausaufgaben gefunden" else getString(R.string.label_no_homework_short)
                             } else {
                                 binding.recyclerView.isVisible = true
                                 binding.emptyView.isVisible = false
