@@ -797,26 +797,111 @@ class WebUntisRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
+    @Volatile private var secondBearerToken: String? = null
+
+    private suspend fun fetchMessagesWithToken(token: String, label: String): List<Message> {
+        val resp = service().getMessagesAuth(token)
+        val effective = if (resp.code() in listOf(401, 403)) {
+            // Token abgelaufen — neu holen und nochmal versuchen
+            val fresh = getAuthHeader() ?: return emptyList()
+            service().getMessagesAuth(fresh)
+        } else resp
+        val raw = rawBody(effective) ?: return emptyList()
+        val msgsResp: MessagesResponse = parseJson(raw)
+        return ((msgsResp.incomingMessages ?: emptyList()) +
+                (msgsResp.readConfirmationMessages ?: emptyList()))
+            .map { it.copy(accountLabel = label) }
+    }
+
+    private suspend fun fetchMessagesForSecondAccount(
+        server: String, schoolname: String,
+        username: String, password: String, label: String
+    ): List<Message> {
+        return try {
+            val svc  = retrofitFactory.create(server)
+            val body = JsonRpcRequest(
+                method = "authenticate",
+                params = mapOf("user" to username, "password" to password, "client" to "android")
+            )
+            val loginResp = svc.jsonRpcLogin(schoolname, body)
+            val loginRaw  = loginResp.body()?.string()?.trim() ?: return emptyList()
+            val rpcResp: JsonRpcResponse<AuthResult> =
+                parseJson(loginRaw, object : TypeToken<JsonRpcResponse<AuthResult>>() {})
+            val authResult = rpcResp.result ?: return emptyList()
+
+            val resolvedLabel = label.ifBlank {
+                authResult.personName?.takeIf { it.isNotBlank() } ?: username
+            }
+            // Metadaten des 2. Accounts aktualisieren (Name/Typ können sich ändern)
+            sessionManager.secondAccount?.let { existing ->
+                sessionManager.secondAccount = existing.copy(
+                    personType = authResult.personType ?: 0,
+                    personName = authResult.personName ?: "",
+                    label = resolvedLabel
+                )
+            }
+
+            val bearerResp = svc.getBearerToken()
+            val bearerRaw  = bearerResp.body()?.string()?.trim() ?: return emptyList()
+            val token = if (bearerRaw.startsWith("{"))
+                com.google.gson.JsonParser.parseString(bearerRaw).asJsonObject.get("token")?.asString ?: bearerRaw
+            else bearerRaw.trim('"')
+            secondBearerToken = token
+
+            val msgResp = svc.getMessagesAuth("Bearer $token")
+            val raw     = rawBody(msgResp) ?: return emptyList()
+            val msgsResp: MessagesResponse = parseJson(raw)
+            ((msgsResp.incomingMessages ?: emptyList()) +
+                    (msgsResp.readConfirmationMessages ?: emptyList()))
+                .map { it.copy(accountLabel = resolvedLabel) }
+        } catch (e: Exception) {
+            android.util.Log.e("WebUntis", "2. Account – Nachrichten konnten nicht geladen werden", e)
+            emptyList()
+        }
+    }
+
+    /** Gibt den Bearer-Token (inkl. "Bearer "-Prefix) zurück, der zu dieser Nachricht gehört. */
+    private fun tokenForMessage(msg: Message): String? {
+        val raw = bearerToken ?: return null
+        val primaryHeader = "Bearer $raw"
+        val secondLabel = sessionManager.secondAccount?.label ?: return primaryHeader
+        return if (!msg.accountLabel.isNullOrBlank() && msg.accountLabel == secondLabel)
+            secondBearerToken?.let { "Bearer $it" } ?: primaryHeader
+        else primaryHeader
+    }
+
     suspend fun getMessages(forceRefresh: Boolean = false): Result<List<Message>> = withCacheOrFetch(
         forceRefresh = forceRefresh,
         cache = { cacheMessages },
         store = { cacheMessages = it },
     ) {
         try {
-            val token = getAuthHeader() ?: return@withCacheOrFetch Result.failure(Exception("Nicht authentifiziert"))
-            val resp = service().getMessagesAuth(token)
-            val raw = rawBody(resp) ?: return@withCacheOrFetch Result.success(emptyList())
-            val msgsResp: MessagesResponse = parseJson(raw)
-            val messages = ((msgsResp.incomingMessages ?: emptyList()) +
-                    (msgsResp.readConfirmationMessages ?: emptyList()))
+            val session      = sessionManager.session
+            val primaryLabel = session?.personName?.takeIf { it.isNotBlank() }
+                ?: session?.accountTypeLabel ?: "Hauptaccount"
+
+            val token   = getAuthHeader() ?: return@withCacheOrFetch Result.failure(Exception("Nicht authentifiziert"))
+            val primary = fetchMessagesWithToken(token, primaryLabel)
+            val second  = sessionManager.secondAccount?.let { acc ->
+                val server = session?.server ?: return@let emptyList()
+                fetchMessagesForSecondAccount(server, session.schoolname,
+                    acc.username, acc.password, acc.label)
+            } ?: emptyList()
+
+            // Deduplizierung: IDs sind nur innerhalb eines Accounts eindeutig.
+            // accountLabel + id als zusammengesetzter Key verhindert, dass Nachrichten
+            // des 2. Accounts fälschlicherweise herausgefiltert werden.
+            val seenKeys = mutableSetOf<String>()
+            val merged   = (primary + second)
                 .sortedByDescending { it.sentDateTime }
-            Result.success(messages)
+                .filter { msg -> seenKeys.add("${msg.accountLabel}|${msg.id}") }
+            Result.success(merged)
         } catch (e: Exception) { Result.failure(e) }
     }
 
     suspend fun getMessageWithAttachments(msg: Message): Result<Message> = withSessionRetry {
         try {
-            val token = getAuthHeader() ?: return@withSessionRetry Result.failure(Exception("Nicht authentifiziert"))
+            val token = tokenForMessage(msg) ?: return@withSessionRetry Result.failure(Exception("Nicht authentifiziert"))
             val resp = service().getMessageDetail(msg.id, token)
             val raw = rawBody(resp) ?: return@withSessionRetry Result.success(msg)
             val detail: Message = parseJson(raw)
@@ -829,7 +914,7 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun downloadAttachment(attachmentId: String, msg: Message): Result<ByteArray> = withSessionRetry {
         try {
-            val token = getAuthHeader() ?: return@withSessionRetry Result.failure(Exception("Nicht authentifiziert"))
+            val token = tokenForMessage(msg) ?: return@withSessionRetry Result.failure(Exception("Nicht authentifiziert"))
             val urlResp = service().getAttachmentStorageUrl(attachmentId, token)
             val urlRaw = rawBody(urlResp) ?: return@withSessionRetry Result.failure(Exception("Keine Download-URL"))
             val storageUrl: AttachmentStorageUrl = parseJson(urlRaw)
