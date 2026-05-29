@@ -147,4 +147,11 @@
     <string name="settings_cache_off">Kein Caching</string>
     <string name="settings_cache_minutes">%d Minuten</string>
 
+
+    <!-- Messages tabs / compose -->
+    <string name="messages_tab_inbox">Eingang</string>
+    <string name="messages_tab_sent">Gesendet</string>
+    <string name="messages_tab_drafts">Entwürfe</string>
+    <string name="messages_compose">Neue Nachricht</string>
+    <string name="messages_reply">Antworten</string>
 </resources>

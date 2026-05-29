@@ -445,6 +445,10 @@ data class Message(
     val isMessageRead: Boolean?,
     val isReplyAllowed: Boolean?,
     val isReply: Boolean?,
+    /** "INBOX", "SENT", "DRAFT" — set by repository, not from API */
+    val storedIn: String? = null,
+    /** Recipients for sent/draft messages */
+    val recipientPersons: List<MessageRecipient>? = null,
     @com.google.gson.annotations.SerializedName("_accountLabel")
     val accountLabel: String? = null,
     @com.google.gson.annotations.SerializedName("_attachments")
@@ -453,6 +457,8 @@ data class Message(
 ) {
     val attachments: List<Attachment> get() = attachmentList ?: emptyList()
     val label: String get() = accountLabel ?: ""
+    val isSent:  Boolean get() = storedIn == "SENT"
+    val isDraft: Boolean get() = storedIn == "DRAFT"
     val sentDateFormatted: String get() {
         if (sentDateTime.isNullOrBlank()) return ""
         val parts = sentDateTime.split("T")
@@ -462,6 +468,13 @@ data class Message(
     }
 }
 
+data class MessageRecipient(
+    val personId: Int?,
+    val displayName: String?,
+    val userId: Int?,
+    val imageUrl: String? = null
+)
+
 data class MessageSender(
     val displayName: String?,
     val userId: Int?,
@@ -469,6 +482,24 @@ data class MessageSender(
 )
 
 data class MessagesStatusResponse(val unreadMessagesCount: Int)
+// ─── TEACHERS ────────────────────────────────────────────────────────────────
+
+data class Teacher(
+    val id: Int,
+    val name: String?,       // short name e.g. "MU"
+    val longName: String?,
+    val title: String? = null,
+    val active: Boolean? = true
+) {
+    val displayName: String get() = when {
+        !longName.isNullOrBlank() && !name.isNullOrBlank() -> "$longName ($name)"
+        !longName.isNullOrBlank() -> longName!!
+        !name.isNullOrBlank()     -> name!!
+        else -> "Unbekannt"
+    }
+}
+
+
 
 // ─── ABSENCES ─────────────────────────────────────────────────────────────────
 

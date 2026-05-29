@@ -13,6 +13,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.StringReader
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -150,6 +152,9 @@ class WebUntisRepository @Inject constructor(
     private var cacheClassbook:    CacheEntry<List<ClassbookEntry>>?                      = null
     private var cacheAbsences:     CacheEntry<List<Absence>>?                             = null
     private var cacheMessages:     CacheEntry<List<Message>>?                             = null
+    private var cacheSentMessages: CacheEntry<List<Message>>?                             = null
+    private var cacheDraftMessages:CacheEntry<List<Message>>?                             = null
+    private var cacheTeachers:     List<com.webuntis.dashboard.model.Teacher>?            = null
     private var cacheAbsencesMeta: CacheEntry<AbsencesMetaData>?                        = null
 
     fun clearAllCaches() {
@@ -159,7 +164,7 @@ class WebUntisRepository @Inject constructor(
 
     private fun clearAllDataCaches() {
         cacheTimetable = null; cacheHomework = null; cacheEvents = null
-        cacheClassbook = null; cacheAbsences = null; cacheMessages = null
+        cacheClassbook = null; cacheAbsences = null; cacheMessages = null; cacheSentMessages = null; cacheDraftMessages = null; cacheTeachers = null
         cacheAbsencesMeta = null
     }
 
@@ -905,7 +910,13 @@ class WebUntisRepository @Inject constructor(
             val resp = service().getMessageDetail(msg.id, token)
             val raw = rawBody(resp) ?: return@withSessionRetry Result.success(msg)
             val detail: Message = parseJson(raw)
-            Result.success(detail)
+            // Preserve accountLabel so thread messages from 2nd account stay attributed
+            val enriched = detail.copy(
+                accountLabel = msg.accountLabel,
+                storedIn     = msg.storedIn,
+                replyHistory = detail.replyHistory
+            )
+            Result.success(enriched)
         } catch (e: Exception) {
             if (e is SessionExpiredException) throw e
             Result.success(msg) // fall back to original on error
@@ -934,7 +945,177 @@ class WebUntisRepository @Inject constructor(
         }
     }
 
-    /**
+
+    // ─── SENT MESSAGES ────────────────────────────────────────────────────────
+
+    suspend fun getSentMessages(forceRefresh: Boolean = false): Result<List<Message>> = withCacheOrFetch(
+        forceRefresh = forceRefresh,
+        cache = { cacheSentMessages },
+        store = { cacheSentMessages = it },
+    ) {
+        try {
+            val session      = sessionManager.session
+            val primaryLabel = session?.personName?.takeIf { it.isNotBlank() } ?: session?.accountTypeLabel ?: "Hauptaccount"
+            val token        = getAuthHeader() ?: return@withCacheOrFetch Result.failure(Exception("Nicht authentifiziert"))
+            val primary      = fetchFolderMessages(token, "SENT", primaryLabel)
+            val second       = sessionManager.secondAccount?.let { acc ->
+                val server = session?.server ?: return@let emptyList<Message>()
+                fetchFolderForSecondAccount(server, session.schoolname, acc.username, acc.password, acc.label, "SENT")
+            } ?: emptyList()
+            Result.success((primary + second).sortedByDescending { it.sentDateTime })
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    // ─── DRAFTS ───────────────────────────────────────────────────────────────
+
+    suspend fun getDrafts(forceRefresh: Boolean = false): Result<List<Message>> = withCacheOrFetch(
+        forceRefresh = forceRefresh,
+        cache = { cacheDraftMessages },
+        store = { cacheDraftMessages = it },
+    ) {
+        try {
+            val session      = sessionManager.session
+            val primaryLabel = session?.personName?.takeIf { it.isNotBlank() } ?: session?.accountTypeLabel ?: "Hauptaccount"
+            val token        = getAuthHeader() ?: return@withCacheOrFetch Result.failure(Exception("Nicht authentifiziert"))
+            val primary      = fetchFolderMessages(token, "DRAFTS", primaryLabel)
+            val second       = sessionManager.secondAccount?.let { acc ->
+                val server = session?.server ?: return@let emptyList<Message>()
+                fetchFolderForSecondAccount(server, session.schoolname, acc.username, acc.password, acc.label, "DRAFTS")
+            } ?: emptyList()
+            Result.success((primary + second).sortedByDescending { it.sentDateTime })
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    // ─── FOLDER HELPERS ───────────────────────────────────────────────────────
+
+    private suspend fun fetchFolderMessages(token: String, folder: String, label: String): List<Message> {
+        val resp = when (folder) {
+            "SENT"   -> service().getSentMessagesAuth(token)
+            "DRAFTS" -> service().getDraftsAuth(token)
+            else     -> return emptyList()
+        }
+        val raw = rawBody(resp) ?: return emptyList()
+        val jsonObj = com.google.gson.JsonParser.parseString(raw).asJsonObject
+        val arr = jsonObj.getAsJsonArray("sentMessages")
+            ?: jsonObj.getAsJsonArray("draftMessages")
+            ?: jsonObj.getAsJsonArray("outgoingMessages")
+            ?: jsonObj.getAsJsonArray("incomingMessages")
+            ?: return emptyList()
+        val type = object : TypeToken<List<Message>>() {}.type
+        val msgs: List<Message> = com.google.gson.Gson().fromJson(arr, type)
+        val storedIn = if (folder == "DRAFTS") "DRAFT" else "SENT"
+        return msgs.map { it.copy(accountLabel = label.takeIf { l -> l.isNotBlank() }, storedIn = storedIn) }
+    }
+
+    private suspend fun fetchFolderForSecondAccount(
+        server: String, schoolname: String,
+        username: String, password: String, label: String, folder: String
+    ): List<Message> {
+        return try {
+            val svc = retrofitFactory.create(server)
+            val loginBody = JsonRpcRequest(
+                method = "authenticate",
+                params = mapOf("user" to username, "password" to password, "client" to "android")
+            )
+            val loginRaw = svc.jsonRpcLogin(schoolname, loginBody).body()?.string()?.trim() ?: return emptyList()
+            val rpcResp: JsonRpcResponse<AuthResult> =
+                parseJson(loginRaw, object : TypeToken<JsonRpcResponse<AuthResult>>() {})
+            rpcResp.result ?: return emptyList()
+            val bearerRaw = svc.getBearerToken().body()?.string()?.trim() ?: return emptyList()
+            val token = if (bearerRaw.startsWith("{"))
+                com.google.gson.JsonParser.parseString(bearerRaw).asJsonObject.get("token")?.asString ?: bearerRaw
+            else bearerRaw.trim('"')
+            fetchFolderMessages("Bearer $token", folder, label)
+        } catch (e: Exception) {
+            android.util.Log.e("WebUntis", "2. Account – $folder fehlgeschlagen", e)
+            emptyList()
+        }
+    }
+
+    // ─── SEND MESSAGE ─────────────────────────────────────────────────────────
+
+    suspend fun sendMessage(
+        subject: String,
+        content: String,
+        recipientPersonIds: List<Int>,
+        allowReply: Boolean = true,
+        replyToMsgId: Int? = null,
+        fromSecondAccount: Boolean = false
+    ): Result<Unit> {
+        return try {
+            val token: String = if (fromSecondAccount) {
+                val acc     = sessionManager.secondAccount ?: return Result.failure(Exception("Kein 2. Account"))
+                val session = sessionManager.session       ?: return Result.failure(Exception("Nicht eingeloggt"))
+                val svc     = retrofitFactory.create(session.server)
+                val loginBody = JsonRpcRequest(
+                    method = "authenticate",
+                    params = mapOf("user" to acc.username, "password" to acc.password, "client" to "android")
+                )
+                svc.jsonRpcLogin(session.schoolname, loginBody)
+                val bearerRaw = svc.getBearerToken().body()?.string()?.trim()
+                    ?: return Result.failure(Exception("Kein Token"))
+                val raw = if (bearerRaw.startsWith("{"))
+                    com.google.gson.JsonParser.parseString(bearerRaw).asJsonObject.get("token")?.asString ?: bearerRaw
+                else bearerRaw.trim('"')
+                "Bearer $raw"
+            } else {
+                getAuthHeader() ?: return Result.failure(Exception("Nicht authentifiziert"))
+            }
+
+            val gson    = com.google.gson.Gson()
+            val payload = buildString {
+                append("{")
+                append("\"subject\":${gson.toJson(subject)},")
+                append("\"content\":${gson.toJson(content)},")
+                append("\"recipientPersonIds\":${gson.toJson(recipientPersonIds)},")
+                append("\"allowReply\":$allowReply")
+                if (replyToMsgId != null) append(",\"replyToMessageId\":$replyToMsgId")
+                append("}")
+            }
+            val reqBody =
+                payload.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+            service().sendMessage(token, reqBody)
+            // Invalidate inbox + sent caches
+            cacheMessages = null; cacheSentMessages = null
+            Result.success(Unit)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    // ─── DELETE MESSAGE / DRAFT ───────────────────────────────────────────────
+
+    suspend fun deleteMessage(msg: Message): Result<Unit> {
+        return try {
+            val token = tokenForMessage(msg) ?: return Result.failure(Exception("Nicht authentifiziert"))
+            service().deleteMessage(token, msg.id)
+            when {
+                msg.isDraft -> cacheDraftMessages = null
+                msg.isSent  -> cacheSentMessages  = null
+                else        -> cacheMessages      = null
+            }
+            Result.success(Unit)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    // ─── TEACHERS ─────────────────────────────────────────────────────────────
+
+    suspend fun getTeachers(forceRefresh: Boolean = false): Result<List<com.webuntis.dashboard.model.Teacher>> {
+        cacheTeachers?.takeIf { !forceRefresh }?.let { return Result.success(it) }
+        return try {
+            val token = getAuthHeader() ?: return Result.failure(Exception("Nicht authentifiziert"))
+            val resp  = service().getTeachersAuth(token)
+            val raw   = rawBody(resp) ?: return Result.success(emptyList())
+            val jsonEl = com.google.gson.JsonParser.parseString(raw)
+            val arr = if (jsonEl.isJsonArray) jsonEl.asJsonArray
+                      else jsonEl.asJsonObject?.getAsJsonArray("teachers") ?: return Result.success(emptyList())
+            val type = object : TypeToken<List<com.webuntis.dashboard.model.Teacher>>() {}.type
+            val teachers: List<com.webuntis.dashboard.model.Teacher> = com.google.gson.Gson().fromJson(arr, type)
+            val active = teachers.filter { it.active != false }.sortedBy { it.longName ?: it.name ?: "" }
+            cacheTeachers = active
+            Result.success(active)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+        /**
      * Verifies the given credentials against the WebUntis server and, if successful,
      * saves them as the second account in [SessionManager].
      * Returns a human-readable summary string for the UI on success.

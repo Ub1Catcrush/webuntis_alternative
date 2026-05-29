@@ -171,6 +171,40 @@ interface WebUntisService {
         @Header("Authorization") authorization: String?
     ): Response<ResponseBody>
 
+    // Sent messages
+    @GET("api/rest/view/v1/messages/sent")
+    suspend fun getSentMessagesAuth(
+        @Header("Authorization") authorization: String,
+        @Query("folder") folder: String = "SENT"
+    ): Response<ResponseBody>
+
+    // Draft messages
+    @GET("api/rest/view/v1/messages/drafts")
+    suspend fun getDraftsAuth(
+        @Header("Authorization") authorization: String,
+        @Query("folder") folder: String = "DRAFTS"
+    ): Response<ResponseBody>
+
+    // Send a new message / reply
+    @POST("api/rest/view/v1/messages")
+    suspend fun sendMessage(
+        @Header("Authorization") authorization: String,
+        @Body body: okhttp3.RequestBody
+    ): Response<ResponseBody>
+
+    // Delete message / draft
+    @DELETE("api/rest/view/v1/messages/{id}")
+    suspend fun deleteMessage(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Int
+    ): Response<ResponseBody>
+
+    // Teachers list (for recipient picker)
+    @GET("api/rest/view/v1/teachers")
+    suspend fun getTeachersAuth(
+        @Header("Authorization") authorization: String
+    ): Response<ResponseBody>
+
     // ── Absences ──────────────────────────────────────────────────────────────
     @GET("api/classreg/absences/students")
     suspend fun getAbsences(
