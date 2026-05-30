@@ -286,6 +286,8 @@ class WebUntisRepository @Inject constructor(
             loginViaRest(server, schoolname, username, password)
         }
         if (result.isSuccess) {
+            // Persist credentials so auto-login works after app restart
+            sessionManager.storedCredentials = Pair(username, password)
             val session = result.getOrNull()
             if (session != null && sessionManager.studentId == 0) {
                 val id = if (session.classId > 0) session.classId else session.personId
@@ -298,9 +300,33 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun primeCachedElementIdIfNeeded() {
         val session = sessionManager.session ?: return
-        if (session.personType != 12) return
         if (sessionManager.studentId != 0) return
-        getHomework(forceRefresh = true)
+        // For parent accounts (personType=12) the timetable needs the child's element ID.
+        // Try the /app/data endpoint first — it returns the selected student's element ID.
+        if (session.personType == 12) {
+            try {
+                val token = getAuthHeader()
+                if (token != null) {
+                    val resp = service().getAppData(token)
+                    val raw  = rawBody(resp)
+                    if (raw != null) {
+                        // Response contains { "userData": { "elemId": <int>, "elemType": 5 } }
+                        val json = com.google.gson.JsonParser.parseString(raw).asJsonObject
+                        val elemId = json.getAsJsonObject("userData")
+                            ?.get("elemId")?.asInt ?: 0
+                        if (elemId > 0) {
+                            sessionManager.studentId = elemId
+                            android.util.Log.i("WebUntis", "Resolved student elemId=$elemId from appData")
+                            return
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("WebUntis", "Could not resolve elemId from appData: ${e.message}")
+            }
+            // Fallback: try homework endpoint which also resolves the student element
+            getHomework(forceRefresh = true)
+        }
     }
 
     private suspend fun loginViaJsonRpc(

@@ -12,6 +12,12 @@ interface WebUntisService {
     @GET("api/token/new")
     suspend fun getBearerToken(): Response<ResponseBody>
 
+    // Returns userData with elemId/elemType — used to resolve child element ID for parent accounts
+    @GET("api/rest/view/v1/app/data")
+    suspend fun getAppData(
+        @Header("Authorization") authorization: String
+    ): Response<ResponseBody>
+
     // ── Auth: JSON-RPC ────────────────────────────────────────────────────────
     @POST("jsonrpc.do")
     suspend fun jsonRpcLogin(
