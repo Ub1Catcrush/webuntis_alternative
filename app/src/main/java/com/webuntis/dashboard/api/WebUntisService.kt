@@ -152,6 +152,13 @@ interface WebUntisService {
         @Header("Authorization") authorization: String
     ): Response<ResponseBody>
 
+    // Draft detail — different endpoint, returns storageAttachments + full content
+    @GET("api/rest/view/v1/messages/drafts/{id}")
+    suspend fun getDraftDetail(
+        @Path("id") id: Int,
+        @Header("Authorization") authorization: String
+    ): Response<ResponseBody>
+
     @GET("api/rest/view/v1/messages/{attachmentId}/attachmentstorageurl")
     suspend fun getAttachmentStorageUrl(
         @Path("attachmentId") attachmentId: String,
@@ -190,6 +197,25 @@ interface WebUntisService {
     suspend fun sendMessage(
         @Header("Authorization") authorization: String,
         @Body body: okhttp3.RequestBody
+    ): Response<ResponseBody>
+
+    // Save new draft (multipart: JSON "request" part, optional "attachments" parts)
+    @Multipart
+    @POST("api/rest/view/v2/messages/drafts")
+    suspend fun saveDraft(
+        @Header("Authorization") authorization: String,
+        @Part request: okhttp3.MultipartBody.Part,
+        @Part attachments: List<okhttp3.MultipartBody.Part> = emptyList()
+    ): Response<ResponseBody>
+
+    // Update existing draft (same multipart format, PUT with draft id)
+    @Multipart
+    @PUT("api/rest/view/v2/messages/drafts/{id}")
+    suspend fun updateDraft(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Int,
+        @Part request: okhttp3.MultipartBody.Part,
+        @Part attachments: List<okhttp3.MultipartBody.Part> = emptyList()
     ): Response<ResponseBody>
 
     // Delete message / draft

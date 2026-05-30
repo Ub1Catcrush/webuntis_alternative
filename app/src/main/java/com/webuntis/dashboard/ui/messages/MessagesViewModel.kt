@@ -52,6 +52,37 @@ class MessagesViewModel @Inject constructor(
     private val _composeState = MutableStateFlow<ComposeState>(ComposeState.Closed)
     val composeState: StateFlow<ComposeState> = _composeState
 
+    // ── Pending attachments (for compose / draft) ─────────────────────────────
+    // New files to upload: filename → bytes
+    private val _pendingAttachments = MutableStateFlow<List<Pair<String, ByteArray>>>(emptyList())
+    val pendingAttachments: StateFlow<List<Pair<String, ByteArray>>> = _pendingAttachments
+    // Existing server-side attachments to keep: id → name
+    private val _existingAttachments = MutableStateFlow<List<Pair<String, String>>>(emptyList())
+    val existingAttachments: StateFlow<List<Pair<String, String>>> = _existingAttachments
+
+    fun addAttachment(filename: String, bytes: ByteArray) {
+        _pendingAttachments.value = _pendingAttachments.value + (filename to bytes)
+    }
+    fun removeAttachment(filename: String) {
+        _pendingAttachments.value = _pendingAttachments.value.filterNot { it.first == filename }
+    }
+    fun addExistingAttachment(id: String, name: String) {
+        if (_existingAttachments.value.none { it.first == id })
+            _existingAttachments.value = _existingAttachments.value + (id to name)
+    }
+    fun removeExistingAttachment(id: String) {
+        _existingAttachments.value = _existingAttachments.value.filterNot { it.first == id }
+    }
+    fun clearAttachments() {
+        _pendingAttachments.value = emptyList()
+        _existingAttachments.value = emptyList()
+    }
+    /** IDs that were present on load but have since been removed — sent as attachmentIdsToDelete */
+    private var _originalAttachmentIds: Set<String> = emptySet()
+    fun setOriginalAttachmentIds(ids: Set<String>) { _originalAttachmentIds = ids }
+    val removedAttachmentIds: List<String>
+        get() = _originalAttachmentIds.filterNot { id -> _existingAttachments.value.any { it.first == id } }
+
     // ── Download ───────────────────────────────────────────────────────────────
     private val _downloadState = MutableStateFlow<DownloadState>(DownloadState.Idle)
     val downloadState: StateFlow<DownloadState> = _downloadState
@@ -140,11 +171,15 @@ class MessagesViewModel @Inject constructor(
             if (_teachers.value.isEmpty()) {
                 repository.getTeachers().onSuccess { _teachers.value = it }
             }
-            _composeState.value = ComposeState.Open(draft = draft, replyTo = replyTo)
+            // For drafts: fetch full detail so existing attachments are visible in the dialog
+            val resolvedDraft = if (draft != null) {
+                repository.getMessageWithAttachments(draft).getOrDefault(draft)
+            } else null
+            _composeState.value = ComposeState.Open(draft = resolvedDraft, replyTo = replyTo)
         }
     }
 
-    fun closeCompose() { _composeState.value = ComposeState.Closed }
+    fun closeCompose() { _composeState.value = ComposeState.Closed; clearAttachments(); _originalAttachmentIds = emptySet() }
 
     fun sendMessage(
         subject: String,
@@ -164,6 +199,32 @@ class MessagesViewModel @Inject constructor(
                     loadInbox(true); loadSent(true)
                 },
                 onFailure = { _composeState.value = ComposeState.Error(it.message ?: "Senden fehlgeschlagen") }
+            )
+        }
+    }
+
+    fun saveDraft(
+        subject: String,
+        content: String,
+        fromSecondAccount: Boolean,
+        draftId: Int? = null
+    ) {
+        viewModelScope.launch {
+            _composeState.value = ComposeState.Saving
+            repository.saveDraft(
+                subject = subject,
+                content = content,
+                draftId = draftId,
+                fromSecondAccount = fromSecondAccount,
+                attachments = _pendingAttachments.value.filter { it.second.isNotEmpty() },
+                removedAttachmentIds = removedAttachmentIds
+            ).fold(
+                onSuccess = {
+                    _composeState.value = ComposeState.Saved
+                    clearAttachments()
+                    loadDrafts(true)
+                },
+                onFailure = { _composeState.value = ComposeState.Error(it.message ?: "Speichern fehlgeschlagen") }
             )
         }
     }
@@ -204,6 +265,8 @@ sealed class ComposeState {
     data class Open(val draft: Message? = null, val replyTo: Message? = null) : ComposeState()
     object Sending : ComposeState()
     object Sent    : ComposeState()
+    object Saving  : ComposeState()
+    object Saved   : ComposeState()
     data class Error(val message: String) : ComposeState()
 }
 

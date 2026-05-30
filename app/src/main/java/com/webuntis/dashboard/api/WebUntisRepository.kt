@@ -309,7 +309,7 @@ class WebUntisRepository @Inject constructor(
         return try {
             val body = JsonRpcRequest(
                 method = "authenticate",
-                params = mapOf("user" to username, "password" to password, "client" to "android")
+                params = mapOf<String, Any>("user" to username, "password" to password, "client" to "android")
             )
             val response = retrofitFactory.create(server).jsonRpcLogin(schoolname, body)
             val raw = response.body()?.string()?.trim()
@@ -826,7 +826,7 @@ class WebUntisRepository @Inject constructor(
             val svc  = retrofitFactory.create(server)
             val body = JsonRpcRequest(
                 method = "authenticate",
-                params = mapOf("user" to username, "password" to password, "client" to "android")
+                params = mapOf<String, Any>("user" to username, "password" to password, "client" to "android")
             )
             val loginResp = svc.jsonRpcLogin(schoolname, body)
             val loginRaw  = loginResp.body()?.string()?.trim() ?: return emptyList()
@@ -907,10 +907,14 @@ class WebUntisRepository @Inject constructor(
     suspend fun getMessageWithAttachments(msg: Message): Result<Message> = withSessionRetry {
         try {
             val token = tokenForMessage(msg) ?: return@withSessionRetry Result.failure(Exception("Nicht authentifiziert"))
-            val resp = service().getMessageDetail(msg.id, token)
+            // Drafts have a separate detail endpoint that returns storageAttachments + full content
+            val resp = if (msg.isDraft) {
+                service().getDraftDetail(msg.id, token)
+            } else {
+                service().getMessageDetail(msg.id, token)
+            }
             val raw = rawBody(resp) ?: return@withSessionRetry Result.success(msg)
             val detail: Message = parseJson(raw)
-            // Preserve accountLabel so thread messages from 2nd account stay attributed
             val enriched = detail.copy(
                 accountLabel = msg.accountLabel,
                 storedIn     = msg.storedIn,
@@ -1015,7 +1019,7 @@ class WebUntisRepository @Inject constructor(
             val svc = retrofitFactory.create(server)
             val loginBody = JsonRpcRequest(
                 method = "authenticate",
-                params = mapOf("user" to username, "password" to password, "client" to "android")
+                params = mapOf<String, Any>("user" to username, "password" to password, "client" to "android")
             )
             val loginRaw = svc.jsonRpcLogin(schoolname, loginBody).body()?.string()?.trim() ?: return emptyList()
             val rpcResp: JsonRpcResponse<AuthResult> =
@@ -1049,7 +1053,7 @@ class WebUntisRepository @Inject constructor(
                 val svc     = retrofitFactory.create(session.server)
                 val loginBody = JsonRpcRequest(
                     method = "authenticate",
-                    params = mapOf("user" to acc.username, "password" to acc.password, "client" to "android")
+                    params = mapOf<String, Any>("user" to acc.username, "password" to acc.password, "client" to "android")
                 )
                 svc.jsonRpcLogin(session.schoolname, loginBody)
                 val bearerRaw = svc.getBearerToken().body()?.string()?.trim()
@@ -1079,6 +1083,85 @@ class WebUntisRepository @Inject constructor(
             cacheMessages = null; cacheSentMessages = null
             Result.success(Unit)
         } catch (e: Exception) { Result.failure(e) }
+    }
+
+    // ─── SAVE / UPDATE DRAFT ─────────────────────────────────────────────────
+
+    /**
+     * Creates a new draft (draftId == null) or updates an existing one.
+     * [recipientPersonIds] may be empty while composing.
+     * Returns the saved draft [Message] on success.
+     */
+    suspend fun saveDraft(
+        subject: String,
+        content: String,
+        recipientPersonIds: List<Int> = emptyList(),
+        draftId: Int? = null,
+        fromSecondAccount: Boolean = false,
+        attachments: List<Pair<String, ByteArray>> = emptyList(),   // new files: filename → bytes
+        removedAttachmentIds: List<String> = emptyList()            // existing storage IDs to delete
+    ): Result<Message> {
+        return try {
+            val token: String = if (fromSecondAccount) {
+                val acc     = sessionManager.secondAccount ?: return Result.failure(Exception("Kein 2. Account"))
+                val session = sessionManager.session       ?: return Result.failure(Exception("Nicht eingeloggt"))
+                val svc     = retrofitFactory.create(session.server)
+                val loginBody = JsonRpcRequest(
+                    method = "authenticate",
+                    params = mapOf<String, Any>("user" to acc.username, "password" to acc.password, "client" to "android"))
+                svc.jsonRpcLogin(session.schoolname, loginBody)
+                val bearerRaw = svc.getBearerToken().body()?.string()?.trim()
+                    ?: return Result.failure(Exception("Kein Token"))
+                val raw = if (bearerRaw.startsWith("{"))
+                    com.google.gson.JsonParser.parseString(bearerRaw).asJsonObject.get("token")?.asString ?: bearerRaw
+                else bearerRaw.trim('"')
+                "Bearer $raw"
+            } else {
+                getAuthHeader() ?: return Result.failure(Exception("Nicht authentifiziert"))
+            }
+
+            val gson = com.google.gson.Gson()
+            val requestJson = gson.toJson(
+                com.webuntis.dashboard.model.SaveDraftRequest(
+                    subject = subject,
+                    content = content,
+                    hasAttachments = attachments.isNotEmpty() || removedAttachmentIds.isEmpty(),
+                    attachmentIdsToDelete = removedAttachmentIds
+                )
+            )
+            val requestPart = okhttp3.MultipartBody.Part.createFormData(
+                "request", "blob",
+                requestJson.toRequestBody("application/json".toMediaTypeOrNull())
+            )
+            val attachmentParts = attachments.map { (filename, bytes) ->
+                val mimeType = mimeTypeForFilename(filename)
+                okhttp3.MultipartBody.Part.createFormData(
+                    "attachments", filename,
+                    bytes.toRequestBody(mimeType.toMediaTypeOrNull())
+                )
+            }
+
+            val resp = if (draftId == null) {
+                service().saveDraft(token, requestPart, attachmentParts)
+            } else {
+                service().updateDraft(token, draftId, requestPart, attachmentParts)
+            }
+            val responseRaw = rawBody(resp)
+                ?: return Result.failure(Exception("Leere Antwort vom Server"))
+            val saved: Message = gson.fromJson(responseRaw, Message::class.java)
+            cacheDraftMessages = null
+            Result.success(saved.copy(storedIn = "DRAFT"))
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    private fun mimeTypeForFilename(filename: String): String = when {
+        filename.endsWith(".pdf",  true) -> "application/pdf"
+        filename.endsWith(".png",  true) -> "image/png"
+        filename.endsWith(".jpg",  true) || filename.endsWith(".jpeg", true) -> "image/jpeg"
+        filename.endsWith(".docx", true) -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        filename.endsWith(".xlsx", true) -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        filename.endsWith(".txt",  true) -> "text/plain"
+        else -> "application/octet-stream"
     }
 
     // ─── DELETE MESSAGE / DRAFT ───────────────────────────────────────────────

@@ -459,9 +459,14 @@ data class Message(
     val accountLabel: String? = null,
     @com.google.gson.annotations.SerializedName("_attachments")
     val attachmentList: List<Attachment>? = null,
-    val replyHistory: List<ReplyMessage>? = null   // populated by getMessageWithAttachments
+    val replyHistory: List<ReplyMessage>? = null,  // populated by getMessageWithAttachments
+    /** Draft-specific: attachments stored on the server (from GET /messages/drafts/{id}) */
+    val storageAttachments: List<Attachment>? = null
 ) {
-    val attachments: List<Attachment> get() = attachmentList ?: emptyList()
+    /** All attachments — prefer storageAttachments (draft detail) over attachmentList (inbox detail) */
+    val attachments: List<Attachment> get() =
+        storageAttachments?.takeIf { it.isNotEmpty() } ?: attachmentList ?: emptyList()
+    val allAttachmentNames: Set<String> get() = attachments.mapNotNull { it.name }.toSet()
     val label: String get() = accountLabel ?: ""
     val isSent:  Boolean get() = storedIn == "SENT"
     val isDraft: Boolean get() = storedIn == "DRAFT"
@@ -491,6 +496,21 @@ data class MessageSender(
 )
 
 data class MessagesStatusResponse(val unreadMessagesCount: Int)
+
+// ─── SAVE DRAFT ───────────────────────────────────────────────────────────────
+
+data class SaveDraftRequest(
+    val subject: String,
+    val content: String,
+    val recipientOption: String = "TEACHER",   // API requires this field
+    val copyToStudent: Boolean = false,
+    val requestConfirmation: Boolean = false,
+    val forbidReply: Boolean = false,
+    val oneDriveAttachments: List<Any> = emptyList(),
+    val hasAttachments: Boolean = false,
+    val attachmentIdsToDelete: List<String> = emptyList()
+)
+
 // ─── TEACHERS ────────────────────────────────────────────────────────────────
 
 // Used for recipient picker — maps the /messages/recipients/static/persons response

@@ -41,6 +41,30 @@ class MessagesFragment : Fragment() {
     private val viewModel: MessagesViewModel by viewModels()
     private lateinit var adapter: MessageAdapter
 
+    // File picker for compose attachments
+    private var onFilePicked: ((String, ByteArray) -> Unit)? = null
+    private val filePickerLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri ?: return@registerForActivityResult
+        val ctx = requireContext()
+        try {
+            val filename = uri.lastPathSegment?.substringAfterLast("/")
+                ?: uri.pathSegments.lastOrNull()
+                ?: "attachment"
+            // Resolve display name via ContentResolver if possible
+            val displayName = ctx.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (cursor.moveToFirst() && idx >= 0) cursor.getString(idx) else null
+            } ?: filename
+            val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: return@registerForActivityResult
+            onFilePicked?.invoke(displayName, bytes)
+        } catch (e: Exception) {
+            Toast.makeText(ctx, "Datei konnte nicht geladen werden: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
@@ -62,6 +86,21 @@ class MessagesFragment : Fragment() {
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         binding.swipeRefresh.setOnRefreshListener { viewModel.refresh() }
+
+        // Swipe left to delete drafts / messages
+        val swipeCallback = object : androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(
+            0, androidx.recyclerview.widget.ItemTouchHelper.LEFT
+        ) {
+            override fun onMove(rv: RecyclerView, vh: RecyclerView.ViewHolder, t: RecyclerView.ViewHolder) = false
+            override fun onSwiped(vh: RecyclerView.ViewHolder, direction: Int) {
+                val pos = vh.bindingAdapterPosition.takeIf { it != RecyclerView.NO_ID.toInt() } ?: return
+                val msg = adapter.currentList.getOrNull(pos) ?: return
+                confirmDelete(msg)
+                // Reset visual state — confirmDelete handles actual deletion
+                adapter.notifyItemChanged(pos)
+            }
+        }
+        androidx.recyclerview.widget.ItemTouchHelper(swipeCallback).attachToRecyclerView(binding.recyclerView)
 
         // ── Tabs ──────────────────────────────────────────────────────────────
         binding.tabLayout.addTab(binding.tabLayout.newTab().setText("Eingang"))
@@ -144,9 +183,10 @@ class MessagesFragment : Fragment() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.composeState.collect { state ->
                     when (state) {
-                        is ComposeState.Open  -> showComposeDialog(state.draft, state.replyTo)
-                        is ComposeState.Sent  -> { Toast.makeText(requireContext(), "✓ Gesendet", Toast.LENGTH_SHORT).show(); viewModel.closeCompose() }
-                        is ComposeState.Error -> Toast.makeText(requireContext(), state.message, Toast.LENGTH_LONG).show()
+                        is ComposeState.Open   -> showComposeDialog(state.draft, state.replyTo)
+                        is ComposeState.Sent   -> { Toast.makeText(requireContext(), "✓ Gesendet", Toast.LENGTH_SHORT).show(); viewModel.closeCompose() }
+                        is ComposeState.Saved  -> { Toast.makeText(requireContext(), "✓ Als Entwurf gespeichert", Toast.LENGTH_SHORT).show(); viewModel.closeCompose() }
+                        is ComposeState.Error  -> Toast.makeText(requireContext(), state.message, Toast.LENGTH_LONG).show()
                         else -> {}
                     }
                 }
@@ -304,10 +344,85 @@ class MessagesFragment : Fragment() {
         val etBody = EditText(ctx).apply {
             hint = "Nachricht"
             minLines = 5
-            setText(draft?.contentPreview ?: "")
+            // Drafts return full body in `content`; fall back to contentPreview for replies
+            setText(draft?.content?.takeIf { it.isNotBlank() }
+                ?: draft?.contentPreview ?: "")
         }
         layout.addView(etBody)
 
+        // Pre-populate existingAttachments from draft storageAttachments
+        // These are already on the server — user can remove them; removal sends their IDs in PUT
+        draft?.attachments?.forEach { att ->
+            if (att.id != null && att.name != null)
+                viewModel.addExistingAttachment(att.id, att.name)
+        }
+        viewModel.setOriginalAttachmentIds(draft?.attachments?.mapNotNull { it.id }?.toSet() ?: emptySet())
+
+        // ── Attachments section ────────────────────────────────────────────────
+        val dp = resources.displayMetrics.density
+        val attachHeader = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity     = android.view.Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (12 * dp).toInt() }
+        }
+        attachHeader.addView(TextView(ctx).apply {
+            text = "Anhänge"
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        val btnAddFile = com.google.android.material.button.MaterialButton(
+            ctx, null, com.google.android.material.R.attr.borderlessButtonStyle
+        ).apply {
+            text = "+ Datei"
+            setOnClickListener {
+                onFilePicked = { filename, bytes ->
+                    viewModel.addAttachment(filename, bytes)
+                }
+                filePickerLauncher.launch("*/*")
+            }
+        }
+        attachHeader.addView(btnAddFile)
+        layout.addView(attachHeader)
+
+        // Dynamic list of attachments: existing (server) + pending (new upload)
+        val attachChipGroup = ChipGroup(ctx).apply { isSingleLine = false }
+        layout.addView(attachChipGroup)
+
+        fun rebuildAttachChips(
+            existing: List<Pair<String, String>>,   // id → name
+            pending: List<Pair<String, ByteArray>>  // filename → bytes
+        ) {
+            attachChipGroup.removeAllViews()
+            existing.forEach { (id, name) ->
+                attachChipGroup.addView(Chip(ctx).apply {
+                    text = name
+                    isCloseIconVisible = true
+                    chipIcon = androidx.core.content.ContextCompat.getDrawable(ctx, R.drawable.ic_homework)
+                    setOnCloseIconClickListener { viewModel.removeExistingAttachment(id) }
+                })
+            }
+            pending.forEach { (filename, _) ->
+                attachChipGroup.addView(Chip(ctx).apply {
+                    text = filename
+                    isCloseIconVisible = true
+                    setOnCloseIconClickListener { viewModel.removeAttachment(filename) }
+                })
+            }
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.existingAttachments.collect { existing ->
+                rebuildAttachChips(existing, viewModel.pendingAttachments.value)
+            }
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.pendingAttachments.collect { pending ->
+                rebuildAttachChips(viewModel.existingAttachments.value, pending)
+            }
+        }
+
+        // ── Dialog ─────────────────────────────────────────────────────────────
         AlertDialog.Builder(ctx)
             .setTitle(when { draft != null -> "Entwurf bearbeiten"; replyTo != null -> "Antworten"; else -> "Neue Nachricht" })
             .setView(scroll)
@@ -321,6 +436,13 @@ class MessagesFragment : Fragment() {
                 }
                 val fromSecond = hasSecond && accountSpinner.selectedItemPosition == 1
                 viewModel.sendMessage(subject, body, ids, fromSecond, replyTo?.id)
+                composeOpen = false
+            }
+            .setNeutralButton("Entwurf speichern") { _, _ ->
+                val subject    = etSubject.text.toString().trim()
+                val body       = etBody.text.toString()
+                val fromSecond = hasSecond && accountSpinner.selectedItemPosition == 1
+                viewModel.saveDraft(subject, body, fromSecond, draftId = draft?.id)
                 composeOpen = false
             }
             .setNegativeButton("Abbrechen") { _, _ -> viewModel.closeCompose(); composeOpen = false }
@@ -437,11 +559,11 @@ class MessageAdapter(
                 }
             )
 
-            if (isExpanded && expandedMsg != null) {
+            if (isExpanded) {
                 // When expanded, prefer full content body over preview
-                b.textPreview.text = expandedMsg.content?.takeIf { it.isNotBlank() }
-                    ?: expandedMsg.contentPreview ?: ""
-                renderExpanded(expandedMsg, msg)
+                b.textPreview.text = expandedMsg?.content?.takeIf { it.isNotBlank() }
+                    ?: expandedMsg?.contentPreview ?: ""
+                renderExpanded(expandedMsg!!, msg)
             }
 
             b.root.setOnClickListener {
@@ -451,20 +573,23 @@ class MessageAdapter(
         }
 
         private fun renderExpanded(expandedMsg: Message, original: Message) {
-            // Attachments
+            // Attachments — show whenever present; use progress spinner while detail is loading
             val atts = expandedMsg.attachments
-            if (original.hasAttachments == true) {
-                if (atts.isEmpty()) {
-                    b.attachmentsProgress.isVisible = true
-                    b.layoutAttachments.isVisible   = false
-                } else {
+            when {
+                atts.isNotEmpty() -> {
                     b.attachmentsProgress.isVisible = false
                     b.layoutAttachments.isVisible   = true
                     buildAttachmentRows(b.layoutAttachments, atts, original)
                 }
-            } else {
-                b.attachmentsProgress.isVisible = false
-                b.layoutAttachments.isVisible   = false
+                original.hasAttachments == true -> {
+                    // Detail not yet loaded — show spinner
+                    b.attachmentsProgress.isVisible = true
+                    b.layoutAttachments.isVisible   = false
+                }
+                else -> {
+                    b.attachmentsProgress.isVisible = false
+                    b.layoutAttachments.isVisible   = false
+                }
             }
 
             // Reply history (thread) — newest first (descending)
