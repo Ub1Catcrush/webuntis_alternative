@@ -124,10 +124,17 @@ object NetworkModule {
         val responsePath = response.request.url.encodedPath
         
         val isApiCall = requestPath.contains("/api/") || requestPath.contains(".do")
+        // Never intercept the login calls themselves — they legitimately POST to *.do
+        // and the server may return HTML or redirect before the session is established.
+        val isLoginCall = requestPath.contains("jsonrpc.do", ignoreCase = true) ||
+                          requestPath.contains("j_spring_security_check", ignoreCase = true) ||
+                          requestPath.contains("/api/rest/view/v1/auth", ignoreCase = true) ||
+                          requestPath.contains("api/userdata/login", ignoreCase = true) ||
+                          requestPath.contains("api/auth/logout", ignoreCase = true)
         val redirectedToAuth = responsePath.contains("index.do") || responsePath.contains("login.do")
         val isHtml = rawBody.contains("<html", ignoreCase = true) || rawBody.contains("<!DOCTYPE", ignoreCase = true)
 
-        if (isApiCall && (redirectedToAuth || (isHtml && !isJson && !looksLikeJson))) {
+        if (!isLoginCall && isApiCall && (redirectedToAuth || (isHtml && !isJson && !looksLikeJson))) {
             // Signal auth failure clearly to trigger retry logic in repository.
             val errorJson = """{"error":{"code":-32001,"message":"Session abgelaufen (Redirect)"}}"""
             response.newBuilder()
