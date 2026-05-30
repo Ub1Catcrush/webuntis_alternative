@@ -154,4 +154,8 @@
     <string name="messages_tab_drafts">Entwürfe</string>
     <string name="messages_compose">Neue Nachricht</string>
     <string name="messages_reply">Antworten</string>
+
+    <!-- Settings export / import -->
+    <string name="settings_export_button">Exportieren</string>
+    <string name="settings_import_button">Importieren</string>
 </resources>

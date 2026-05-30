@@ -28,6 +28,48 @@ class SettingsFragment : Fragment() {
         ownerProducer = { requireActivity() }
     )
 
+
+    // ── Export / Import launchers ─────────────────────────────────────────────
+    private val exportLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        uri ?: return@registerForActivityResult
+        try {
+            val json = loginViewModel.sessionManager.exportSettings()
+            requireContext().contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
+            android.widget.Toast.makeText(requireContext(), "\u2713 Einstellungen exportiert", android.widget.Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(requireContext(), "Export fehlgeschlagen: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private val importLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri ?: return@registerForActivityResult
+        try {
+            val json = requireContext().contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                ?: return@registerForActivityResult
+            when (val result = loginViewModel.sessionManager.importSettings(json)) {
+                is com.webuntis.dashboard.api.SessionManager.ImportResult.Success -> {
+                    android.widget.Toast.makeText(requireContext(),
+                        "\u2713 Import erfolgreich", android.widget.Toast.LENGTH_LONG).show()
+                    val session = loginViewModel.sessionManager.session
+                    val creds   = loginViewModel.sessionManager.storedCredentials
+                    if (session != null && creds != null) {
+                        loginViewModel.login(session.server, session.schoolname, creds.first, creds.second)
+                    }
+                    bindCurrentValues()
+                    if (result.secondUpdated) loginViewModel.primeSecondAccountState()
+                }
+                is com.webuntis.dashboard.api.SessionManager.ImportResult.Error ->
+                    android.widget.Toast.makeText(requireContext(), result.message, android.widget.Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(requireContext(), "Import fehlgeschlagen: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
@@ -38,13 +80,10 @@ class SettingsFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val creds = loginViewModel.sessionManager.storedCredentials
-        binding.inputPassword.hint = if (creds != null)
-            getString(R.string.login_password_saved_hint)
-        else getString(R.string.login_password_hint)
-
         binding.btnSave.setOnClickListener { saveAndReLogin() }
         binding.btnLogout.setOnClickListener { loginViewModel.logout() }
+        binding.btnExportSettings.setOnClickListener { exportLauncher.launch("webuntis_settings.json") }
+        binding.btnImportSettings.setOnClickListener { importLauncher.launch("application/json") }
 
         // ── Timetable days slider ─────────────────────────────────────────────
         val current = loginViewModel.sessionManager.timetableDays
@@ -117,19 +156,7 @@ class SettingsFragment : Fragment() {
             }
         )
 
-        // ── Primary account type display ──────────────────────────────────────
-        val session = loginViewModel.sessionManager.session
-        if (session != null) {
-            binding.inputServer.setText(session.server)
-            binding.inputSchoolname.setText(session.schoolname)
-            binding.inputUsername.setText(loginViewModel.sessionManager.storedCredentials?.first ?: session.username)
-        }
-
-        // ── Second account ────────────────────────────────────────────────────
-        val second = loginViewModel.sessionManager.secondAccount
-        if (second != null) {
-            loginViewModel.primeSecondAccountState()
-        }
+        bindCurrentValues()
 
         binding.btnSaveSecond.setOnClickListener {
             val label    = binding.inputSecondLabel.text.toString().trim()
@@ -222,6 +249,29 @@ class SettingsFragment : Fragment() {
                     }
                 }
             }
+        }
+    }
+
+    private fun bindCurrentValues() {
+        val session = loginViewModel.sessionManager.session
+        if (session != null) {
+            binding.inputServer.setText(session.server)
+            binding.inputSchoolname.setText(session.schoolname)
+            binding.inputUsername.setText(
+                loginViewModel.sessionManager.storedCredentials?.first ?: session.username)
+        }
+        binding.inputPassword.hint = if (loginViewModel.sessionManager.storedCredentials != null)
+            getString(R.string.login_password_saved_hint)
+        else getString(R.string.login_password_hint)
+        val second = loginViewModel.sessionManager.secondAccount
+        if (second != null) {
+            loginViewModel.primeSecondAccountState()
+            if (binding.inputSecondUsername.text.isNullOrBlank())
+                binding.inputSecondUsername.setText(second.username)
+            if (binding.inputSecondLabel.text.isNullOrBlank())
+                binding.inputSecondLabel.setText(second.label)
+            binding.inputSecondPassword.hint = getString(R.string.settings_second_password_saved_hint)
+            binding.btnRemoveSecond.isVisible = true
         }
     }
 

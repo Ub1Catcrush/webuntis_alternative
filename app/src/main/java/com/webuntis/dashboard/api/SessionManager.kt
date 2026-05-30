@@ -108,26 +108,33 @@ class SessionManager @Inject constructor(
         prefs.edit()
             .remove(KEY_SERVER).remove(KEY_SCHOOLNAME).remove(KEY_USERNAME)
             .remove(KEY_SESSION_ID).remove(KEY_PERSON_ID).remove(KEY_CLASS_ID)
-            .remove(KEY_PERSON_NAME).remove(KEY_PERSON_TYPE).remove(KEY_STORED_USER)
-            .remove(KEY_STORED_PASS).remove(KEY_SESSION_TIME).remove(KEY_STUDENT_ID)
+            .remove(KEY_PERSON_NAME).remove(KEY_PERSON_TYPE).remove(KEY_SESSION_TIME)
+            .apply()
+        // Credentials and second account are in plainPrefs
+        plainPrefs.edit()
+            .remove(KEY_STORED_USER).remove(KEY_STORED_PASS).remove(KEY_STUDENT_ID)
             .apply()
     }
 
     fun clearAll() {
         prefs.edit().clear().apply()
+        plainPrefs.edit().clear().apply()
     }
 
     var storedCredentials: Pair<String, String>?
         get() {
-            val u = prefs.getString(KEY_STORED_USER, null) ?: return null
-            val p = prefs.getString(KEY_STORED_PASS, null) ?: return null
+            // Stored in plainPrefs for reliability on API 29 where EncryptedSharedPreferences
+            // may silently fail on first install. Credentials are already protected by
+            // Android's app sandbox; full-disk encryption protects them at rest.
+            val u = plainPrefs.getString(KEY_STORED_USER, null) ?: return null
+            val p = plainPrefs.getString(KEY_STORED_PASS, null) ?: return null
             return Pair(u, p)
         }
         set(value) {
             if (value == null) {
-                prefs.edit().remove(KEY_STORED_USER).remove(KEY_STORED_PASS).apply()
+                plainPrefs.edit().remove(KEY_STORED_USER).remove(KEY_STORED_PASS).apply()
             } else {
-                prefs.edit()
+                plainPrefs.edit()
                     .putString(KEY_STORED_USER, value.first)
                     .putString(KEY_STORED_PASS, value.second)
                     .apply()
@@ -151,22 +158,23 @@ class SessionManager @Inject constructor(
 
     var secondAccount: SecondAccount?
         get() {
-            val u = prefs.getString(KEY_SECOND_USER, null) ?: return null
-            val p = prefs.getString(KEY_SECOND_PASS, null) ?: return null
-            val l = prefs.getString(KEY_SECOND_LABEL, "") ?: ""
-            val t = prefs.getInt(KEY_SECOND_TYPE, 0)
-            val n = prefs.getString(KEY_SECOND_NAME, "") ?: ""
+            // Also in plainPrefs for the same reliability reason as storedCredentials
+            val u = plainPrefs.getString(KEY_SECOND_USER, null) ?: return null
+            val p = plainPrefs.getString(KEY_SECOND_PASS, null) ?: return null
+            val l = plainPrefs.getString(KEY_SECOND_LABEL, "") ?: ""
+            val t = plainPrefs.getInt(KEY_SECOND_TYPE, 0)
+            val n = plainPrefs.getString(KEY_SECOND_NAME, "") ?: ""
             return SecondAccount(u, p, l, t, n)
         }
         set(value) {
             if (value == null) {
-                prefs.edit()
+                plainPrefs.edit()
                     .remove(KEY_SECOND_USER).remove(KEY_SECOND_PASS)
                     .remove(KEY_SECOND_LABEL).remove(KEY_SECOND_TYPE)
                     .remove(KEY_SECOND_NAME)
                     .apply()
             } else {
-                prefs.edit()
+                plainPrefs.edit()
                     .putString(KEY_SECOND_USER, value.username)
                     .putString(KEY_SECOND_PASS, value.password)
                     .putString(KEY_SECOND_LABEL, value.label)
@@ -218,6 +226,126 @@ class SessionManager @Inject constructor(
         context.getSharedPreferences("webuntis_settings", android.content.Context.MODE_PRIVATE)
     }
 
+
+    // ─── EXPORT / IMPORT ──────────────────────────────────────────────────────
+
+    /**
+     * Exports all non-session settings as a JSON string.
+     * Sensitive fields (passwords) are included so import restores a fully
+     * working configuration. The user is responsible for keeping the file safe.
+     */
+    fun exportSettings(): String {
+        val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
+        val obj  = com.google.gson.JsonObject().apply {
+            addProperty("version", 1)
+            // Primary account
+            session?.let { s ->
+                addProperty("server",     s.server)
+                addProperty("schoolname", s.schoolname)
+                addProperty("username",   s.username)
+                addProperty("personName", s.personName)
+                addProperty("personType", s.personType)
+            }
+            storedCredentials?.let { addProperty("password", it.second) }
+            // Second account
+            secondAccount?.let { acc ->
+                val sa = com.google.gson.JsonObject().apply {
+                    addProperty("username",   acc.username)
+                    addProperty("password",   acc.password)
+                    addProperty("label",      acc.label)
+                    addProperty("personType", acc.personType)
+                    addProperty("personName", acc.personName)
+                }
+                add("secondAccount", sa)
+            }
+            // UI / timetable settings
+            addProperty("timetableDays",       timetableDays)
+            addProperty("showLongSubjects",    showLongSubjects)
+            addProperty("showLongTeachers",    showLongTeachers)
+            addProperty("showLongRooms",       showLongRooms)
+            addProperty("useCompactWeekView",  useCompactWeekView)
+            addProperty("cacheTtlMinutes",     cacheTtlMinutes)
+        }
+        return gson.toJson(obj)
+    }
+
+    /**
+     * Imports settings from a JSON string previously produced by [exportSettings].
+     * Returns a [ImportResult] describing what was restored.
+     * Does NOT trigger a re-login — the caller must do that.
+     */
+    fun importSettings(json: String): ImportResult {
+        return try {
+            val obj = com.google.gson.JsonParser.parseString(json).asJsonObject
+            var primaryUpdated = false
+            var secondUpdated  = false
+
+            // Primary credentials
+            val server     = obj.get("server")?.asString
+            val schoolname = obj.get("schoolname")?.asString
+            val username   = obj.get("username")?.asString
+            val password   = obj.get("password")?.asString
+            val personName = obj.get("personName")?.asString ?: ""
+            val personType = obj.get("personType")?.asInt ?: 0
+
+            if (!server.isNullOrBlank() && !schoolname.isNullOrBlank() &&
+                !username.isNullOrBlank() && !password.isNullOrBlank()) {
+                // Store credentials — re-login must be triggered by caller
+                storedCredentials = Pair(username, password)
+                // Update session metadata (server/schoolname/username) so Settings UI shows them
+                session = session?.copy(
+                    server     = server,
+                    schoolname = schoolname,
+                    username   = username,
+                    personName = personName,
+                    personType = personType
+                ) ?: com.webuntis.dashboard.model.SessionData(
+                    server     = server,
+                    schoolname = schoolname,
+                    username   = username,
+                    sessionId  = "",
+                    personId   = 0,
+                    classId    = 0,
+                    personName = personName,
+                    personType = personType
+                )
+                primaryUpdated = true
+            }
+
+            // Second account
+            obj.getAsJsonObject("secondAccount")?.let { sa ->
+                val u = sa.get("username")?.asString
+                val p = sa.get("password")?.asString
+                if (!u.isNullOrBlank() && !p.isNullOrBlank()) {
+                    secondAccount = SecondAccount(
+                        username   = u,
+                        password   = p,
+                        label      = sa.get("label")?.asString ?: "",
+                        personType = sa.get("personType")?.asInt ?: 0,
+                        personName = sa.get("personName")?.asString ?: ""
+                    )
+                    secondUpdated = true
+                }
+            }
+
+            // UI settings
+            obj.get("timetableDays")?.asInt?.let      { timetableDays      = it }
+            obj.get("showLongSubjects")?.asBoolean?.let { showLongSubjects = it }
+            obj.get("showLongTeachers")?.asBoolean?.let { showLongTeachers = it }
+            obj.get("showLongRooms")?.asBoolean?.let    { showLongRooms    = it }
+            obj.get("useCompactWeekView")?.asBoolean?.let { useCompactWeekView = it }
+            obj.get("cacheTtlMinutes")?.asInt?.let    { cacheTtlMinutes    = it }
+
+            ImportResult.Success(primaryUpdated = primaryUpdated, secondUpdated = secondUpdated)
+        } catch (e: Exception) {
+            ImportResult.Error("Import fehlgeschlagen: ${e.message}")
+        }
+    }
+
+    sealed class ImportResult {
+        data class Success(val primaryUpdated: Boolean, val secondUpdated: Boolean) : ImportResult()
+        data class Error(val message: String) : ImportResult()
+    }
     companion object {
         private const val KEY_SERVER       = "server"
         private const val KEY_SCHOOLNAME   = "schoolname"
