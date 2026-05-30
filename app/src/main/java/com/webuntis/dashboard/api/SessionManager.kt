@@ -14,45 +14,81 @@ class SessionManager @Inject constructor(
     @ApplicationContext private val context: Context
 
 ) {
+    /**
+     * Session prefs — encrypted when the Keystore is available, plain fallback otherwise.
+     * On custom ROMs / API 29 devices the Android Keystore can be unavailable or broken.
+     * We fall back to plainPrefs so the app stays usable; the session token is the only
+     * secret stored here (credentials moved to plainPrefs already).
+     */
     private val prefs: SharedPreferences by lazy {
+        createEncryptedPrefsOrFallback()
+    }
+
+    private fun createEncryptedPrefsOrFallback(): SharedPreferences {
+        // Attempt 1: normal EncryptedSharedPreferences
         try {
             val masterKey = MasterKey.Builder(context)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build()
-            EncryptedSharedPreferences.create(
+            return EncryptedSharedPreferences.create(
                 context, "webuntis_session", masterKey,
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
-        } catch (e: Exception) {
-            android.util.Log.e("SessionManager",
-                "EncryptedSharedPreferences unavailable — credentials will not be persisted", e)
-            object : android.content.SharedPreferences {
-                private val mem = mutableMapOf<String, Any?>()
-                override fun getAll() = mem
-                override fun getString(k: String, d: String?) = mem[k] as? String ?: d
-                override fun getStringSet(k: String, d: MutableSet<String>?) = d
-                override fun getInt(k: String, d: Int) = mem[k] as? Int ?: d
-                override fun getLong(k: String, d: Long) = mem[k] as? Long ?: d
-                override fun getFloat(k: String, d: Float) = mem[k] as? Float ?: d
-                override fun getBoolean(k: String, d: Boolean) = mem[k] as? Boolean ?: d
-                override fun contains(k: String) = mem.containsKey(k)
-                override fun edit() = object : android.content.SharedPreferences.Editor {
-                    override fun putString(k: String, v: String?) = apply { mem[k] = v }
-                    override fun putStringSet(k: String, v: MutableSet<String>?) = apply { mem[k] = v }
-                    override fun putInt(k: String, v: Int) = apply { mem[k] = v }
-                    override fun putLong(k: String, v: Long) = apply { mem[k] = v }
-                    override fun putFloat(k: String, v: Float) = apply { mem[k] = v }
-                    override fun putBoolean(k: String, v: Boolean) = apply { mem[k] = v }
-                    override fun remove(k: String) = apply { mem.remove(k) }
-                    override fun clear() = apply { mem.clear() }
-                    override fun commit() = true
-                    override fun apply() {}
-                }
-                override fun registerOnSharedPreferenceChangeListener(l: android.content.SharedPreferences.OnSharedPreferenceChangeListener) {}
-                override fun unregisterOnSharedPreferenceChangeListener(l: android.content.SharedPreferences.OnSharedPreferenceChangeListener) {}
-            }
+        } catch (e1: Exception) {
+            android.util.Log.w("SessionManager",
+                "EncryptedSharedPreferences failed (attempt 1), retrying after clearing keystore entry", e1)
         }
+
+        // Attempt 2: delete stale keystore entry and retry (helps on ROM upgrades / re-installs)
+        try {
+            val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
+            ks.load(null)
+            if (ks.containsAlias("_androidx_security_master_key")) {
+                ks.deleteEntry("_androidx_security_master_key")
+                android.util.Log.w("SessionManager", "Deleted stale master key, retrying…")
+            }
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            return EncryptedSharedPreferences.create(
+                context, "webuntis_session", masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e2: Exception) {
+            android.util.Log.w("SessionManager",
+                "EncryptedSharedPreferences failed (attempt 2), falling back to plainPrefs", e2)
+        }
+
+        // Attempt 3: also delete the corrupted encrypted file and retry fresh
+        try {
+            val encFile = context.getSharedPrefsFile("webuntis_session")
+            if (encFile.exists()) {
+                encFile.delete()
+                android.util.Log.w("SessionManager", "Deleted corrupted prefs file, retrying…")
+            }
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            return EncryptedSharedPreferences.create(
+                context, "webuntis_session", masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e3: Exception) {
+            android.util.Log.e("SessionManager",
+                "EncryptedSharedPreferences unavailable on this device — using plainPrefs for session storage", e3)
+        }
+
+        // Final fallback: plainPrefs (unencrypted). Session token is short-lived anyway.
+        return plainPrefs
+    }
+
+    /** Extension to locate the SharedPreferences backing file (used for cleanup). */
+    private fun Context.getSharedPrefsFile(name: String): java.io.File {
+        // Standard Android path: /data/data/<pkg>/shared_prefs/<name>.xml
+        return java.io.File(filesDir.parent, "shared_prefs/$name.xml")
     }
 
     var session: SessionData?
