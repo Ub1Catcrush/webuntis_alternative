@@ -431,14 +431,20 @@ data class ReplyMessage(
     val sentDateTime: String?,
     val storageAttachments: List<Attachment>? = null
 ) {
-    val sentDateFormatted: String? get() = sentDateTime?.take(10)?.split("-")
-        ?.let { if (it.size == 3) "${it[2]}.${it[1]}.${it[0]}" else sentDateTime }
+    val sentDateFormatted: String? get() {
+        if (sentDateTime.isNullOrBlank()) return null
+        val parts = sentDateTime.split("T")
+        val date = parts.getOrNull(0)?.split("-")?.reversed()?.joinToString(".") ?: return sentDateTime
+        val time = parts.getOrNull(1)?.take(5) ?: ""
+        return if (time.isNotEmpty()) "$date, $time Uhr" else date
+    }
 }
 
 data class Message(
     val id: Int,
     val subject: String?,
     val contentPreview: String?,
+    val content: String? = null,           // full body from GET /messages/{id}
     val sender: MessageSender?,
     val sentDateTime: String?,
     val hasAttachments: Boolean?,
@@ -464,8 +470,11 @@ data class Message(
         val parts = sentDateTime.split("T")
         val date = parts.getOrNull(0)?.split("-")?.reversed()?.joinToString(".") ?: ""
         val time = parts.getOrNull(1)?.take(5) ?: ""
-        return if (time.isNotEmpty()) "$date $time" else date
+        // Always show time when available
+        return if (time.isNotEmpty()) "$date, $time Uhr" else date
     }
+    /** ISO string used for correct descending sort (date + time). Falls back to empty. */
+    val sentDateTimeForSorting: String get() = sentDateTime ?: ""
 }
 
 data class MessageRecipient(
@@ -484,9 +493,31 @@ data class MessageSender(
 data class MessagesStatusResponse(val unreadMessagesCount: Int)
 // ─── TEACHERS ────────────────────────────────────────────────────────────────
 
+// Used for recipient picker — maps the /messages/recipients/static/persons response
+data class RecipientGroup(
+    val type: String?,       // "CLASS_TEACHERS", "TEACHERS", "OTHERS"
+    val persons: List<RecipientPerson>?
+)
+
+data class RecipientPerson(
+    val userId: Int,
+    val displayName: String?,
+    val imageUrl: String?,
+    val tags: List<String>? = null
+) {
+    /** Non-empty tags joined with ", " — e.g. "KL, GL" */
+    val tagLabel: String get() = tags?.filter { it.isNotBlank() }?.joinToString(", ") ?: ""
+    /** Display name with optional tag hint, e.g. "Mö (KL, GL)" */
+    val fullDisplayName: String get() = when {
+        tagLabel.isNotBlank() -> "${displayName ?: "?"} ($tagLabel)"
+        else -> displayName ?: "?"
+    }
+}
+
+// Legacy — kept so existing code compiles
 data class Teacher(
     val id: Int,
-    val name: String?,       // short name e.g. "MU"
+    val name: String?,
     val longName: String?,
     val title: String? = null,
     val active: Boolean? = true

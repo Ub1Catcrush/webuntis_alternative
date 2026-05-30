@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.webuntis.dashboard.api.SessionManager
 import com.webuntis.dashboard.api.WebUntisRepository
 import com.webuntis.dashboard.model.Message
+import com.webuntis.dashboard.model.RecipientPerson
 import com.webuntis.dashboard.model.Teacher
 import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -44,8 +45,8 @@ class MessagesViewModel @Inject constructor(
     val expanded: StateFlow<Map<Int, Message>> = _expanded
 
     // ── Teachers ───────────────────────────────────────────────────────────────
-    private val _teachers = MutableStateFlow<List<Teacher>>(emptyList())
-    val teachers: StateFlow<List<Teacher>> = _teachers
+    private val _teachers = MutableStateFlow<List<RecipientPerson>>(emptyList())
+    val teachers: StateFlow<List<RecipientPerson>> = _teachers
 
     // ── Compose ────────────────────────────────────────────────────────────────
     private val _composeState = MutableStateFlow<ComposeState>(ComposeState.Closed)

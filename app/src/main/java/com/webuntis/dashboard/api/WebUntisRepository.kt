@@ -154,7 +154,7 @@ class WebUntisRepository @Inject constructor(
     private var cacheMessages:     CacheEntry<List<Message>>?                             = null
     private var cacheSentMessages: CacheEntry<List<Message>>?                             = null
     private var cacheDraftMessages:CacheEntry<List<Message>>?                             = null
-    private var cacheTeachers:     List<com.webuntis.dashboard.model.Teacher>?            = null
+    private var cacheTeachers:     List<com.webuntis.dashboard.model.RecipientPerson>?   = null
     private var cacheAbsencesMeta: CacheEntry<AbsencesMetaData>?                        = null
 
     fun clearAllCaches() {
@@ -898,7 +898,7 @@ class WebUntisRepository @Inject constructor(
             // des 2. Accounts fälschlicherweise herausgefiltert werden.
             val seenKeys = mutableSetOf<String>()
             val merged   = (primary + second)
-                .sortedByDescending { it.sentDateTime }
+                .sortedByDescending { it.sentDateTimeForSorting }
                 .filter { msg -> seenKeys.add("${msg.accountLabel}|${msg.id}") }
             Result.success(merged)
         } catch (e: Exception) { Result.failure(e) }
@@ -962,7 +962,7 @@ class WebUntisRepository @Inject constructor(
                 val server = session?.server ?: return@let emptyList<Message>()
                 fetchFolderForSecondAccount(server, session.schoolname, acc.username, acc.password, acc.label, "SENT")
             } ?: emptyList()
-            Result.success((primary + second).sortedByDescending { it.sentDateTime })
+            Result.success((primary + second).sortedByDescending { it.sentDateTimeForSorting })
         } catch (e: Exception) { Result.failure(e) }
     }
 
@@ -982,7 +982,7 @@ class WebUntisRepository @Inject constructor(
                 val server = session?.server ?: return@let emptyList<Message>()
                 fetchFolderForSecondAccount(server, session.schoolname, acc.username, acc.password, acc.label, "DRAFTS")
             } ?: emptyList()
-            Result.success((primary + second).sortedByDescending { it.sentDateTime })
+            Result.success((primary + second).sortedByDescending { it.sentDateTimeForSorting })
         } catch (e: Exception) { Result.failure(e) }
     }
 
@@ -1098,20 +1098,26 @@ class WebUntisRepository @Inject constructor(
 
     // ─── TEACHERS ─────────────────────────────────────────────────────────────
 
-    suspend fun getTeachers(forceRefresh: Boolean = false): Result<List<com.webuntis.dashboard.model.Teacher>> {
+    suspend fun getTeachers(forceRefresh: Boolean = false): Result<List<com.webuntis.dashboard.model.RecipientPerson>> {
         cacheTeachers?.takeIf { !forceRefresh }?.let { return Result.success(it) }
         return try {
             val token = getAuthHeader() ?: return Result.failure(Exception("Nicht authentifiziert"))
-            val resp  = service().getTeachersAuth(token)
+            val resp  = service().getMessageRecipientsAuth(token)
             val raw   = rawBody(resp) ?: return Result.success(emptyList())
-            val jsonEl = com.google.gson.JsonParser.parseString(raw)
-            val arr = if (jsonEl.isJsonArray) jsonEl.asJsonArray
-                      else jsonEl.asJsonObject?.getAsJsonArray("teachers") ?: return Result.success(emptyList())
-            val type = object : TypeToken<List<com.webuntis.dashboard.model.Teacher>>() {}.type
-            val teachers: List<com.webuntis.dashboard.model.Teacher> = com.google.gson.Gson().fromJson(arr, type)
-            val active = teachers.filter { it.active != false }.sortedBy { it.longName ?: it.name ?: "" }
-            cacheTeachers = active
-            Result.success(active)
+            // Response is a JSON array of { "type": "TEACHERS"|"CLASS_TEACHERS"|"OTHERS", "persons": [...] }
+            val groupType = object : TypeToken<List<com.webuntis.dashboard.model.RecipientGroup>>() {}.type
+            val groups: List<com.webuntis.dashboard.model.RecipientGroup> =
+                com.google.gson.Gson().fromJson(raw, groupType)
+            // Merge CLASS_TEACHERS first, then TEACHERS, deduplicate by userId
+            val seenIds = mutableSetOf<Int>()
+            val persons = (groups.filter { it.type == "CLASS_TEACHERS" } +
+                           groups.filter { it.type == "TEACHERS" } +
+                           groups.filter { it.type == "OTHERS" })
+                .flatMap { it.persons ?: emptyList() }
+                .filter { seenIds.add(it.userId) }
+                .sortedBy { it.displayName ?: "" }
+            cacheTeachers = persons
+            Result.success(persons)
         } catch (e: Exception) { Result.failure(e) }
     }
 

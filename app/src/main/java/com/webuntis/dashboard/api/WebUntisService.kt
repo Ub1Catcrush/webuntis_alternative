@@ -199,9 +199,9 @@ interface WebUntisService {
         @Path("id") id: Int
     ): Response<ResponseBody>
 
-    // Teachers list (for recipient picker)
-    @GET("api/rest/view/v1/teachers")
-    suspend fun getTeachersAuth(
+    // Recipients list (for message compose picker)
+    @GET("api/rest/view/v1/messages/recipients/static/persons")
+    suspend fun getMessageRecipientsAuth(
         @Header("Authorization") authorization: String
     ): Response<ResponseBody>
 

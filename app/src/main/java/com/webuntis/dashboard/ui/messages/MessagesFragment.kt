@@ -27,6 +27,7 @@ import com.webuntis.dashboard.databinding.ItemMessageBinding
 import com.webuntis.dashboard.model.Attachment
 import com.webuntis.dashboard.model.Message
 import com.webuntis.dashboard.model.ReplyMessage
+import com.webuntis.dashboard.model.RecipientPerson
 import com.webuntis.dashboard.model.Teacher
 import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.AndroidEntryPoint
@@ -228,49 +229,75 @@ class MessagesFragment : Fragment() {
         }
         layout.addView(etSubject)
 
-        // Recipient chips
-        layout.addView(TextView(ctx).apply { text = "Empfänger:" })
-        val selectedRecipients = mutableListOf<Teacher>()
+        // Recipient chips + autocomplete dropdown
+        layout.addView(TextView(ctx).apply {
+            text = "Empfänger:"
+            setPadding(0, (12 * resources.displayMetrics.density).toInt(), 0, 0)
+        })
+        val selectedRecipients = mutableListOf<RecipientPerson>()
         val chipGroup = ChipGroup(ctx).apply { isSingleLine = false }
         layout.addView(chipGroup)
 
-        fun addChip(teacher: Teacher) {
-            if (selectedRecipients.any { it.id == teacher.id }) return
-            selectedRecipients.add(teacher)
+        fun addChip(person: RecipientPerson) {
+            if (selectedRecipients.any { it.userId == person.userId }) return
+            selectedRecipients.add(person)
             chipGroup.addView(Chip(ctx).apply {
-                text = teacher.displayName
+                text = person.fullDisplayName
                 isCloseIconVisible = true
-                setOnCloseIconClickListener { selectedRecipients.remove(teacher); chipGroup.removeView(this) }
+                setOnCloseIconClickListener { selectedRecipients.remove(person); chipGroup.removeView(this) }
             })
         }
 
         // Pre-fill from replyTo sender or draft recipients
         if (replyTo != null) {
             replyTo.sender?.userId?.let { uid ->
-                addChip(Teacher(uid, replyTo.sender.displayName, replyTo.sender.displayName))
+                addChip(RecipientPerson(uid, replyTo.sender.displayName, replyTo.sender.imageUrl))
             }
         }
         draft?.recipientPersons?.forEach { r ->
-            r.personId?.let { addChip(Teacher(it, r.displayName, r.displayName)) }
+            r.personId?.let { addChip(RecipientPerson(it, r.displayName, r.imageUrl)) }
         }
 
-        val acTeacher = AutoCompleteTextView(ctx).apply { hint = "Lehrer suchen…"; threshold = 1 }
-        layout.addView(acTeacher)
+        // AutoCompleteTextView in TextInputLayout
+        val tilRecipient = com.google.android.material.textfield.TextInputLayout(
+            ctx, null,
+            com.google.android.material.R.attr.textInputOutlinedExposedDropdownMenuStyle
+        ).apply {
+            hint = "Empfänger suchen…"
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        val acTeacher = com.google.android.material.textfield.MaterialAutoCompleteTextView(ctx).apply {
+            threshold = 1
+        }
+        tilRecipient.addView(acTeacher)
+        layout.addView(tilRecipient)
 
-        // Populate autocomplete when teachers are loaded
-        viewLifecycleOwner.lifecycleScope.launch {
-            viewModel.teachers.collect { teachers ->
-                if (teachers.isNotEmpty()) {
-                    val adapter = ArrayAdapter(ctx, android.R.layout.simple_dropdown_item_1line,
-                        teachers.map { it.displayName })
-                    acTeacher.setAdapter(adapter)
-                    acTeacher.setOnItemClickListener { _, _, pos, _ ->
-                        val name = adapter.getItem(pos)?.toString() ?: return@setOnItemClickListener
-                        teachers.firstOrNull { it.displayName == name }?.let { addChip(it) }
-                        acTeacher.text.clear()
-                    }
-                }
+        var allPersons: List<RecipientPerson> = emptyList()
+
+        fun rebuildAdapter(persons: List<RecipientPerson>) {
+            allPersons = persons
+            // Show fullDisplayName (with tags) in dropdown
+            val names = persons.map { it.fullDisplayName }
+            val dropdownAdapter = ArrayAdapter(ctx, android.R.layout.simple_dropdown_item_1line, names)
+            acTeacher.setAdapter(dropdownAdapter)
+            acTeacher.setOnItemClickListener { _, _, pos, _ ->
+                val name = dropdownAdapter.getItem(pos)?.toString() ?: return@setOnItemClickListener
+                allPersons.firstOrNull { it.fullDisplayName == name }?.let { addChip(it) }
+                acTeacher.text.clear()
+                acTeacher.dismissDropDown()
             }
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.teachers.collect { persons ->
+                if (persons.isNotEmpty()) rebuildAdapter(persons)
+            }
+        }
+        acTeacher.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus && allPersons.isNotEmpty()) acTeacher.showDropDown()
         }
 
         // Body
@@ -287,7 +314,7 @@ class MessagesFragment : Fragment() {
             .setPositiveButton("Senden") { _, _ ->
                 val subject = etSubject.text.toString().trim()
                 val body    = etBody.text.toString().trim()
-                val ids     = selectedRecipients.map { it.id }
+                val ids     = selectedRecipients.map { it.userId }
                 if (subject.isBlank() || body.isBlank() || ids.isEmpty()) {
                     Toast.makeText(ctx, "Bitte Betreff, Empfänger und Nachricht ausfüllen.", Toast.LENGTH_LONG).show()
                     composeOpen = false; return@setPositiveButton
@@ -387,7 +414,7 @@ class MessageAdapter(
                 else -> msg.sender?.displayName ?: "–"
             }
             b.textSubject.text = msg.subject ?: "(Kein Betreff)"
-            b.textPreview.text = msg.contentPreview ?: ""
+            b.textPreview.text = msg.content?.takeIf { it.isNotBlank() } ?: msg.contentPreview ?: ""
             b.textDate.text    = msg.sentDateFormatted
             b.iconUnread.isVisible     = msg.isMessageRead == false && !msg.isSent && !msg.isDraft
             b.iconAttachment.isVisible = msg.hasAttachments == true
@@ -410,7 +437,10 @@ class MessageAdapter(
                 }
             )
 
-            if (isExpanded) {
+            if (isExpanded && expandedMsg != null) {
+                // When expanded, prefer full content body over preview
+                b.textPreview.text = expandedMsg.content?.takeIf { it.isNotBlank() }
+                    ?: expandedMsg.contentPreview ?: ""
                 renderExpanded(expandedMsg, msg)
             }
 
@@ -437,12 +467,13 @@ class MessageAdapter(
                 b.layoutAttachments.isVisible   = false
             }
 
-            // Reply history (thread) — oldest first
+            // Reply history (thread) — newest first (descending)
             val history = expandedMsg.replyHistory
             if (!history.isNullOrEmpty()) {
                 b.layoutReplyHistory.isVisible = true
                 b.layoutReplyHistory.removeAllViews()
-                history.reversed().forEach { reply -> buildReplyBubble(b.layoutReplyHistory, reply) }
+                history.sortedByDescending { it.sentDateTime ?: "" }
+                    .forEach { reply -> buildReplyBubble(b.layoutReplyHistory, reply) }
             } else {
                 b.layoutReplyHistory.isVisible = false
             }
