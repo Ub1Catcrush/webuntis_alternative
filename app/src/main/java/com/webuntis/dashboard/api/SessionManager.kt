@@ -12,126 +12,113 @@ import javax.inject.Singleton
 @Singleton
 class SessionManager @Inject constructor(
     @ApplicationContext private val context: Context
-
 ) {
-    /**
-     * Session prefs — encrypted when the Keystore is available, plain fallback otherwise.
-     * On custom ROMs / API 29 devices the Android Keystore can be unavailable or broken.
-     * We fall back to plainPrefs so the app stays usable; the session token is the only
-     * secret stored here (credentials moved to plainPrefs already).
-     */
-    private val prefs: SharedPreferences by lazy {
-        createEncryptedPrefsOrFallback()
+    // ── Two SharedPreferences files ───────────────────────────────────────────
+    //
+    // prefs      ("webuntis_session")  — credentials, session token, second account
+    //                                    encrypted if possible, plain fallback
+    // plainPrefs ("webuntis_settings") — UI settings (timetable days, toggles, cache TTL)
+    //                                    never needs encryption
+    //
+    // RULE: never call plainPrefs inside createSecurePrefs() — lazy init order is undefined.
+    // RULE: clearSession() must NEVER delete storedCredentials.
+
+    private val plainPrefs: SharedPreferences by lazy {
+        context.getSharedPreferences("webuntis_settings", Context.MODE_PRIVATE)
     }
 
-    private fun createEncryptedPrefsOrFallback(): SharedPreferences {
-        // Attempt 1: normal EncryptedSharedPreferences
-        try {
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
+    private val prefs: SharedPreferences by lazy { createSecurePrefs() }
+
+    private fun createSecurePrefs(): SharedPreferences {
+        // Try 1 — normal encrypted prefs
+        runCatching {
+            val mk = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
             return EncryptedSharedPreferences.create(
-                context, "webuntis_session", masterKey,
+                context, "webuntis_session", mk,
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
-        } catch (e1: Exception) {
-            android.util.Log.w("SessionManager",
-                "EncryptedSharedPreferences failed (attempt 1), retrying after clearing keystore entry", e1)
+        }.onFailure {
+            android.util.Log.w("SessionManager", "EncryptedSharedPreferences attempt 1 failed", it)
         }
 
-        // Attempt 2: delete stale keystore entry and retry (helps on ROM upgrades / re-installs)
-        try {
-            val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
-            ks.load(null)
-            if (ks.containsAlias("_androidx_security_master_key")) {
+        // Try 2 — delete stale keystore alias and retry
+        runCatching {
+            val ks = java.security.KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
+            if (ks.containsAlias("_androidx_security_master_key"))
                 ks.deleteEntry("_androidx_security_master_key")
-                android.util.Log.w("SessionManager", "Deleted stale master key, retrying…")
-            }
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
+            val mk = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
             return EncryptedSharedPreferences.create(
-                context, "webuntis_session", masterKey,
+                context, "webuntis_session", mk,
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
-        } catch (e2: Exception) {
-            android.util.Log.w("SessionManager",
-                "EncryptedSharedPreferences failed (attempt 2), falling back to plainPrefs", e2)
+        }.onFailure {
+            android.util.Log.w("SessionManager", "EncryptedSharedPreferences attempt 2 failed", it)
         }
 
-        // Attempt 3: also delete the corrupted encrypted file and retry fresh
-        try {
-            val encFile = context.getSharedPrefsFile("webuntis_session")
-            if (encFile.exists()) {
-                encFile.delete()
-                android.util.Log.w("SessionManager", "Deleted corrupted prefs file, retrying…")
-            }
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
+        // Try 3 — delete corrupted prefs file and retry (fresh key)
+        runCatching {
+            java.io.File(context.filesDir.parent, "shared_prefs/webuntis_session.xml")
+                .takeIf { it.exists() }?.delete()
+            val mk = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
             return EncryptedSharedPreferences.create(
-                context, "webuntis_session", masterKey,
+                context, "webuntis_session", mk,
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
-        } catch (e3: Exception) {
-            android.util.Log.e("SessionManager",
-                "EncryptedSharedPreferences unavailable on this device — using plainPrefs for session storage", e3)
+        }.onFailure {
+            android.util.Log.e("SessionManager", "EncryptedSharedPreferences attempt 3 failed — falling back to plain prefs", it)
         }
 
-        // Final fallback: plainPrefs (unencrypted). Session token is short-lived anyway.
-        return plainPrefs
+        // Final fallback — plain unencrypted prefs (app sandbox still protects at rest)
+        // IMPORTANT: use a separate file name so we never accidentally mix encrypted
+        // and plain instances of the same file name.
+        return context.getSharedPreferences("webuntis_session_plain", Context.MODE_PRIVATE)
     }
 
-    /** Extension to locate the SharedPreferences backing file (used for cleanup). */
-    private fun Context.getSharedPrefsFile(name: String): java.io.File {
-        // Standard Android path: /data/data/<pkg>/shared_prefs/<name>.xml
-        return java.io.File(filesDir.parent, "shared_prefs/$name.xml")
-    }
+    // ── Session ───────────────────────────────────────────────────────────────
 
     var session: SessionData?
         get() {
             val server = prefs.getString(KEY_SERVER, null) ?: return null
             return SessionData(
-                server = server,
+                server     = server,
                 schoolname = prefs.getString(KEY_SCHOOLNAME, "") ?: "",
-                username = prefs.getString(KEY_USERNAME, "") ?: "",
-                sessionId = prefs.getString(KEY_SESSION_ID, "") ?: "",
-                personId = prefs.getInt(KEY_PERSON_ID, 0),
-                classId = prefs.getInt(KEY_CLASS_ID, 0),
+                username   = prefs.getString(KEY_USERNAME,   "") ?: "",
+                sessionId  = prefs.getString(KEY_SESSION_ID, "") ?: "",
+                personId   = prefs.getInt(KEY_PERSON_ID, 0),
+                classId    = prefs.getInt(KEY_CLASS_ID,  0),
                 personName = prefs.getString(KEY_PERSON_NAME, "") ?: "",
                 personType = prefs.getInt(KEY_PERSON_TYPE, 0)
             )
         }
         set(value) {
             if (value == null) {
-                clearSession()
+                // Only clear session token fields — NEVER touch credentials here
+                prefs.edit()
+                    .remove(KEY_SERVER).remove(KEY_SCHOOLNAME).remove(KEY_USERNAME)
+                    .remove(KEY_SESSION_ID).remove(KEY_PERSON_ID).remove(KEY_CLASS_ID)
+                    .remove(KEY_PERSON_NAME).remove(KEY_PERSON_TYPE).remove(KEY_SESSION_TIME)
+                    .apply()
             } else {
                 prefs.edit()
-                    .putString(KEY_SERVER, value.server)
-                    .putString(KEY_SCHOOLNAME, value.schoolname)
-                    .putString(KEY_USERNAME, value.username)
-                    .putString(KEY_SESSION_ID, value.sessionId)
-                    .putInt(KEY_PERSON_ID, value.personId)
-                    .putInt(KEY_CLASS_ID, value.classId)
+                    .putString(KEY_SERVER,      value.server)
+                    .putString(KEY_SCHOOLNAME,  value.schoolname)
+                    .putString(KEY_USERNAME,    value.username)
+                    .putString(KEY_SESSION_ID,  value.sessionId)
+                    .putInt(KEY_PERSON_ID,      value.personId)
+                    .putInt(KEY_CLASS_ID,       value.classId)
                     .putString(KEY_PERSON_NAME, value.personName)
-                    .putInt(KEY_PERSON_TYPE, value.personType)
-                    .putLong(KEY_SESSION_TIME, System.currentTimeMillis())
+                    .putInt(KEY_PERSON_TYPE,    value.personType)
+                    .putLong(KEY_SESSION_TIME,  System.currentTimeMillis())
                     .apply()
             }
         }
 
-    var studentId: Int
-        get() = prefs.getInt(KEY_STUDENT_ID, 0)
-        set(v) = prefs.edit().putInt(KEY_STUDENT_ID, v).apply()
-
     fun isSessionFresh(): Boolean {
         val ts = prefs.getLong(KEY_SESSION_TIME, 0L)
-        if (ts == 0L) return false
-        val ageMs = System.currentTimeMillis() - ts
-        return ageMs < SESSION_TTL_MS
+        return ts != 0L && (System.currentTimeMillis() - ts) < SESSION_TTL_MS
     }
 
     fun getSessionTime(): Long = prefs.getLong(KEY_SESSION_TIME, 0L)
@@ -140,27 +127,24 @@ class SessionManager @Inject constructor(
         prefs.edit().putLong(KEY_SESSION_TIME, System.currentTimeMillis()).apply()
     }
 
+    /** Clears session token only. Credentials and second account are preserved. */
     fun clearSession() {
         prefs.edit()
             .remove(KEY_SERVER).remove(KEY_SCHOOLNAME).remove(KEY_USERNAME)
             .remove(KEY_SESSION_ID).remove(KEY_PERSON_ID).remove(KEY_CLASS_ID)
             .remove(KEY_PERSON_NAME).remove(KEY_PERSON_TYPE).remove(KEY_SESSION_TIME)
-            .remove(KEY_STORED_USER).remove(KEY_STORED_PASS).remove(KEY_STUDENT_ID)
             .apply()
+        // studentId is session-derived — clear it too so it gets re-resolved after next login
+        prefs.edit().remove(KEY_STUDENT_ID).apply()
     }
 
+    /** Clears everything including credentials. Use only on explicit logout. */
     fun clearAll() {
         prefs.edit().clear().apply()
-        plainPrefs.edit().clear().apply() // safety: also wipe any legacy data
+        plainPrefs.edit().clear().apply()
     }
 
-    /** Returns server+schoolname from persisted session even when the session token has expired. */
-    val storedSessionMeta: Pair<String, String>?
-        get() {
-            val server = prefs.getString(KEY_SERVER, null) ?: return null
-            val school = prefs.getString(KEY_SCHOOLNAME, null) ?: return null
-            return Pair(server, school)
-        }
+    // ── Stored credentials (persist across sessions) ──────────────────────────
 
     var storedCredentials: Pair<String, String>?
         get() {
@@ -179,11 +163,27 @@ class SessionManager @Inject constructor(
             }
         }
 
+    /** Server + schoolname from last successful login — available even when session token expired. */
+    val storedSessionMeta: Pair<String, String>?
+        get() {
+            val server = prefs.getString(KEY_SERVER, null) ?: return null
+            val school = prefs.getString(KEY_SCHOOLNAME, null) ?: return null
+            return Pair(server, school)
+        }
+
+    // ── Student ID (for parent accounts) ─────────────────────────────────────
+
+    var studentId: Int
+        get() = prefs.getInt(KEY_STUDENT_ID, 0)
+        set(v) = prefs.edit().putInt(KEY_STUDENT_ID, v).apply()
+
+    // ── Second account ────────────────────────────────────────────────────────
+
     data class SecondAccount(
-        val username: String,
-        val password: String,
-        val label: String,
-        val personType: Int = 0,
+        val username:   String,
+        val password:   String,
+        val label:      String,
+        val personType: Int    = 0,
         val personName: String = ""
     ) {
         val accountTypeLabel: String get() = when (personType) {
@@ -198,36 +198,36 @@ class SessionManager @Inject constructor(
         get() {
             val u = prefs.getString(KEY_SECOND_USER, null) ?: return null
             val p = prefs.getString(KEY_SECOND_PASS, null) ?: return null
-            val l = prefs.getString(KEY_SECOND_LABEL, "") ?: ""
-            val t = prefs.getInt(KEY_SECOND_TYPE, 0)
-            val n = prefs.getString(KEY_SECOND_NAME, "") ?: ""
-            return SecondAccount(u, p, l, t, n)
+            return SecondAccount(
+                username   = u,
+                password   = p,
+                label      = prefs.getString(KEY_SECOND_LABEL, "") ?: "",
+                personType = prefs.getInt(KEY_SECOND_TYPE, 0),
+                personName = prefs.getString(KEY_SECOND_NAME, "") ?: ""
+            )
         }
         set(value) {
             if (value == null) {
                 prefs.edit()
                     .remove(KEY_SECOND_USER).remove(KEY_SECOND_PASS)
-                    .remove(KEY_SECOND_LABEL).remove(KEY_SECOND_TYPE)
-                    .remove(KEY_SECOND_NAME)
+                    .remove(KEY_SECOND_LABEL).remove(KEY_SECOND_TYPE).remove(KEY_SECOND_NAME)
                     .apply()
             } else {
                 prefs.edit()
-                    .putString(KEY_SECOND_USER, value.username)
-                    .putString(KEY_SECOND_PASS, value.password)
+                    .putString(KEY_SECOND_USER,  value.username)
+                    .putString(KEY_SECOND_PASS,  value.password)
                     .putString(KEY_SECOND_LABEL, value.label)
-                    .putInt(KEY_SECOND_TYPE, value.personType)
-                    .putString(KEY_SECOND_NAME, value.personName)
+                    .putInt(KEY_SECOND_TYPE,     value.personType)
+                    .putString(KEY_SECOND_NAME,  value.personName)
                     .apply()
             }
         }
 
+    // ── UI settings (plainPrefs) ──────────────────────────────────────────────
+
     var timetableDays: Int
         get() = plainPrefs.getInt(KEY_TIMETABLE_DAYS, DEFAULT_TIMETABLE_DAYS)
-        set(value) {
-            plainPrefs.edit()
-                .putInt(KEY_TIMETABLE_DAYS, value.coerceIn(MIN_TIMETABLE_DAYS, MAX_TIMETABLE_DAYS))
-                .apply()
-        }
+        set(value) { plainPrefs.edit().putInt(KEY_TIMETABLE_DAYS, value.coerceIn(MIN_TIMETABLE_DAYS, MAX_TIMETABLE_DAYS)).apply() }
 
     var showLongSubjects: Boolean
         get() = plainPrefs.getBoolean(KEY_SHOW_LONG_SUBJECTS, false)
@@ -247,11 +247,7 @@ class SessionManager @Inject constructor(
 
     var cacheTtlMinutes: Int
         get() = plainPrefs.getInt(KEY_CACHE_TTL, DEFAULT_CACHE_TTL)
-        set(value) {
-            plainPrefs.edit()
-                .putInt(KEY_CACHE_TTL, value.coerceIn(MIN_CACHE_TTL, MAX_CACHE_TTL))
-                .apply()
-        }
+        set(value) { plainPrefs.edit().putInt(KEY_CACHE_TTL, value.coerceIn(MIN_CACHE_TTL, MAX_CACHE_TTL)).apply() }
 
     fun isCacheFresh(lastFetchMs: Long): Boolean {
         val ttl = cacheTtlMinutes
@@ -259,65 +255,45 @@ class SessionManager @Inject constructor(
         return (System.currentTimeMillis() - lastFetchMs) < ttl * 60_000L
     }
 
-    private val plainPrefs by lazy {
-        context.getSharedPreferences("webuntis_settings", android.content.Context.MODE_PRIVATE)
-    }
+    // ── Export / Import ───────────────────────────────────────────────────────
 
-
-    // ─── EXPORT / IMPORT ──────────────────────────────────────────────────────
-
-    /**
-     * Exports all non-session settings as a JSON string.
-     * Sensitive fields (passwords) are included so import restores a fully
-     * working configuration. The user is responsible for keeping the file safe.
-     */
     fun exportSettings(): String {
         val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-        val obj  = com.google.gson.JsonObject().apply {
+        val obj = com.google.gson.JsonObject().apply {
             addProperty("version", 1)
-            // Primary account
-            session?.let { s ->
-                addProperty("server",     s.server)
-                addProperty("schoolname", s.schoolname)
-                addProperty("username",   s.username)
-                addProperty("personName", s.personName)
-                addProperty("personType", s.personType)
+            session?.let {
+                addProperty("server",     it.server)
+                addProperty("schoolname", it.schoolname)
+                addProperty("username",   it.username)
+                addProperty("personName", it.personName)
+                addProperty("personType", it.personType)
             }
             storedCredentials?.let { addProperty("password", it.second) }
-            // Second account
             secondAccount?.let { acc ->
-                val sa = com.google.gson.JsonObject().apply {
+                add("secondAccount", com.google.gson.JsonObject().apply {
                     addProperty("username",   acc.username)
                     addProperty("password",   acc.password)
                     addProperty("label",      acc.label)
                     addProperty("personType", acc.personType)
                     addProperty("personName", acc.personName)
-                }
-                add("secondAccount", sa)
+                })
             }
-            // UI / timetable settings
-            addProperty("timetableDays",       timetableDays)
-            addProperty("showLongSubjects",    showLongSubjects)
-            addProperty("showLongTeachers",    showLongTeachers)
-            addProperty("showLongRooms",       showLongRooms)
-            addProperty("useCompactWeekView",  useCompactWeekView)
-            addProperty("cacheTtlMinutes",     cacheTtlMinutes)
+            addProperty("timetableDays",      timetableDays)
+            addProperty("showLongSubjects",   showLongSubjects)
+            addProperty("showLongTeachers",   showLongTeachers)
+            addProperty("showLongRooms",      showLongRooms)
+            addProperty("useCompactWeekView", useCompactWeekView)
+            addProperty("cacheTtlMinutes",    cacheTtlMinutes)
         }
         return gson.toJson(obj)
     }
 
-    /**
-     * Imports settings from a JSON string previously produced by [exportSettings].
-     * Returns a [ImportResult] describing what was restored.
-     * Does NOT trigger a re-login — the caller must do that.
-     */
     fun importSettings(json: String): ImportResult {
         return try {
             val obj = com.google.gson.JsonParser.parseString(json).asJsonObject
             var primaryUpdated = false
             var secondUpdated  = false
 
-            // Primary credentials
             val server     = obj.get("server")?.asString
             val schoolname = obj.get("schoolname")?.asString
             val username   = obj.get("username")?.asString
@@ -327,29 +303,18 @@ class SessionManager @Inject constructor(
 
             if (!server.isNullOrBlank() && !schoolname.isNullOrBlank() &&
                 !username.isNullOrBlank() && !password.isNullOrBlank()) {
-                // Store credentials — re-login must be triggered by caller
                 storedCredentials = Pair(username, password)
-                // Update session metadata (server/schoolname/username) so Settings UI shows them
                 session = session?.copy(
-                    server     = server,
-                    schoolname = schoolname,
-                    username   = username,
-                    personName = personName,
-                    personType = personType
-                ) ?: com.webuntis.dashboard.model.SessionData(
-                    server     = server,
-                    schoolname = schoolname,
-                    username   = username,
-                    sessionId  = "",
-                    personId   = 0,
-                    classId    = 0,
-                    personName = personName,
-                    personType = personType
+                    server = server, schoolname = schoolname,
+                    username = username, personName = personName, personType = personType
+                ) ?: SessionData(
+                    server = server, schoolname = schoolname, username = username,
+                    sessionId = "", personId = 0, classId = 0,
+                    personName = personName, personType = personType
                 )
                 primaryUpdated = true
             }
 
-            // Second account
             obj.getAsJsonObject("secondAccount")?.let { sa ->
                 val u = sa.get("username")?.asString
                 val p = sa.get("password")?.asString
@@ -365,11 +330,10 @@ class SessionManager @Inject constructor(
                 }
             }
 
-            // UI settings
             obj.get("timetableDays")?.asInt?.let      { timetableDays      = it }
-            obj.get("showLongSubjects")?.asBoolean?.let { showLongSubjects = it }
-            obj.get("showLongTeachers")?.asBoolean?.let { showLongTeachers = it }
-            obj.get("showLongRooms")?.asBoolean?.let    { showLongRooms    = it }
+            obj.get("showLongSubjects")?.asBoolean?.let { showLongSubjects  = it }
+            obj.get("showLongTeachers")?.asBoolean?.let { showLongTeachers  = it }
+            obj.get("showLongRooms")?.asBoolean?.let    { showLongRooms     = it }
             obj.get("useCompactWeekView")?.asBoolean?.let { useCompactWeekView = it }
             obj.get("cacheTtlMinutes")?.asInt?.let    { cacheTtlMinutes    = it }
 
@@ -383,6 +347,7 @@ class SessionManager @Inject constructor(
         data class Success(val primaryUpdated: Boolean, val secondUpdated: Boolean) : ImportResult()
         data class Error(val message: String) : ImportResult()
     }
+
     companion object {
         private const val KEY_SERVER       = "server"
         private const val KEY_SCHOOLNAME   = "schoolname"
@@ -392,27 +357,27 @@ class SessionManager @Inject constructor(
         private const val KEY_CLASS_ID     = "class_id"
         private const val KEY_PERSON_NAME  = "person_name"
         private const val KEY_PERSON_TYPE  = "person_type"
+        private const val KEY_SESSION_TIME = "session_time"
         private const val KEY_STORED_USER  = "stored_user"
         private const val KEY_STORED_PASS  = "stored_pass"
+        private const val KEY_STUDENT_ID   = "student_id"
         private const val KEY_SECOND_USER  = "second_user"
         private const val KEY_SECOND_PASS  = "second_pass"
         private const val KEY_SECOND_LABEL = "second_label"
         private const val KEY_SECOND_TYPE  = "second_type"
         private const val KEY_SECOND_NAME  = "second_name"
-        private const val KEY_TIMETABLE_DAYS = "timetable_days"
-        private const val KEY_STUDENT_ID     = "student_id"
-        private const val KEY_USE_COMPACT_WEEK_VIEW = "use_compact_week_view"
+        private const val KEY_TIMETABLE_DAYS        = "timetable_days"
+        private const val KEY_SHOW_LONG_SUBJECTS     = "show_long_subjects"
+        private const val KEY_SHOW_LONG_TEACHERS     = "show_long_teachers"
+        private const val KEY_SHOW_LONG_ROOMS        = "show_long_rooms"
+        private const val KEY_USE_COMPACT_WEEK_VIEW  = "use_compact_week_view"
+        private const val KEY_CACHE_TTL              = "cache_ttl_minutes"
         const val DEFAULT_TIMETABLE_DAYS = 5
         const val MIN_TIMETABLE_DAYS     = 1
         const val MAX_TIMETABLE_DAYS     = 20
-        private const val KEY_CACHE_TTL      = "cache_ttl_minutes"
-        private const val KEY_SHOW_LONG_SUBJECTS = "show_long_subjects"
-        private const val KEY_SHOW_LONG_TEACHERS = "show_long_teachers"
-        private const val KEY_SHOW_LONG_ROOMS    = "show_long_rooms"
         const val DEFAULT_CACHE_TTL      = 5
         const val MIN_CACHE_TTL          = 0
         const val MAX_CACHE_TTL          = 60
-        private const val KEY_SESSION_TIME = "session_time"
-        private const val SESSION_TTL_MS   = 45 * 60 * 1000L
+        private const val SESSION_TTL_MS = 45 * 60 * 1000L
     }
 }
