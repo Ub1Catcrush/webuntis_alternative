@@ -280,21 +280,17 @@ class SettingsFragment : Fragment() {
         val schoolname = binding.inputSchoolname.text.toString().trim()
         val username   = binding.inputUsername.text.toString().trim()
         val typed      = binding.inputPassword.text.toString()
-        val password   = if (typed.isBlank())
+        // Use stored password when field is left blank (common case when only changing other fields)
+        val password   = typed.ifBlank {
             loginViewModel.sessionManager.storedCredentials?.second ?: ""
-        else typed
+        }
 
         if (server.isBlank() || schoolname.isBlank() || username.isBlank() || password.isBlank()) {
-            val effectivePassword = password.ifBlank {
-                loginViewModel.sessionManager.storedCredentials?.second
-            }
-            if (server.isBlank() || schoolname.isBlank() || username.isBlank() || effectivePassword.isNullOrBlank()) {
-                binding.statusText.text = getString(R.string.error_fill_all_fields)
-                binding.statusText.isVisible = true
-                return
-            }
+            binding.statusText.text = getString(R.string.error_fill_all_fields)
+            binding.statusText.isVisible = true
+            return
         }
-        loginViewModel.sessionManager.clearSession()
+        // Do NOT clearSession() here — it would wipe storedCredentials before login() saves them
         loginViewModel.login(server, schoolname, username, password)
     }
 

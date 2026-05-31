@@ -1236,8 +1236,16 @@ class WebUntisRepository @Inject constructor(
      * Returns a human-readable summary string for the UI on success.
      */
     suspend fun verifyAndSaveSecondAccount(username: String, password: String, label: String): Result<String> {
+        // session should always be present; if not, try re-login from persisted credentials
+        if (sessionManager.session == null) {
+            val creds  = sessionManager.storedCredentials
+            val stored = sessionManager.storedSessionMeta
+            if (creds != null && stored != null) {
+                login(stored.first, stored.second, creds.first, creds.second)
+            }
+        }
         val session = sessionManager.session
-            ?: return Result.failure(Exception("Nicht angemeldet — bitte zuerst einloggen"))
+            ?: return Result.failure(Exception("Nicht angemeldet — bitte zuerst den Hauptaccount speichern"))
         return try {
             val rpc = loginViaJsonRpc(session.server, session.schoolname, username, password)
             val result = if (rpc.isSuccess) rpc else loginViaRest(session.server, session.schoolname, username, password)

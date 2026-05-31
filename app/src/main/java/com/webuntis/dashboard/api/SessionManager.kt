@@ -145,32 +145,34 @@ class SessionManager @Inject constructor(
             .remove(KEY_SERVER).remove(KEY_SCHOOLNAME).remove(KEY_USERNAME)
             .remove(KEY_SESSION_ID).remove(KEY_PERSON_ID).remove(KEY_CLASS_ID)
             .remove(KEY_PERSON_NAME).remove(KEY_PERSON_TYPE).remove(KEY_SESSION_TIME)
-            .apply()
-        // Credentials and second account are in plainPrefs
-        plainPrefs.edit()
             .remove(KEY_STORED_USER).remove(KEY_STORED_PASS).remove(KEY_STUDENT_ID)
             .apply()
     }
 
     fun clearAll() {
         prefs.edit().clear().apply()
-        plainPrefs.edit().clear().apply()
+        plainPrefs.edit().clear().apply() // safety: also wipe any legacy data
     }
+
+    /** Returns server+schoolname from persisted session even when the session token has expired. */
+    val storedSessionMeta: Pair<String, String>?
+        get() {
+            val server = prefs.getString(KEY_SERVER, null) ?: return null
+            val school = prefs.getString(KEY_SCHOOLNAME, null) ?: return null
+            return Pair(server, school)
+        }
 
     var storedCredentials: Pair<String, String>?
         get() {
-            // Stored in plainPrefs for reliability on API 29 where EncryptedSharedPreferences
-            // may silently fail on first install. Credentials are already protected by
-            // Android's app sandbox; full-disk encryption protects them at rest.
-            val u = plainPrefs.getString(KEY_STORED_USER, null) ?: return null
-            val p = plainPrefs.getString(KEY_STORED_PASS, null) ?: return null
+            val u = prefs.getString(KEY_STORED_USER, null) ?: return null
+            val p = prefs.getString(KEY_STORED_PASS, null) ?: return null
             return Pair(u, p)
         }
         set(value) {
             if (value == null) {
-                plainPrefs.edit().remove(KEY_STORED_USER).remove(KEY_STORED_PASS).apply()
+                prefs.edit().remove(KEY_STORED_USER).remove(KEY_STORED_PASS).apply()
             } else {
-                plainPrefs.edit()
+                prefs.edit()
                     .putString(KEY_STORED_USER, value.first)
                     .putString(KEY_STORED_PASS, value.second)
                     .apply()
@@ -194,23 +196,22 @@ class SessionManager @Inject constructor(
 
     var secondAccount: SecondAccount?
         get() {
-            // Also in plainPrefs for the same reliability reason as storedCredentials
-            val u = plainPrefs.getString(KEY_SECOND_USER, null) ?: return null
-            val p = plainPrefs.getString(KEY_SECOND_PASS, null) ?: return null
-            val l = plainPrefs.getString(KEY_SECOND_LABEL, "") ?: ""
-            val t = plainPrefs.getInt(KEY_SECOND_TYPE, 0)
-            val n = plainPrefs.getString(KEY_SECOND_NAME, "") ?: ""
+            val u = prefs.getString(KEY_SECOND_USER, null) ?: return null
+            val p = prefs.getString(KEY_SECOND_PASS, null) ?: return null
+            val l = prefs.getString(KEY_SECOND_LABEL, "") ?: ""
+            val t = prefs.getInt(KEY_SECOND_TYPE, 0)
+            val n = prefs.getString(KEY_SECOND_NAME, "") ?: ""
             return SecondAccount(u, p, l, t, n)
         }
         set(value) {
             if (value == null) {
-                plainPrefs.edit()
+                prefs.edit()
                     .remove(KEY_SECOND_USER).remove(KEY_SECOND_PASS)
                     .remove(KEY_SECOND_LABEL).remove(KEY_SECOND_TYPE)
                     .remove(KEY_SECOND_NAME)
                     .apply()
             } else {
-                plainPrefs.edit()
+                prefs.edit()
                     .putString(KEY_SECOND_USER, value.username)
                     .putString(KEY_SECOND_PASS, value.password)
                     .putString(KEY_SECOND_LABEL, value.label)

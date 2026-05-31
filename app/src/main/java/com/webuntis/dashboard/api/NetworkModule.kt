@@ -90,19 +90,22 @@ object NetworkModule {
         val session = sessionManager.session
         val request = chain.request()
         val host = request.url.host
+        val path = request.url.encodedPath
+        val isLoginEndpoint = path.contains("jsonrpc.do", ignoreCase = true) ||
+                              path.contains("api/userdata/login", ignoreCase = true)
+
         val builder = request.newBuilder()
-            
-            .header("User-Agent", "Mozilla/5.0 (Linux; Android 15; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
+            // Use WebUntis official Android app UA — browser UAs can trigger WAF/bot protection
+            .header("User-Agent", "Dalvik/2.1.0 (Linux; U; Android 10; WebUntis)")
             .header("Accept", "application/json, text/plain, */*")
             .header("Accept-Language", "de-DE,de;q=0.9,en-US;q=0.8")
-            .header("X-Requested-With", "XMLHttpRequest")
-        
-        if (session != null && session.sessionId.isNotEmpty()) {
-            builder.header("Referer", "https://$host/WebUntis/")
-        }
-        
-        if (request.method != "GET") {
-            builder.header("Origin", "https://$host")
+            // Origin always needed — WebUntis validates it for CSRF on POST endpoints
+            .header("Origin", "https://$host")
+            .header("Referer", "https://$host/WebUntis/")
+
+        // X-Requested-With is only for authenticated API calls, not for login
+        if (!isLoginEndpoint) {
+            builder.header("X-Requested-With", "XMLHttpRequest")
         }
 
         chain.proceed(builder.build())
