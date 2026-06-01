@@ -18,6 +18,9 @@ import com.webuntis.dashboard.model.UiState
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.graphics.Paint
 import kotlinx.coroutines.launch
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.delay
+import java.time.LocalDate
 
 class TimetablePagerAdapter(
     fragment: Fragment,
@@ -66,6 +69,16 @@ class DayFragment : Fragment() {
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
 
+        // Sync TimeIndicatorView scroll position with RecyclerView
+        binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                binding.timeIndicator.scrollY = getRecyclerScrollY(rv)
+                binding.timeIndicator.invalidate()
+            }
+        })
+
+        startTimeIndicatorUpdater()
+
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.days.collect { state ->
@@ -82,10 +95,24 @@ class DayFragment : Fragment() {
                                 binding.recyclerView.isVisible = false
                                 binding.emptyView.isVisible = true
                                 binding.emptyView.text = getString(R.string.label_no_lessons_today)
+                                binding.timeIndicator.isVisible = false
                             } else {
                                 binding.recyclerView.isVisible = true
                                 binding.emptyView.isVisible = false
                                 adapter.submitList(day.groupedLessons)
+                                // Time indicator: only show on today's tab
+                                val isToday = day.day.date == LocalDate.now()
+                                if (isToday) {
+                                    val allLessons = day.day.lessons
+                                    val startMin = allLessons.minOf { (it.startTime / 100) * 60 + (it.startTime % 100) }
+                                    val endMin   = allLessons.maxOf { (it.endTime   / 100) * 60 + (it.endTime   % 100) }
+                                    binding.timeIndicator.dayStartMin = startMin
+                                    binding.timeIndicator.dayEndMin   = endMin
+                                    binding.timeIndicator.currentTimeMin = TimeIndicatorView.currentTimeMinutes()
+                                    binding.timeIndicator.isVisible = true
+                                } else {
+                                    binding.timeIndicator.isVisible = false
+                                }
                             }
                         }
                         is UiState.Error -> {
@@ -98,6 +125,33 @@ class DayFragment : Fragment() {
                 }
             }
         }
+    }
+
+    /** Starts a coroutine that updates the time indicator every minute. */
+    private fun startTimeIndicatorUpdater() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    if (binding.timeIndicator.isVisible) {
+                        binding.timeIndicator.currentTimeMin = TimeIndicatorView.currentTimeMinutes()
+                        // Re-sync scroll offset
+                        binding.timeIndicator.scrollY = getRecyclerScrollY(binding.recyclerView)
+                    }
+                    // Sleep until the next full minute
+                    val now = java.util.Calendar.getInstance()
+                    val secondsLeft = 60 - now.get(java.util.Calendar.SECOND)
+                    delay(secondsLeft * 1000L)
+                }
+            }
+        }
+    }
+
+    private fun getRecyclerScrollY(rv: androidx.recyclerview.widget.RecyclerView): Int {
+        val lm = rv.layoutManager as? LinearLayoutManager ?: return 0
+        val firstPos = lm.findFirstVisibleItemPosition()
+        if (firstPos == RecyclerView.NO_POSITION) return 0
+        val firstView = lm.findViewByPosition(firstPos) ?: return 0
+        return -firstView.top + firstPos * firstView.height
     }
 
     private fun showLessonDetail(lesson: Lesson) {
