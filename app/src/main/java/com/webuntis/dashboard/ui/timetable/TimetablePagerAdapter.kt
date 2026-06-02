@@ -18,6 +18,7 @@ import com.webuntis.dashboard.model.UiState
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.graphics.Paint
 import kotlinx.coroutines.launch
+import com.webuntis.dashboard.model.Absence
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.delay
 import java.time.LocalDate
@@ -68,6 +69,9 @@ class DayFragment : Fragment() {
 
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
+        binding.recyclerView.addItemDecoration(AbsenceDecoration())
+        // Give TimeIndicatorView a reference so it can read real child bounds
+        binding.timeIndicator.recyclerView = binding.recyclerView
 
         // Sync TimeIndicatorView scroll position with RecyclerView
         binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -78,6 +82,16 @@ class DayFragment : Fragment() {
         })
 
         startTimeIndicatorUpdater()
+
+        // Re-apply absence overlay when absences load (may arrive after timetable)
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.absences.collect {
+                    val day = (viewModel.days.value as? UiState.Success)?.data?.getOrNull(dayIndex)
+                    if (day != null) updateAbsenceOverlay(day.day.date)
+                }
+            }
+        }
 
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -102,17 +116,17 @@ class DayFragment : Fragment() {
                                 adapter.submitList(day.groupedLessons)
                                 // Time indicator: only show on today's tab
                                 val isToday = day.day.date == LocalDate.now()
+                                val allLessons = day.day.lessons
+                                val startMin = allLessons.minOf { (it.startTime / 100) * 60 + (it.startTime % 100) }
+                                val endMin   = allLessons.maxOf { (it.endTime   / 100) * 60 + (it.endTime   % 100) }
+                                binding.timeIndicator.dayStartMin = startMin
+                                binding.timeIndicator.dayEndMin   = endMin
                                 if (isToday) {
-                                    val allLessons = day.day.lessons
-                                    val startMin = allLessons.minOf { (it.startTime / 100) * 60 + (it.startTime % 100) }
-                                    val endMin   = allLessons.maxOf { (it.endTime   / 100) * 60 + (it.endTime   % 100) }
-                                    binding.timeIndicator.dayStartMin = startMin
-                                    binding.timeIndicator.dayEndMin   = endMin
                                     binding.timeIndicator.currentTimeMin = TimeIndicatorView.currentTimeMinutes()
-                                    binding.timeIndicator.isVisible = true
-                                } else {
-                                    binding.timeIndicator.isVisible = false
                                 }
+                                binding.timeIndicator.isVisible = true
+                                // Pass absences for this specific date
+                                updateAbsenceOverlay(day.day.date)
                             }
                         }
                         is UiState.Error -> {
@@ -125,6 +139,21 @@ class DayFragment : Fragment() {
                 }
             }
         }
+    }
+
+    private fun updateAbsenceOverlay(date: java.time.LocalDate) {
+        val dateInt = date.year * 10000 + date.monthValue * 100 + date.dayOfMonth
+        val filtered = viewModel.absences.value.filter { abs ->
+            val s = abs.startDate ?: return@filter false
+            val e = abs.endDate   ?: s
+            dateInt in s..e
+        }
+        // Update the ItemDecoration and redraw
+        val decoration = (0 until binding.recyclerView.itemDecorationCount)
+            .mapNotNull { binding.recyclerView.getItemDecorationAt(it) as? AbsenceDecoration }
+            .firstOrNull()
+        decoration?.absences = filtered
+        binding.recyclerView.invalidateItemDecorations()
     }
 
     /** Starts a coroutine that updates the time indicator every minute. */

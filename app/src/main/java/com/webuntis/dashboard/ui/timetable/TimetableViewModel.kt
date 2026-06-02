@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.webuntis.dashboard.api.TimetableDay
 import com.webuntis.dashboard.api.WebUntisRepository
 import com.webuntis.dashboard.model.Lesson
+import com.webuntis.dashboard.model.Absence
 import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,6 +66,9 @@ class TimetableViewModel @Inject constructor(
     private val _days = MutableStateFlow<UiState<List<SchoolDay>>>(UiState.Loading)
     val days: StateFlow<UiState<List<SchoolDay>>> = _days
 
+    private val _absences = MutableStateFlow<List<Absence>>(emptyList())
+    val absences: StateFlow<List<Absence>> = _absences
+
     val showLongSubjects: Boolean get() = repository.sessionManager.showLongSubjects
     val showLongTeachers: Boolean get() = repository.sessionManager.showLongTeachers
     val showLongRooms:    Boolean get() = repository.sessionManager.showLongRooms
@@ -82,6 +86,8 @@ class TimetableViewModel @Inject constructor(
                 onSuccess = { list -> UiState.Success(list.map { SchoolDay(it) }) },
                 onFailure = { UiState.Error(it.message ?: "Fehler beim Laden") }
             )
+            // Load absences in parallel — failures are silent (non-critical)
+            repository.getAbsences(forceRefresh).onSuccess { _absences.value = it }
         }
     }
 }
