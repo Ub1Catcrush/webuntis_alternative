@@ -19,10 +19,12 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
+import com.webuntis.dashboard.api.UpdateManager
 import com.webuntis.dashboard.databinding.ActivityMainBinding
 import com.webuntis.dashboard.ui.login.LoginViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 data class NavItem(val destinationId: Int, val iconRes: Int, val labelRes: Int)
 
@@ -32,6 +34,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var navController: NavController
     private val loginViewModel: LoginViewModel by viewModels()
+
+    @Inject
+    lateinit var updateManager: UpdateManager
 
     private val navItems = listOf(
         NavItem(R.id.timetableFragment,  R.drawable.ic_calendar, R.string.nav_timetable),
@@ -47,24 +52,15 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // SDK 35+ enforces edge-to-edge; opt in explicitly for all API levels
-        // so layout is consistent. WindowInsetsCompat handles the inset padding below.
         enableEdgeToEdge()
-        // Belt-and-suspenders: explicitly tell the window not to fit system windows
-        // so our inset listener has full control. Required on some OEM Android 15 builds.
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // Apply top inset to root, bottom to nav bar — do NOT return CONSUMED so
-            // child views (fragments, dialogs) also receive their insets correctly.
-            // Returning CONSUMED here caused layout measurement loops on SDK 35+
-            // that manifest as the "Channel is unrecoverably broken" ADB crash.
             view.updatePadding(top = bars.top)
             binding.bottomNavContainer.updatePadding(bottom = bars.bottom)
-            // Pass insets through — child views handle their own insets
             insets
         }
 
@@ -92,6 +88,26 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        // Automatic update check on app launch
+        checkUpdatesSilently()
+    }
+
+    private fun checkUpdatesSilently() {
+        lifecycleScope.launch {
+            updateManager.checkForUpdates().onSuccess { info ->
+                if (info.hasUpdate && info.downloadUrl != null) {
+                    com.google.android.material.dialog.MaterialAlertDialogBuilder(this@MainActivity)
+                        .setTitle("Update verfügbar")
+                        .setMessage("Eine neue Version (v${info.latestVersion}) ist verfügbar. Möchtest du sie jetzt installieren?\n\n${info.releaseNotes ?: ""}")
+                        .setPositiveButton("Laden & Installieren") { _, _ ->
+                            updateManager.downloadAndInstall(info.downloadUrl, "webuntis-dashboard-${info.latestVersion}.apk")
+                        }
+                        .setNegativeButton("Später", null)
+                        .show()
+                }
+            }
+        }
     }
 
     private fun buildTabs() {
@@ -99,7 +115,6 @@ class MainActivity : AppCompatActivity() {
         container.removeAllViews()
         tabViews.clear()
 
-        // Make each tab fill an equal share when all fit, or be 72dp when scrolling
         val displayWidth = resources.displayMetrics.widthPixels
         val minTabWidth = (72 * resources.displayMetrics.density).toInt()
         val tabWidth = maxOf(displayWidth / navItems.size, minTabWidth)
@@ -135,7 +150,6 @@ class MainActivity : AppCompatActivity() {
             icon.setColorFilter(color)
             label.setTextColor(color)
 
-            // Scroll selected tab into view
             if (selected) {
                 binding.bottomNav.post {
                     val scrollX = tab.left - (binding.bottomNav.width - tab.width) / 2

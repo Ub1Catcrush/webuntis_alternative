@@ -14,7 +14,11 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.TimeUnit
+import javax.inject.Named
 import javax.inject.Singleton
 
 
@@ -57,11 +61,7 @@ object NetworkModule {
                 val session = sessionManager.session
 
                 if (session != null && session.sessionId.isNotEmpty()) {
-                    // Stricter path matching for WebUntis.
                     val path = if (url.encodedPath.contains("/WebUntis", ignoreCase = true)) "/WebUntis" else "/"
-                    
-                    // Force authenticated session cookies. 
-                    // This prevents anonymous session IDs (from redirects) from sticking.
                     stored.removeAll { it.name == "JSESSIONID" || it.name == "schoolname" }
                     
                     stored.add(Cookie.Builder()
@@ -87,7 +87,6 @@ object NetworkModule {
     }
 
     private fun makeHeadersInterceptor(sessionManager: SessionManager) = Interceptor { chain ->
-        val session = sessionManager.session
         val request = chain.request()
         val host = request.url.host
         val path = request.url.encodedPath
@@ -95,15 +94,12 @@ object NetworkModule {
                               path.contains("api/userdata/login", ignoreCase = true)
 
         val builder = request.newBuilder()
-            // Use WebUntis official Android app UA — browser UAs can trigger WAF/bot protection
             .header("User-Agent", "Dalvik/2.1.0 (Linux; U; Android 10; WebUntis)")
             .header("Accept", "application/json, text/plain, */*")
             .header("Accept-Language", "de-DE,de;q=0.9,en-US;q=0.8")
-            // Origin always needed — WebUntis validates it for CSRF on POST endpoints
             .header("Origin", "https://$host")
             .header("Referer", "https://$host/WebUntis/")
 
-        // X-Requested-With is only for authenticated API calls, not for login
         if (!isLoginEndpoint) {
             builder.header("X-Requested-With", "XMLHttpRequest")
         }
@@ -122,13 +118,10 @@ object NetworkModule {
         val isJson = contentType.contains("json", ignoreCase = true)
         val looksLikeJson = rawBody.trimStart().let { it.startsWith("{") || it.startsWith("[") }
         
-        // Detection of session expiry/redirect for API calls.
         val requestPath = originalRequest.url.encodedPath
         val responsePath = response.request.url.encodedPath
         
         val isApiCall = requestPath.contains("/api/") || requestPath.contains(".do")
-        // Never intercept the login calls themselves — they legitimately POST to *.do
-        // and the server may return HTML or redirect before the session is established.
         val isLoginCall = requestPath.contains("jsonrpc.do", ignoreCase = true) ||
                           requestPath.contains("j_spring_security_check", ignoreCase = true) ||
                           requestPath.contains("/api/rest/view/v1/auth", ignoreCase = true) ||
@@ -138,7 +131,6 @@ object NetworkModule {
         val isHtml = rawBody.contains("<html", ignoreCase = true) || rawBody.contains("<!DOCTYPE", ignoreCase = true)
 
         if (!isLoginCall && isApiCall && (redirectedToAuth || (isHtml && !isJson && !looksLikeJson))) {
-            // Signal auth failure clearly to trigger retry logic in repository.
             val errorJson = """{"error":{"code":-32001,"message":"Session abgelaufen (Redirect)"}}"""
             response.newBuilder()
                 .header("X-WebUntis-Session-Expired", "true")
@@ -170,4 +162,31 @@ object NetworkModule {
                 }
             }
             .build()
+
+    @Provides
+    @Singleton
+    @Named("github")
+    fun provideGithubOkHttpClient(): OkHttpClient =
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .apply {
+                if (BuildConfig.DEBUG) {
+                    addInterceptor(HttpLoggingInterceptor().apply {
+                        level = HttpLoggingInterceptor.Level.HEADERS
+                    })
+                }
+            }
+            .build()
+
+    @Provides
+    @Singleton
+    fun provideGithubService(@Named("github") client: OkHttpClient): GithubService {
+        return Retrofit.Builder()
+            .baseUrl("https://api.github.com/")
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(GithubService::class.java)
+    }
 }

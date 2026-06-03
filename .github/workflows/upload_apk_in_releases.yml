@@ -1,31 +1,6 @@
 name: Build, Sign and Upload APK in Releases
 on:
-#  push:
-#    paths:
-#      - 'dependencies.gradle'
-#  pull_request:
-#    paths:
-#      - 'dependencies.gradle'
   workflow_dispatch:
-
-#on:
-#  push:
-#    branches:
-#      - 'master'
-#    paths:
-#      - 'app/**'
-#      - 'app/*'
-#      - 'gradle/**'
-#      - 'gradle/*'
-#  pull_request:
-#    branches:
-#      - 'master'
-#    paths:
-#      - 'app/**'
-#      - 'app/*'
-#      - 'gradle/**'
-#      - 'gradle/*'
-#  workflow_dispatch:
 
 permissions:
   contents: write
@@ -33,7 +8,7 @@ permissions:
 jobs:
   apk:
     name: Upload APK in Releases
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
@@ -46,32 +21,7 @@ jobs:
       - name: Grant Permission to Execute
         run: chmod +x gradlew
 
-#      - name: Increment patch version
-#        uses: yoichiro/gh-action-increment-value@v5
-#        with:
-#          target_directory: ''
-#          target_file: 'dependencies.gradle'
-#          prefix: 'versionPatch:'
-#          suffix: ']'
-#          commit_message: '[skip ci] Increments the patch version to'
-
-      # Run Build Project
-      - name: Build gradle project
-        run: bash ./gradlew build --stacktrace
-
-      # Create APK Debug
-      - name: Build apk debug APK
-        run: bash ./gradlew assembleDebug --stacktrace
-
-      # Create APK Release
-      - name: Build apk release APK
-        run: bash ./gradlew assembleRelease --stacktrace
-
-      # Create Bundle AAB Release
-      # Noted for main module build [main_project_module]:bundleRelease
-      - name: Build bundle release AAB
-        run: bash ./gradlew bundleRelease --stacktrace
-
+      # Parse variables from dependencies.gradle
       - name: Extract version from dependencies.gradle
         id: get_version
         run: |
@@ -80,11 +30,33 @@ jobs:
           MINOR=$(sed -n 's/.*versionMinor:\s*\([0-9]*\).*/\1/p' dependencies.gradle)
           PATCH=$(sed -n 's/.*versionPatch:\s*\([0-9]*\).*/\1/p' dependencies.gradle)
 
+          # Combine into a standard semantic version string (e.g., 1.2.3)
+          VERSION_NAME="$MAJOR.$MINOR.$PATCH"
+
           # Validierung: Falls ein Wert leer ist, wird v0.0.0 als Fallback gesetzt
           VERSION_TAG="v${MAJOR:-0}.${MINOR:-0}.${PATCH:-0}"
 
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
           echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_ENV
+          echo "Extracted Version: $VERSION_NAME"
           echo "tag=$VERSION_TAG" >> $GITHUB_OUTPUT
+
+      # Run Build Project
+      - name: Build gradle project
+        run: bash ./gradlew build -PversionName="${{ env.VERSION_NAME }}" --stacktrace
+
+      # Create APK Debug
+      - name: Build apk debug APK
+        run: bash ./gradlew assembleDebug -PversionName="${{ env.VERSION_NAME }}" --stacktrace
+
+      # Create APK Release
+      - name: Build apk release APK
+        run: bash ./gradlew assembleRelease -PversionName="${{ env.VERSION_NAME }}" --stacktrace
+
+      # Create Bundle AAB Release
+      # Noted for main module build [main_project_module]:bundleRelease
+      - name: Build bundle release AAB
+        run: bash ./gradlew bundleRelease -PversionName="${{ env.VERSION_NAME }}" --stacktrace
 
       - name: Decode keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > my-release-key.jks

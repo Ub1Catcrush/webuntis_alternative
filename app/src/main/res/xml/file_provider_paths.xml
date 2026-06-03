@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <!-- Provides URIs for files in the public Downloads folder (pre-Q fallback) -->
+    <!-- Für Anhänge im öffentlichen Download-Ordner (Legacy) -->
     <external-path name="downloads" path="Download/" />
+
+    <!-- Für die App-Updates im internen App-Speicher -->
+    <external-files-path name="update_downloads" path="Download/" />
 </paths>

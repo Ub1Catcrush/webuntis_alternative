@@ -9,14 +9,17 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
+import com.webuntis.dashboard.BuildConfig
 import com.webuntis.dashboard.R
 import com.webuntis.dashboard.api.SessionManager
+import com.webuntis.dashboard.api.UpdateManager
 import com.webuntis.dashboard.databinding.FragmentSettingsBinding
 import com.webuntis.dashboard.ui.login.LoginState
 import com.webuntis.dashboard.ui.login.LoginViewModel
 import com.webuntis.dashboard.ui.login.SecondAccountState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class SettingsFragment : Fragment() {
@@ -28,6 +31,8 @@ class SettingsFragment : Fragment() {
         ownerProducer = { requireActivity() }
     )
 
+    @Inject
+    lateinit var updateManager: UpdateManager
 
     // ── Export / Import launchers ─────────────────────────────────────────────
     private val exportLauncher = registerForActivityResult(
@@ -84,6 +89,10 @@ class SettingsFragment : Fragment() {
         binding.btnLogout.setOnClickListener { loginViewModel.logout() }
         binding.btnExportSettings.setOnClickListener { exportLauncher.launch("webuntis_settings.json") }
         binding.btnImportSettings.setOnClickListener { importLauncher.launch("application/json") }
+
+        // ── Update Section ────────────────────────────────────────────────────
+        binding.textVersionInfo.text = getString(R.string.settings_update_version_info, BuildConfig.VERSION_NAME)
+        binding.btnCheckUpdate.setOnClickListener { checkForUpdates() }
 
         // ── Timetable days slider ─────────────────────────────────────────────
         val current = loginViewModel.sessionManager.timetableDays
@@ -248,6 +257,40 @@ class SettingsFragment : Fragment() {
                         findNavController().navigate(R.id.loginFragment)
                     }
                 }
+            }
+        }
+    }
+
+    private fun checkForUpdates() {
+        binding.btnCheckUpdate.isEnabled = false
+        binding.btnCheckUpdate.text = getString(R.string.settings_update_checking)
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            updateManager.checkForUpdates().onSuccess { info ->
+                if (info.hasUpdate && info.downloadUrl != null) {
+                    binding.btnCheckUpdate.text = getString(R.string.settings_update_download_install)
+                    binding.btnCheckUpdate.isEnabled = true
+                    binding.btnCheckUpdate.setOnClickListener {
+                        updateManager.downloadAndInstall(info.downloadUrl, "webuntis-dashboard-${info.latestVersion}.apk")
+                        android.widget.Toast.makeText(requireContext(), "Download gestartet...", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                    
+                    com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+                        .setTitle("Update verfügbar")
+                        .setMessage("Version v${info.latestVersion} ist verfügbar.\n\n${info.releaseNotes ?: ""}")
+                        .setPositiveButton("Laden & Installieren") { _, _ ->
+                             updateManager.downloadAndInstall(info.downloadUrl, "webuntis-dashboard-${info.latestVersion}.apk")
+                        }
+                        .setNegativeButton("Später", null)
+                        .show()
+                } else {
+                    binding.btnCheckUpdate.text = getString(R.string.settings_update_no_update)
+                    binding.btnCheckUpdate.isEnabled = false
+                }
+            }.onFailure {
+                binding.btnCheckUpdate.text = getString(R.string.settings_update_error)
+                binding.btnCheckUpdate.isEnabled = true
+                android.widget.Toast.makeText(requireContext(), "Update-Check fehlgeschlagen: ${it.message}", android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }

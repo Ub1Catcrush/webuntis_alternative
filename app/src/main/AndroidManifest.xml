@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -9,6 +10,8 @@
         android:maxSdkVersion="28" />
     <!-- POST_NOTIFICATIONS required on API 33+ to show download/update notifications. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Required to install APKs -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".WebUntisApp"
@@ -31,7 +34,7 @@
             </intent-filter>
         </activity>
 
-        <!-- FileProvider for sharing downloaded homework attachments on API < 29 -->
+        <!-- FileProvider for sharing downloaded homework attachments and APKs -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

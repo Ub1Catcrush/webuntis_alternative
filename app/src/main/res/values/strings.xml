@@ -158,4 +158,14 @@
     <!-- Settings export / import -->
     <string name="settings_export_button">Exportieren</string>
     <string name="settings_import_button">Importieren</string>
+
+    <!-- App Update -->
+    <string name="settings_update_title">App Update</string>
+    <string name="settings_update_check_button">Nach Updates suchen</string>
+    <string name="settings_update_checking">Suche nach Updates...</string>
+    <string name="settings_update_available">Update verfügbar: v%s</string>
+    <string name="settings_update_no_update">App ist aktuell</string>
+    <string name="settings_update_download_install">Herunterladen &amp; Installieren</string>
+    <string name="settings_update_error">Fehler bei der Update-Suche</string>
+    <string name="settings_update_version_info">Installierte Version: %s</string>
 </resources>
