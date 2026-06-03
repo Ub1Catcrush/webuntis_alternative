@@ -31,15 +31,15 @@ jobs:
           PATCH=$(sed -n 's/.*versionPatch:\s*\([0-9]*\).*/\1/p' dependencies.gradle)
 
           # Combine into a standard semantic version string (e.g., 1.2.3)
-          VERSION_NAME="$MAJOR.$MINOR.$PATCH"
+          VERSION_NAME="${MAJOR:-0}.${MINOR:-0}.${PATCH:-0}"
 
           # Validierung: Falls ein Wert leer ist, wird v0.0.0 als Fallback gesetzt
           VERSION_TAG="v${MAJOR:-0}.${MINOR:-0}.${PATCH:-0}"
 
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
           echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_ENV
-          echo "Extracted Version: $VERSION_NAME"
           echo "tag=$VERSION_TAG" >> $GITHUB_OUTPUT
+          echo "Extracted Version: $VERSION_NAME"
 
       # Run Build Project
       - name: Build gradle project
