@@ -454,6 +454,40 @@ class WebUntisRepository @Inject constructor(
         Result.success(byDate)
     }
 
+    /**
+     * Loads [numDays] school days starting from [anchorDate].
+     * Only days that actually have lessons are counted (no empty days, no weekends).
+     * Searches up to 60 calendar days in both directions to find real school days.
+     */
+    suspend fun getSchoolDaysFrom(
+        anchorDate: LocalDate,
+        numDays: Int,
+        forceRefresh: Boolean = false
+    ): Result<List<TimetableDay>> {
+        // Fetch a wide enough window — ±60 days covers holidays and long breaks
+        val windowStart = anchorDate.minusDays(if (anchorDate.isBefore(LocalDate.now())) 60 else 0)
+        val windowEnd   = anchorDate.plusDays(60)
+        val rangeResult = fetchLessonsInRange(windowStart.toUntis(), windowEnd.toUntis())
+        if (rangeResult.isFailure) return Result.failure(rangeResult.exceptionOrNull()!!)
+
+        val allSchoolDays = rangeResult.getOrThrow()
+            .groupBy { it.date }.entries
+            .filter { (d, lessons) ->
+                val date = untisIntToDate(d)
+                date.dayOfWeek.value <= 5 && lessons.isNotEmpty()
+            }
+            .sortedBy { it.key }
+            .map { (d, lessons) ->
+                TimetableDay(untisIntToDate(d), mergeOverlappingLessons(lessons).sortedBy { it.startTime })
+            }
+
+        // Find the index of the first day >= anchorDate
+        val startIdx = allSchoolDays.indexOfFirst { !it.date.isBefore(anchorDate) }
+            .takeIf { it >= 0 } ?: return Result.success(emptyList())
+
+        return Result.success(allSchoolDays.drop(startIdx).take(numDays))
+    }
+
     private fun untisIntToDate(d: Int): LocalDate {
         val s = d.toString().padStart(8, '0')
         return LocalDate.of(s.substring(0,4).toInt(), s.substring(4,6).toInt(), s.substring(6,8).toInt())

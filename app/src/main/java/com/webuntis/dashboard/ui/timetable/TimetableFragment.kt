@@ -18,6 +18,10 @@ import com.webuntis.dashboard.databinding.FragmentTimetableBinding
 import com.webuntis.dashboard.model.Lesson
 import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.AndroidEntryPoint
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
+import androidx.core.content.ContextCompat
+import java.time.LocalDate
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -39,6 +43,19 @@ class TimetableFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         binding.swipeRefresh.setOnRefreshListener { viewModel.loadAll(forceRefresh = true) }
+
+        binding.btnPrevDays.setOnClickListener { viewModel.shiftDays(-5) }
+        binding.btnNextDays.setOnClickListener { viewModel.shiftDays(+5) }
+        binding.btnToday.setOnClickListener    { viewModel.resetToToday() }
+
+        // Show/hide the entire today-row (not just the button)
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.anchorDate.collect {
+                    binding.rowToday.isVisible = !viewModel.isAtDefault
+                }
+            }
+        }
 
         // Setup Compact RecyclerView
         val compactAdapter = CompactWeekAdapter()
@@ -95,14 +112,32 @@ class TimetableFragment : Fragment() {
             tabMediator = TabLayoutMediator(
                 binding.tabLayout, binding.viewPager
             ) { tab, position ->
-                tab.text = days.getOrNull(position)?.tabLabel
-                    ?: getString(R.string.label_day_fallback, position + 1)
+                val day   = days.getOrNull(position)
+                val label = day?.tabLabel ?: getString(R.string.label_day_fallback, position + 1)
+                val isToday = day?.date == LocalDate.now()
+                if (isToday) {
+                    val spannable = SpannableString(label)
+                    spannable.setSpan(
+                        ForegroundColorSpan(ContextCompat.getColor(requireContext(), R.color.today_tab)),
+                        0, label.length,
+                        android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                    tab.text = spannable
+                } else {
+                    tab.text = label
+                }
             }.also { it.attach() }
         } else {
             for (i in 0 until binding.tabLayout.tabCount) {
-                binding.tabLayout.getTabAt(i)?.text =
-                    days.getOrNull(i)?.tabLabel
-                        ?: getString(R.string.label_day_fallback, i + 1)
+                val day   = days.getOrNull(i)
+                val label = day?.tabLabel ?: getString(R.string.label_day_fallback, i + 1)
+                val isToday = day?.date == LocalDate.now()
+                binding.tabLayout.getTabAt(i)?.text = if (isToday) {
+                    SpannableString(label).also { ss ->
+                        ss.setSpan(ForegroundColorSpan(ContextCompat.getColor(requireContext(), R.color.today_tab)),
+                            0, label.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                } else label
             }
         }
     }

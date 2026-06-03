@@ -10,19 +10,87 @@
         android:id="@+id/app_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
+
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             app:title="Stundenplan"
             app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge" />
-        <com.google.android.material.tabs.TabLayout
-            android:id="@+id/tab_layout"
+
+        <!-- "Heute"-Zeile: nur sichtbar wenn man nicht bei heute ist -->
+        <LinearLayout
+            android:id="@+id/row_today"
+            android:layout_width="match_parent"
+            android:layout_height="32dp"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:visibility="gone">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_today"
+                style="@style/Widget.Material3.Button"
+                android:layout_width="wrap_content"
+                android:layout_height="28dp"
+                android:text="Heute"
+                android:textSize="12sp"
+                android:textColor="@android:color/white"
+                android:minWidth="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp" />
+
+        </LinearLayout>
+
+        <!-- Tab-Zeile mit ‹ / › direkt daneben -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:tabGravity="fill"
-            app:tabMode="scrollable"
-            style="@style/Widget.Material3.TabLayout" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_prev_days"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="40dp"
+                android:layout_height="48dp"
+                android:text="‹"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:minWidth="0dp"
+                android:paddingStart="0dp"
+                android:paddingEnd="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp" />
+
+            <com.google.android.material.tabs.TabLayout
+                android:id="@+id/tab_layout"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                app:tabGravity="center"
+                app:tabMode="auto"
+                app:tabMaxWidth="0dp"
+                app:tabMinWidth="48dp"
+                style="@style/Widget.Material3.TabLayout" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_next_days"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="40dp"
+                android:layout_height="48dp"
+                android:text="›"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:minWidth="0dp"
+                android:paddingStart="0dp"
+                android:paddingEnd="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp" />
+
+        </LinearLayout>
+
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout

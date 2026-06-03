@@ -74,6 +74,15 @@ class TimetableViewModel @Inject constructor(
     val showLongRooms:    Boolean get() = repository.sessionManager.showLongRooms
     val useCompactWeekView: Boolean get() = repository.sessionManager.useCompactWeekView
 
+    // ── Date navigation ───────────────────────────────────────────────────────
+
+    /** The first date of the currently displayed window. null = today (default). */
+    private val _anchorDate = MutableStateFlow<LocalDate?>(null)
+    val anchorDate: StateFlow<LocalDate?> = _anchorDate
+
+    val isAtDefault: Boolean get() = _anchorDate.value == null ||
+        _anchorDate.value == LocalDate.now()
+
     init { loadAll() }
 
     fun loadAll(forceRefresh: Boolean = false) {
@@ -81,13 +90,67 @@ class TimetableViewModel @Inject constructor(
             if (forceRefresh || _days.value !is UiState.Success) {
                 _days.value = UiState.Loading
             }
-
-            _days.value = repository.getTwoSchoolDays(forceRefresh).fold(
-                onSuccess = { list -> UiState.Success(list.map { SchoolDay(it) }) },
-                onFailure = { UiState.Error(it.message ?: "Fehler beim Laden") }
-            )
-            // Load absences in parallel — failures are silent (non-critical)
+            val anchor = _anchorDate.value
+            _days.value = if (anchor == null || anchor == LocalDate.now()) {
+                repository.getTwoSchoolDays(forceRefresh).fold(
+                    onSuccess = { list -> UiState.Success(list.map { SchoolDay(it) }) },
+                    onFailure = { UiState.Error(it.message ?: "Fehler beim Laden") }
+                )
+            } else {
+                repository.getSchoolDaysFrom(anchor, repository.sessionManager.timetableDays, forceRefresh).fold(
+                    onSuccess = { list -> UiState.Success(list.map { SchoolDay(it) }) },
+                    onFailure = { UiState.Error(it.message ?: "Fehler beim Laden") }
+                )
+            }
             repository.getAbsences(forceRefresh).onSuccess { _absences.value = it }
         }
+    }
+
+    /**
+     * Shifts the displayed window by [schoolDays] real school days
+     * (positive = forward, negative = backward).
+     * Uses the currently loaded days to determine the next anchor date.
+     */
+    fun shiftDays(schoolDays: Int) {
+        viewModelScope.launch {
+            val currentDays = (_days.value as? UiState.Success)?.data
+            val newAnchor = if (schoolDays > 0) {
+                // Move forward: start after the last currently shown day
+                val lastDate = currentDays?.lastOrNull()?.date ?: LocalDate.now()
+                lastDate.plusDays(1)
+            } else {
+                // Move backward: search backwards from anchor − 1
+                val currentAnchor = _anchorDate.value ?: LocalDate.now()
+                val searchFrom    = currentAnchor.minusDays(1)
+                // Find the date |schoolDays| school days back
+                findSchoolDayOffset(searchFrom, schoolDays)
+            }
+            _anchorDate.value = newAnchor
+            loadAll(forceRefresh = false)
+        }
+    }
+
+    fun resetToToday() {
+        _anchorDate.value = null
+        loadAll(forceRefresh = true)
+    }
+
+    /**
+     * Walks backwards from [from] counting only actual school days
+     * until [offset] (negative) is reached.
+     */
+    private suspend fun findSchoolDayOffset(from: LocalDate, offset: Int): LocalDate {
+        // Load a wide window backwards and pick the right position
+        val steps = -offset  // positive count
+        val windowStart = from.minusDays((steps * 3).toLong().coerceAtLeast(30))
+        val rangeResult = repository.getSchoolDaysFrom(windowStart,
+            (steps * 3).coerceAtLeast(60))
+        val allDays = (rangeResult.getOrNull() ?: emptyList())
+            .filter { !it.date.isAfter(from) }
+            .sortedByDescending { it.date }
+        // Take [steps] days back from 'from'
+        return allDays.getOrNull(steps - 1)?.date
+            ?: allDays.lastOrNull()?.date
+            ?: from.minusDays(steps.toLong())
     }
 }
