@@ -1,5 +1,9 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+apply(from = rootProject.file("dependencies.gradle"))
+
+val appVersions by extra(rootProject.extra["app_versions"] as Map<String, Any>)
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -16,11 +20,18 @@ android {
         applicationId = "com.webuntis.dashboard"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
+
+        val major = (appVersions["versionMajor"] as Number).toInt()
+        val minor = (appVersions["versionMinor"] as Number).toInt()
+        val patch = (appVersions["versionPatch"] as Number).toInt()
+
+        versionCode = major * 1000000 + minor * 10000 + patch
+
+        // 4. Kotlin-konforme Überprüfung für optionale Properties und korrekte Strings
         versionName = if (project.hasProperty("versionName")) {
             project.property("versionName") as String
         } else {
-            "1.0.0"
+            "$major.$minor.$patch"
         }
     }
 
