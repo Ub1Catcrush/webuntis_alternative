@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">WebUntis Dashboard</string>
+
+    <!-- Navigation -->
+    <string name="nav_timetable">Timetable</string>
+    <string name="nav_homework">Homework</string>
+    <string name="nav_messages">Messages</string>
+    <string name="nav_absences">Absences</string>
+    <string name="nav_classbook">Class Register</string>
+    <string name="nav_events">Events</string>
+    <string name="nav_more">More</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Login -->
+    <string name="login_title">WebUntis Dashboard</string>
+    <string name="login_subtitle">Sign in with your school credentials</string>
+    <string name="login_server_hint">Server (e.g. my-school.webuntis.com)</string>
+    <string name="login_schoolname_hint">School short name</string>
+    <string name="login_username_hint">Username</string>
+    <string name="login_password_hint">Password</string>
+    <string name="login_password_saved_hint">Password saved</string>
+    <string name="login_button">Sign in</string>
+    <string name="login_data_notice">Your credentials are stored encrypted on this device and never transmitted.</string>
+    <string name="hint_sso">Note: If you sign in via school portal, Microsoft or Google login, you need separate direct WebUntis credentials.</string>
+    <string name="error_fill_all_fields">Please fill in all fields</string>
+    <string name="error_unknown">Unknown error</string>
+    <string name="error_not_authenticated">Not signed in</string>
+    <string name="error_empty_response">Empty response from server</string>
+    <string name="error_no_data">No response data from server</string>
+
+    <!-- Student selection -->
+    <string name="dialog_select_student_title">Select child</string>
+    <string name="dialog_select_student_message">Which child\'s timetable should be displayed?</string>
+    <string name="dialog_select_student_confirm">Select</string>
+    <string name="dialog_select_student_cancel">Cancel</string>
+
+    <!-- Timetable -->
+    <string name="label_today">Today</string>
+    <string name="label_tomorrow">Tomorrow</string>
+    <string name="label_day_fallback">Day %d</string>
+    <string name="label_no_lessons_today">No lessons today 🎉</string>
+    <string name="label_no_lessons_tomorrow">No lessons tomorrow 🎉</string>
+    <string name="label_no_lessons_generic">No lessons 🎉</string>
+    <string name="error_timetable">Could not load timetable</string>
+    <string name="error_timetable_prefix">Timetable: %s</string>
+
+    <!-- Timetable Detail Popup -->
+    <string name="timetable_detail_title">Lesson details</string>
+    <string name="timetable_detail_time">Time:</string>
+    <string name="timetable_detail_teacher">Teacher:</string>
+    <string name="timetable_detail_room">Room:</string>
+    <string name="timetable_detail_info">Info:</string>
+    <string name="timetable_detail_content">Content:</string>
+    <string name="timetable_detail_notes">Notes:</string>
+    <string name="timetable_detail_close">Close</string>
+    <string name="timetable_time_range">%1$s – %2$s</string>
+    <string name="timetable_replaced_subject">instead of %s</string>
+
+    <!-- Homework -->
+    <string name="label_no_homework">No homework assigned ✅</string>
+    <string name="label_homework_due">📅 %s</string>
+    <string name="label_subject_unknown">Subject #%d</string>
+    <string name="label_task_fallback">Task</string>
+    <string name="label_homework_open">%d open</string>
+    <string name="label_homework_all_done">All done ✓</string>
+    <string name="label_no_homework_short">No homework</string>
+    <string name="label_no_homework_past">No past homework found</string>
+    <string name="label_homework_past_count">%d done / past</string>
+    <string name="label_tab_homework_current">Current</string>
+    <string name="label_tab_homework_past">Past</string>
+    <string name="error_homework_prefix">Homework: %s</string>
+
+    <!-- Events -->
+    <string name="label_no_events">No events in the next 90 days 📅</string>
+    <string name="label_no_events_including_past">No events found 📅</string>
+    <string name="action_show_past_events">Show past events</string>
+    <string name="action_hide_past_events">Hide past events</string>
+    <string name="events_subtitle_including_past">incl. past events</string>
+    <string name="event_type_exam">Test / Exam</string>
+    <string name="event_type_holiday">Holiday</string>
+    <string name="event_type_event">Event</string>
+    <string name="error_events_prefix">Events: %s</string>
+
+    <!-- Classbook -->
+    <string name="label_no_classbook">No class register entries available 📖\n(Not accessible for this account type)</string>
+    <string name="label_no_classbook_entries">No entries</string>
+    <string name="error_classbook_prefix">Class register: %s</string>
+    <string name="label_entry_type_homework">Homework</string>
+    <string name="label_entry_type_absence">Absence</string>
+    <string name="label_entry_type_late">Late</string>
+    <string name="label_entry_type_remark">Remark</string>
+
+    <!-- Absences -->
+    <string name="label_absence_excused">✓ excused</string>
+    <string name="label_absence_unexcused">✗ unexcused</string>
+    <string name="label_absence_pending">Excuse pending</string>
+    <string name="label_absence_fullday">All day</string>
+    <string name="label_no_absences">No absences recorded ✅</string>
+    <string name="label_no_absences_short">No absences</string>
+    <string name="absence_filter_title">Filter by status</string>
+    <string name="absence_filter_all">All</string>
+    <string name="absence_filter_active">Filtered: %s</string>
+    <string name="absence_unexcused_count">%d unexcused</string>
+    <string name="absence_cannot_edit">This absence cannot be edited.</string>
+    <string name="absence_dialog_title_add">Report absence</string>
+    <string name="absence_dialog_title_edit">Edit absence</string>
+    <string name="absence_delete_title">Delete absence?</string>
+    <string name="absence_delete_message">Do you really want to delete this absence?</string>
+    <string name="absence_delete_confirm">Delete</string>
+    <string name="btn_cancel">Cancel</string>
+
+    <!-- Messages -->
+    <string name="label_no_messages">No messages</string>
+    <string name="label_attachment_fallback">Attachment</string>
+    <string name="label_attachment_name_fallback">attachment</string>
+    <string name="error_download_failed">Download failed: %s</string>
+    <string name="error_save_failed">Save failed: %s</string>
+    <string name="error_mediastore_insert">MediaStore insert failed</string>
+    <string name="error_outputstream_open">Could not open OutputStream</string>
+    <string name="error_attachment_load_failed">Could not load file: %s</string>
+    <string name="message_saved_filename">✓ Saved: %s</string>
+    <string name="messages_compose_title_new">New message</string>
+    <string name="messages_compose_title_reply">Reply</string>
+    <string name="messages_compose_title_draft">Edit draft</string>
+    <string name="messages_compose_btn_send">Send</string>
+    <string name="messages_compose_btn_cancel">Cancel</string>
+    <string name="messages_compose_error_empty">Please fill in subject, recipient and message.</string>
+    <string name="messages_sent_ok">✓ Sent</string>
+    <string name="messages_draft_saved">✓ Saved as draft</string>
+    <string name="messages_delete_btn">Delete</string>
+
+    <!-- Badges -->
+    <string name="badge_cancelled">Cancelled</string>
+    <string name="badge_substitution">Substitution</string>
+    <string name="badge_extra">Extra</string>
+    <string name="badge_exam">Exam</string>
+
+    <!-- Generic -->
+    <string name="error_prefix">⚠️ %s</string>
+    <string name="error_generic">Error</string>
+    <string name="btn_ok">OK</string>
+    <string name="btn_cancel_generic">Cancel</string>
+
+    <!-- Settings -->
+    <string name="settings_save_button">Save &amp; reconnect</string>
+    <string name="settings_logout_button">Sign out</string>
+    <string name="settings_saved_ok">✓ Successfully saved and reconnected</string>
+    <string name="settings_timetable_days_label">Displayed school days</string>
+    <string name="settings_second_account_title">Second account (student)</string>
+    <string name="settings_second_account_notice">Messages from both accounts are merged into one inbox.</string>
+    <string name="settings_second_label_hint">Label (e.g. Simon)</string>
+    <string name="settings_second_username_hint">Username (student)</string>
+    <string name="settings_second_password_hint">Password (student)</string>
+    <string name="settings_second_save_button">Save second account</string>
+    <string name="settings_second_remove_button">Remove second account</string>
+    <string name="settings_second_password_saved_hint">Saved – leave blank to keep</string>
+    <string name="settings_second_connecting">Connecting…</string>
+    <string name="settings_second_removed">Second account removed.</string>
+    <string name="settings_second_error_credentials">Username and password are required.</string>
+    <string name="settings_second_error_prefix">Error: %s</string>
+    <string name="settings_second_saved_prefix">✓ %s</string>
+
+    <!-- Display settings -->
+    <string name="settings_long_names_section">Show full names</string>
+    <string name="settings_show_long_subjects">Spell out subject name (e.g. "Mathematics")</string>
+    <string name="settings_show_long_teachers">Spell out teacher name (e.g. "Smith")</string>
+    <string name="settings_show_long_rooms">Spell out room name (e.g. "Classroom 7c")</string>
+    <string name="settings_use_compact_week_view">Compact week view side by side</string>
+
+    <string name="label_homework_attachment_download">Download attachment</string>
+    <string name="saved_file_path">✓ Saved: %s</string>
+
+    <!-- Cache settings -->
+    <string name="settings_cache_label">Cache duration</string>
+    <string name="settings_cache_off">No caching</string>
+    <string name="settings_cache_minutes">%d minutes</string>
+
+    <!-- Messages tabs / compose -->
+    <string name="messages_tab_inbox">Inbox</string>
+    <string name="messages_tab_sent">Sent</string>
+    <string name="messages_tab_drafts">Drafts</string>
+    <string name="messages_compose">New message</string>
+    <string name="messages_reply">Reply</string>
+
+    <!-- Settings export / import -->
+    <string name="settings_export_button">Export</string>
+    <string name="settings_import_button">Import</string>
+    <string name="settings_export_ok">✓ Settings exported</string>
+    <string name="settings_export_failed">Export failed: %s</string>
+    <string name="settings_import_ok">✓ Import successful</string>
+    <string name="settings_import_failed">Import failed: %s</string>
+
+    <!-- App Update -->
+    <string name="settings_update_title">App Update</string>
+    <string name="settings_update_check_button">Check for updates</string>
+    <string name="settings_update_checking">Checking for updates…</string>
+    <string name="settings_update_available">Update available: v%s</string>
+    <string name="settings_update_no_update">App is up to date</string>
+    <string name="settings_update_download_install">Download &amp; Install</string>
+    <string name="settings_update_error">Error checking for updates</string>
+    <string name="settings_update_version_info">Installed version: %s</string>
+    <string name="settings_update_dialog_title">Update available</string>
+    <string name="settings_update_dialog_message">Version v%1$s is available.\n\n%2$s</string>
+    <string name="settings_update_dialog_install">Download &amp; Install</string>
+    <string name="settings_update_dialog_later">Later</string>
+    <string name="settings_update_download_started">Download started…</string>
+    <string name="settings_update_check_failed">Update check failed: %s</string>
+    <string name="settings_update_permission_required">Please allow the app to install updates.</string>
+    <string name="settings_update_install_failed">Installation failed: %s</string>
+    <string name="settings_update_dialog_title_main">WebUntis Dashboard Update</string>
+    <string name="settings_update_dialog_message_main">A new version (v%1$s) is available. Do you want to install it now?\n\n%2$s</string>
+
+    <!-- Timetable notes pin -->
+    <string name="timetable_notes_pin">📌 %s</string>
+
+    <!-- Settings section headers -->
+    <string name="settings_section_account">Main Account</string>
+    <string name="settings_section_second_account">Second Account</string>
+    <string name="settings_section_timetable">Timetable</string>
+    <string name="settings_section_display">Display</string>
+    <string name="settings_section_data">Data &amp; Sync</string>
+    <string name="settings_section_app">App</string>
+
+    <!-- Repository errors -->
+    <string name="error_delete_failed">Delete failed</string>
+
+    <!-- Messages - additional -->
+    <string name="messages_compose_btn_save_draft">Save draft</string>
+    <string name="messages_delete_draft_title">Delete draft?</string>
+    <string name="messages_delete_message_title">Delete message?</string>
+    <string name="messages_no_subject">(No subject)</string>
+</resources>

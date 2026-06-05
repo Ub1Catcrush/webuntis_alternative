@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.webuntis.dashboard.BuildConfig
+import com.webuntis.dashboard.R
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -98,7 +99,7 @@ class UpdateManager @Inject constructor(
 
     fun downloadAndInstall(url: String, fileName: String) {
         if (!checkInstallPermission()) {
-            Toast.makeText(context, "Bitte erlaube der App, Updates zu installieren.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, context.getString(R.string.settings_update_permission_required), Toast.LENGTH_LONG).show()
             return
         }
 
@@ -106,8 +107,8 @@ class UpdateManager @Inject constructor(
         if (destination.exists()) destination.delete()
 
         val request = DownloadManager.Request(url.toUri())
-            .setTitle("WebUntis Dashboard Update")
-            .setDescription("Version $fileName wird heruntergeladen...")
+            .setTitle(context.getString(R.string.settings_update_dialog_title_main))
+            .setDescription(fileName)
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationUri(Uri.fromFile(destination))
             .setAllowedOverMetered(true)
@@ -151,7 +152,7 @@ class UpdateManager @Inject constructor(
             context.startActivity(intent)
         } catch (e: Exception) {
             Log.e(tag, "Installation fehlgeschlagen", e)
-            Toast.makeText(context, "Installation fehlgeschlagen: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, context.getString(R.string.settings_update_install_failed, e.message), Toast.LENGTH_LONG).show()
         }
     }
 }

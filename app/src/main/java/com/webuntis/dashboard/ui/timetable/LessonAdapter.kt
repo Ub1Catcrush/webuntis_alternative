@@ -118,7 +118,7 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
             val notes = lesson.notesForAll?.takeIf { it.isNotBlank() }
             b.textNotesForAll.isVisible = notes != null
             if (notes != null) {
-                b.textNotesForAll.text = "📌 $notes"
+                b.textNotesForAll.text = ctx.getString(R.string.timetable_notes_pin, notes)
             }
 
             // Status Colors

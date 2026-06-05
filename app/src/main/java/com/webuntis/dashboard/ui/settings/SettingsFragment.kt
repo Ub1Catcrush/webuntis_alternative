@@ -42,9 +42,9 @@ class SettingsFragment : Fragment() {
         try {
             val json = loginViewModel.sessionManager.exportSettings()
             requireContext().contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
-            android.widget.Toast.makeText(requireContext(), "\u2713 Einstellungen exportiert", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(requireContext(), getString(R.string.settings_export_ok), android.widget.Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
-            android.widget.Toast.makeText(requireContext(), "Export fehlgeschlagen: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(requireContext(), getString(R.string.settings_export_failed, e.message), android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
@@ -57,8 +57,7 @@ class SettingsFragment : Fragment() {
                 ?: return@registerForActivityResult
             when (val result = loginViewModel.sessionManager.importSettings(json)) {
                 is com.webuntis.dashboard.api.SessionManager.ImportResult.Success -> {
-                    android.widget.Toast.makeText(requireContext(),
-                        "\u2713 Import erfolgreich", android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(requireContext(), getString(R.string.settings_import_ok), android.widget.Toast.LENGTH_LONG).show()
                     val session = loginViewModel.sessionManager.session
                     val creds   = loginViewModel.sessionManager.storedCredentials
                     if (session != null && creds != null) {
@@ -71,7 +70,7 @@ class SettingsFragment : Fragment() {
                     android.widget.Toast.makeText(requireContext(), result.message, android.widget.Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
-            android.widget.Toast.makeText(requireContext(), "Import fehlgeschlagen: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(requireContext(), getString(R.string.settings_import_failed, e.message), android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
@@ -198,7 +197,7 @@ class SettingsFragment : Fragment() {
                         is SecondAccountState.Saved -> {
                             binding.btnSaveSecond.isEnabled = true
                             binding.btnRemoveSecond.isVisible = true
-                            binding.statusSecond.text = "✓ ${state.info}"
+                            binding.statusSecond.text = getString(R.string.settings_second_saved_prefix, state.info)
                             binding.statusSecond.isVisible = true
                             val stored = loginViewModel.sessionManager.secondAccount
                             if (stored != null) {
@@ -206,7 +205,7 @@ class SettingsFragment : Fragment() {
                                     binding.inputSecondLabel.setText(stored.label)
                                 if (binding.inputSecondUsername.text.isNullOrBlank())
                                     binding.inputSecondUsername.setText(stored.username)
-                                binding.inputSecondPassword.hint =
+                                binding.inputSecondPasswordLayout.hint =
                                     getString(R.string.settings_second_password_saved_hint)
                             }
                         }
@@ -272,16 +271,16 @@ class SettingsFragment : Fragment() {
                     binding.btnCheckUpdate.isEnabled = true
                     binding.btnCheckUpdate.setOnClickListener {
                         updateManager.downloadAndInstall(info.downloadUrl, "webuntis-dashboard-${info.latestVersion}.apk")
-                        android.widget.Toast.makeText(requireContext(), "Download gestartet...", android.widget.Toast.LENGTH_SHORT).show()
+                        android.widget.Toast.makeText(requireContext(), getString(R.string.settings_update_download_started), android.widget.Toast.LENGTH_SHORT).show()
                     }
-                    
+
                     com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
-                        .setTitle("Update verfügbar")
-                        .setMessage("Version v${info.latestVersion} ist verfügbar.\n\n${info.releaseNotes ?: ""}")
-                        .setPositiveButton("Laden & Installieren") { _, _ ->
+                        .setTitle(getString(R.string.settings_update_dialog_title))
+                        .setMessage(getString(R.string.settings_update_dialog_message, info.latestVersion, info.releaseNotes ?: ""))
+                        .setPositiveButton(getString(R.string.settings_update_dialog_install)) { _, _ ->
                              updateManager.downloadAndInstall(info.downloadUrl, "webuntis-dashboard-${info.latestVersion}.apk")
                         }
-                        .setNegativeButton("Später", null)
+                        .setNegativeButton(getString(R.string.settings_update_dialog_later), null)
                         .show()
                 } else {
                     binding.btnCheckUpdate.text = getString(R.string.settings_update_no_update)
@@ -290,7 +289,7 @@ class SettingsFragment : Fragment() {
             }.onFailure {
                 binding.btnCheckUpdate.text = getString(R.string.settings_update_error)
                 binding.btnCheckUpdate.isEnabled = true
-                android.widget.Toast.makeText(requireContext(), "Update-Check fehlgeschlagen: ${it.message}", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(requireContext(), getString(R.string.settings_update_check_failed, it.message), android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -313,8 +312,10 @@ class SettingsFragment : Fragment() {
                 binding.inputSecondUsername.setText(second.username)
             if (binding.inputSecondLabel.text.isNullOrBlank())
                 binding.inputSecondLabel.setText(second.label)
-            binding.inputSecondPassword.hint = getString(R.string.settings_second_password_saved_hint)
+            binding.inputSecondPasswordLayout.hint = getString(R.string.settings_second_password_saved_hint)
             binding.btnRemoveSecond.isVisible = true
+        } else {
+            binding.inputSecondPasswordLayout.hint = getString(R.string.settings_second_password_hint)
         }
     }
 

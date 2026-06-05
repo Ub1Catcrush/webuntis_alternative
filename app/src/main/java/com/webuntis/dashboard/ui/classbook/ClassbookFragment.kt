@@ -57,7 +57,7 @@ class ClassbookFragment : Fragment() {
                         if (state.data.isEmpty()) {
                             binding.recyclerView.isVisible = false
                             binding.emptyView.isVisible = true
-                            binding.emptyView.text = "Keine Einträge"
+                            binding.emptyView.text = getString(R.string.label_no_classbook_entries)
                         } else {
                             binding.recyclerView.isVisible = true
                             binding.emptyView.isVisible = false

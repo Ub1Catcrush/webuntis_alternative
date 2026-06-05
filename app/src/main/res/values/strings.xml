@@ -73,6 +73,10 @@
 
     <!-- Events / Termine -->
     <string name="label_no_events">Keine Termine in den nächsten 90 Tagen 📅</string>
+    <string name="label_no_events_including_past">Keine Termine gefunden 📅</string>
+    <string name="action_show_past_events">Vergangene anzeigen</string>
+    <string name="action_hide_past_events">Vergangene ausblenden</string>
+    <string name="events_subtitle_including_past">inkl. vergangene Termine</string>
     <string name="event_type_exam">Test / Schularbeit</string>
     <string name="event_type_holiday">Ferien</string>
     <string name="event_type_event">Veranstaltung</string>
@@ -80,6 +84,7 @@
 
     <!-- Classbook -->
     <string name="label_no_classbook">Keine Klassenbucheinträge verfügbar 📖\n(Für diesen Benutzertyp nicht zugänglich)</string>
+    <string name="label_no_classbook_entries">Keine Einträge</string>
     <string name="error_classbook_prefix">Klassenbuch: %s</string>
     <string name="label_entry_type_homework">Hausaufgabe</string>
     <string name="label_entry_type_absence">Abwesenheit</string>
@@ -93,6 +98,17 @@
     <string name="label_absence_fullday">Ganztägig</string>
     <string name="label_no_absences">Keine Abwesenheiten eingetragen ✅</string>
     <string name="label_no_absences_short">Keine Abwesenheiten</string>
+    <string name="absence_filter_title">Nach Status filtern</string>
+    <string name="absence_filter_all">Alle</string>
+    <string name="absence_filter_active">Gefiltert: %s</string>
+    <string name="absence_unexcused_count">%d nicht entschuldigt</string>
+    <string name="absence_cannot_edit">Diese Abwesenheit kann nicht bearbeitet werden.</string>
+    <string name="absence_dialog_title_add">Abwesenheit melden</string>
+    <string name="absence_dialog_title_edit">Abwesenheit bearbeiten</string>
+    <string name="absence_delete_title">Abwesenheit löschen?</string>
+    <string name="absence_delete_message">Möchten Sie diese Abwesenheit wirklich löschen?</string>
+    <string name="absence_delete_confirm">Löschen</string>
+    <string name="btn_cancel">Abbrechen</string>
 
     <!-- Messages -->
     <string name="label_no_messages">Keine Nachrichten</string>
@@ -102,6 +118,17 @@
     <string name="error_save_failed">Speichern fehlgeschlagen: %s</string>
     <string name="error_mediastore_insert">MediaStore insert fehlgeschlagen</string>
     <string name="error_outputstream_open">OutputStream konnte nicht geöffnet werden</string>
+    <string name="error_attachment_load_failed">Datei konnte nicht geladen werden: %s</string>
+    <string name="message_saved_filename">✓ Gespeichert: %s</string>
+    <string name="messages_compose_title_new">Neue Nachricht</string>
+    <string name="messages_compose_title_reply">Antworten</string>
+    <string name="messages_compose_title_draft">Entwurf bearbeiten</string>
+    <string name="messages_compose_btn_send">Senden</string>
+    <string name="messages_compose_btn_cancel">Abbrechen</string>
+    <string name="messages_compose_error_empty">Bitte Betreff, Empfänger und Nachricht ausfüllen.</string>
+    <string name="messages_sent_ok">✓ Gesendet</string>
+    <string name="messages_draft_saved">✓ Als Entwurf gespeichert</string>
+    <string name="messages_delete_btn">Löschen</string>
 
     <!-- Badges -->
     <string name="badge_cancelled">Entfall</string>
@@ -112,6 +139,8 @@
     <!-- Generic -->
     <string name="error_prefix">⚠️ %s</string>
     <string name="error_generic">Fehler</string>
+    <string name="btn_ok">OK</string>
+    <string name="btn_cancel_generic">Abbrechen</string>
 
     <!-- Settings -->
     <string name="settings_save_button">Speichern &amp; neu verbinden</string>
@@ -130,23 +159,22 @@
     <string name="settings_second_removed">Zweiter Account entfernt.</string>
     <string name="settings_second_error_credentials">Benutzername und Passwort erforderlich.</string>
     <string name="settings_second_error_prefix">Fehler: %s</string>
+    <string name="settings_second_saved_prefix">✓ %s</string>
 
     <!-- Display settings -->
     <string name="settings_long_names_section">Klarnamen anzeigen</string>
-    <string name="settings_show_long_subjects">Fachname ausschreiben (z.B. „Mathematik")</string>
-    <string name="settings_show_long_teachers">Lehrername ausschreiben (z.B. „Mustermann")</string>
-    <string name="settings_show_long_rooms">Raumname ausschreiben (z.B. „Klassenraum 7c")</string>
+    <string name="settings_show_long_subjects">Fachname ausschreiben (z.B. „Mathematik\")</string>
+    <string name="settings_show_long_teachers">Lehrername ausschreiben (z.B. „Mustermann\")</string>
+    <string name="settings_show_long_rooms">Raumname ausschreiben (z.B. „Klassenraum 7c\")</string>
     <string name="settings_use_compact_week_view">Wochenansicht kompakt nebeneinander</string>
 
     <string name="label_homework_attachment_download">Anhang herunterladen</string>
-
     <string name="saved_file_path">✓ Gespeichert: %s</string>
 
     <!-- Cache settings -->
     <string name="settings_cache_label">Cache-Dauer</string>
     <string name="settings_cache_off">Kein Caching</string>
     <string name="settings_cache_minutes">%d Minuten</string>
-
 
     <!-- Messages tabs / compose -->
     <string name="messages_tab_inbox">Eingang</string>
@@ -158,14 +186,49 @@
     <!-- Settings export / import -->
     <string name="settings_export_button">Exportieren</string>
     <string name="settings_import_button">Importieren</string>
+    <string name="settings_export_ok">✓ Einstellungen exportiert</string>
+    <string name="settings_export_failed">Export fehlgeschlagen: %s</string>
+    <string name="settings_import_ok">✓ Import erfolgreich</string>
+    <string name="settings_import_failed">Import fehlgeschlagen: %s</string>
 
     <!-- App Update -->
     <string name="settings_update_title">App Update</string>
     <string name="settings_update_check_button">Nach Updates suchen</string>
-    <string name="settings_update_checking">Suche nach Updates...</string>
+    <string name="settings_update_checking">Suche nach Updates…</string>
     <string name="settings_update_available">Update verfügbar: v%s</string>
     <string name="settings_update_no_update">App ist aktuell</string>
     <string name="settings_update_download_install">Herunterladen &amp; Installieren</string>
     <string name="settings_update_error">Fehler bei der Update-Suche</string>
     <string name="settings_update_version_info">Installierte Version: %s</string>
+    <string name="settings_update_dialog_title">Update verfügbar</string>
+    <string name="settings_update_dialog_message">Version v%1$s ist verfügbar.\n\n%2$s</string>
+    <string name="settings_update_dialog_install">Laden &amp; Installieren</string>
+    <string name="settings_update_dialog_later">Später</string>
+    <string name="settings_update_download_started">Download gestartet…</string>
+    <string name="settings_update_check_failed">Update-Check fehlgeschlagen: %s</string>
+    <string name="settings_update_permission_required">Bitte erlaube der App, Updates zu installieren.</string>
+    <string name="settings_update_install_failed">Installation fehlgeschlagen: %s</string>
+    <string name="settings_update_dialog_title_main">WebUntis Dashboard Update</string>
+    <string name="settings_update_dialog_message_main">Eine neue Version (v%1$s) ist verfügbar. Möchtest du sie jetzt installieren?\n\n%2$s</string>
+
+    <!-- Timetable notes pin -->
+    <string name="timetable_notes_pin">📌 %s</string>
+    <!-- Timetable teacher substitution (original teachers shown in parentheses) - runtime formatted -->
+
+    <!-- Settings section headers -->
+    <string name="settings_section_account">Hauptaccount</string>
+    <string name="settings_section_second_account">Zweiter Account</string>
+    <string name="settings_section_timetable">Stundenplan</string>
+    <string name="settings_section_display">Anzeige</string>
+    <string name="settings_section_data">Daten &amp; Synchronisation</string>
+    <string name="settings_section_app">App</string>
+
+    <!-- Repository errors -->
+    <string name="error_delete_failed">Löschen fehlgeschlagen</string>
+
+    <!-- Messages - additional -->
+    <string name="messages_compose_btn_save_draft">Entwurf speichern</string>
+    <string name="messages_delete_draft_title">Entwurf löschen?</string>
+    <string name="messages_delete_message_title">Nachricht löschen?</string>
+    <string name="messages_no_subject">(Kein Betreff)</string>
 </resources>

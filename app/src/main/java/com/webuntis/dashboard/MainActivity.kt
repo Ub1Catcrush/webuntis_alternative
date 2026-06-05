@@ -98,12 +98,12 @@ class MainActivity : AppCompatActivity() {
             updateManager.checkForUpdates().onSuccess { info ->
                 if (info.hasUpdate && info.downloadUrl != null) {
                     com.google.android.material.dialog.MaterialAlertDialogBuilder(this@MainActivity)
-                        .setTitle("Update verfügbar")
-                        .setMessage("Eine neue Version (v${info.latestVersion}) ist verfügbar. Möchtest du sie jetzt installieren?\n\n${info.releaseNotes ?: ""}")
-                        .setPositiveButton("Laden & Installieren") { _, _ ->
+                        .setTitle(getString(R.string.settings_update_dialog_title_main))
+                        .setMessage(getString(R.string.settings_update_dialog_message_main, info.latestVersion, info.releaseNotes ?: ""))
+                        .setPositiveButton(getString(R.string.settings_update_dialog_install)) { _, _ ->
                             updateManager.downloadAndInstall(info.downloadUrl, "webuntis-dashboard-${info.latestVersion}.apk")
                         }
-                        .setNegativeButton("Später", null)
+                        .setNegativeButton(getString(R.string.settings_update_dialog_later), null)
                         .show()
                 }
             }

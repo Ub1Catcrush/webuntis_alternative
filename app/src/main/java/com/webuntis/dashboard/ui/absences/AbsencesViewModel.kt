@@ -60,6 +60,19 @@ class AbsencesViewModel @Inject constructor(
         load(forceRefresh = true)
     }
 
+    /** Returns the index in the "Alle + statuses" list for the SingleChoiceItems dialog. */
+    fun currentFilterIndex(statuses: List<com.webuntis.dashboard.model.ExcuseStatus>): Int {
+        if (currentFilterId == -1) return 0
+        val idx = statuses.indexOfFirst { it.id.toIntOrNull() == currentFilterId }
+        return if (idx >= 0) idx + 1 else 0
+    }
+
+    /** Returns the label of the active filter, or null if no filter is set. */
+    fun activeFilterLabel(statuses: List<com.webuntis.dashboard.model.ExcuseStatus>): String? {
+        if (currentFilterId == -1) return null
+        return statuses.firstOrNull { it.id.toIntOrNull() == currentFilterId }?.label
+    }
+
     fun createAbsence(req: CreateAbsenceRequest, onResult: (Result<Absence>) -> Unit) {
         viewModelScope.launch {
             val res = repository.createAbsence(req)

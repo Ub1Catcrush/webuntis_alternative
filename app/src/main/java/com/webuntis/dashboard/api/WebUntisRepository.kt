@@ -728,10 +728,10 @@ class WebUntisRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
-    suspend fun getEvents(forceRefresh: Boolean = false): Result<List<SchoolEvent>> = withCacheOrFetch(
+    suspend fun getEvents(forceRefresh: Boolean = false, includePast: Boolean = false): Result<List<SchoolEvent>> = withCacheOrFetch(
         forceRefresh = forceRefresh,
-        cache = { cacheEvents },
-        store = { cacheEvents = it },
+        cache = { if (includePast) null else cacheEvents },
+        store = { if (!includePast) cacheEvents = it },
     ) {
         try {
             val token = getAuthHeader()
@@ -741,8 +741,9 @@ class WebUntisRepository @Inject constructor(
             }
             val classId = sessionManager.studentId
             if (classId == 0) return@withCacheOrFetch Result.success(emptyList<SchoolEvent>())
-            val start = LocalDate.now()
-            val end   = start.plusDays(90)
+            val today = LocalDate.now()
+            val start = if (includePast) today.minusDays(365) else today
+            val end   = today.plusDays(90)
             val resp = callTimetableV1(start.toIso(), end.toIso(), classId)
             val raw = rawBody(resp) ?: return@withCacheOrFetch Result.success(emptyList<SchoolEvent>())
             val ttResp: TimetableV1Response = parseJson(raw)
@@ -858,7 +859,7 @@ class WebUntisRepository @Inject constructor(
             val token = getAuthHeader()
             val resp = service().deleteAbsence(token, id)
             if (resp.isSuccessful) Result.success(Unit)
-            else Result.failure(Exception("Löschen fehlgeschlagen"))
+            else Result.failure(Exception("error_delete_failed"))
         } catch (e: Exception) { Result.failure(e) }
     }
 

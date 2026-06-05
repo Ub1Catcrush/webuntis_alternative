@@ -56,7 +56,7 @@ class AbsencesFragment : Fragment() {
             if (absence.canEdit == true) {
                 showEditAbsenceDialog(absence)
             } else {
-                Toast.makeText(requireContext(), "Diese Abwesenheit kann nicht bearbeitet werden.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), getString(R.string.absence_cannot_edit), Toast.LENGTH_SHORT).show()
             }
         }
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
@@ -78,15 +78,12 @@ class AbsencesFragment : Fragment() {
                             }
                             is UiState.Success -> {
                                 binding.progressBar.isVisible = false
-                                val unexcused = state.data.count {
-                                    it.isExcused == false && it.excuseStatus?.contains("entschuldigt", ignoreCase = true) == false
-                                }
-                                binding.toolbar.subtitle =
-                                    if (unexcused > 0) "$unexcused nicht entschuldigt" else ""
+                                val statuses = viewModel.meta.value?.excuseStatuses ?: emptyList()
+                                updateFilterSubtitle(statuses)
                                 if (state.data.isEmpty()) {
                                     binding.recyclerView.isVisible = false
                                     binding.emptyView.isVisible = true
-                                    binding.emptyView.text = "Keine Abwesenheiten"
+                                    binding.emptyView.text = getString(R.string.label_no_absences_short)
                                 } else {
                                     binding.recyclerView.isVisible = true
                                     binding.emptyView.isVisible = false
@@ -131,15 +128,34 @@ class AbsencesFragment : Fragment() {
     private fun showFilterDialog() {
         val meta = viewModel.meta.value ?: return
         val statuses = meta.excuseStatuses ?: return
-        val items = statuses.map { it.label }.toTypedArray()
+        // Prepend "Alle" as reset option
+        val labels = (listOf(getString(R.string.absence_filter_all)) + statuses.map { it.label }).toTypedArray()
 
         MaterialAlertDialogBuilder(requireContext())
-            .setTitle("Filtern nach")
-            .setItems(items) { _, which ->
-                val selected = statuses[which]
-                viewModel.setFilter(selected.id.toIntOrNull() ?: -1)
+            .setTitle(getString(R.string.absence_filter_title))
+            .setSingleChoiceItems(labels, viewModel.currentFilterIndex(statuses)) { dialog, which ->
+                if (which == 0) {
+                    viewModel.setFilter(-1)
+                } else {
+                    val selected = statuses[which - 1]
+                    viewModel.setFilter(selected.id.toIntOrNull() ?: -1)
+                }
+                updateFilterSubtitle(statuses)
+                dialog.dismiss()
             }
             .show()
+    }
+
+    private fun updateFilterSubtitle(statuses: List<com.webuntis.dashboard.model.ExcuseStatus>) {
+        val activeLabel = viewModel.activeFilterLabel(statuses)
+        val unexcusedCount = (viewModel.state.value as? UiState.Success)?.data?.count {
+            it.isExcused == false && it.excuseStatus?.contains("entschuldigt", ignoreCase = true) == false
+        } ?: 0
+        binding.toolbar.subtitle = when {
+            activeLabel != null -> getString(R.string.absence_filter_active, activeLabel)
+            unexcusedCount > 0 -> getString(R.string.absence_unexcused_count, unexcusedCount)
+            else -> ""
+        }
     }
 
     private fun showEditAbsenceDialog(absence: Absence?) {
@@ -213,7 +229,7 @@ class AbsencesFragment : Fragment() {
         }
 
         dialogBinding.editText.setText(absence?.text ?: "")
-        dialogBinding.textTitle.text = if (absence == null) "Abwesenheit melden" else "Abwesenheit bearbeiten"
+        dialogBinding.textTitle.text = if (absence == null) getString(R.string.absence_dialog_title_add) else getString(R.string.absence_dialog_title_edit)
         
         if (absence != null) {
             dialogBinding.btnDelete.isVisible = true
@@ -249,10 +265,10 @@ class AbsencesFragment : Fragment() {
 
         dialogBinding.btnDelete.setOnClickListener {
             MaterialAlertDialogBuilder(context)
-                .setTitle("Abwesenheit löschen?")
-                .setMessage("Möchten Sie diese Abwesenheit wirklich löschen?")
-                .setNegativeButton("Abbrechen", null)
-                .setPositiveButton("Löschen") { _, _ ->
+                .setTitle(getString(R.string.absence_delete_title))
+                .setMessage(getString(R.string.absence_delete_message))
+                .setNegativeButton(getString(R.string.btn_cancel), null)
+                .setPositiveButton(getString(R.string.absence_delete_confirm)) { _, _ ->
                     viewModel.deleteAbsence(absence!!.id) { res ->
                         res.onSuccess { dialog.dismiss() }.onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
                     }
@@ -291,7 +307,7 @@ class AbsenceAdapter(private val onClick: (Absence) -> Unit) : ListAdapter<Absen
             val ctx = b.root.context
             b.root.setOnClickListener { onClick(a) }
             b.textDate.text   = a.dateLabel
-            b.textTime.text   = if (a.isFullDay) "Ganztägig" else a.timeLabel
+            b.textTime.text   = if (a.isFullDay) ctx.getString(R.string.label_absence_fullday) else a.timeLabel
             b.textReason.text = a.reason?.takeIf { it.isNotBlank() }
                 ?: a.text?.takeIf { it.isNotBlank() } ?: "–"
             val noteText = a.text?.takeIf { it.isNotBlank() && it != a.reason }

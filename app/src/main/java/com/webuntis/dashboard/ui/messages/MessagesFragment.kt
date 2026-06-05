@@ -61,7 +61,7 @@ class MessagesFragment : Fragment() {
                 ?: return@registerForActivityResult
             onFilePicked?.invoke(displayName, bytes)
         } catch (e: Exception) {
-            Toast.makeText(ctx, "Datei konnte nicht geladen werden: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(ctx, getString(R.string.error_attachment_load_failed, e.message), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -171,7 +171,7 @@ class MessagesFragment : Fragment() {
                 viewModel.downloadState.collect { state ->
                     when (state) {
                         is DownloadState.Ready -> { saveFile(state.filename, state.bytes); viewModel.clearDownload() }
-                        is DownloadState.Error -> { Toast.makeText(requireContext(), "Download fehlgeschlagen: ${state.message}", Toast.LENGTH_LONG).show(); viewModel.clearDownload() }
+                        is DownloadState.Error -> { Toast.makeText(requireContext(), getString(R.string.error_download_failed, state.message), Toast.LENGTH_LONG).show(); viewModel.clearDownload() }
                         else -> {}
                     }
                 }
@@ -184,8 +184,8 @@ class MessagesFragment : Fragment() {
                 viewModel.composeState.collect { state ->
                     when (state) {
                         is ComposeState.Open   -> showComposeDialog(state.draft, state.replyTo)
-                        is ComposeState.Sent   -> { Toast.makeText(requireContext(), "✓ Gesendet", Toast.LENGTH_SHORT).show(); viewModel.closeCompose() }
-                        is ComposeState.Saved  -> { Toast.makeText(requireContext(), "✓ Als Entwurf gespeichert", Toast.LENGTH_SHORT).show(); viewModel.closeCompose() }
+                        is ComposeState.Sent   -> { Toast.makeText(requireContext(), getString(R.string.messages_sent_ok), Toast.LENGTH_SHORT).show(); viewModel.closeCompose() }
+                        is ComposeState.Saved  -> { Toast.makeText(requireContext(), getString(R.string.messages_draft_saved), Toast.LENGTH_SHORT).show(); viewModel.closeCompose() }
                         is ComposeState.Error  -> Toast.makeText(requireContext(), state.message, Toast.LENGTH_LONG).show()
                         else -> {}
                     }
@@ -424,38 +424,38 @@ class MessagesFragment : Fragment() {
 
         // ── Dialog ─────────────────────────────────────────────────────────────
         AlertDialog.Builder(ctx)
-            .setTitle(when { draft != null -> "Entwurf bearbeiten"; replyTo != null -> "Antworten"; else -> "Neue Nachricht" })
+            .setTitle(when { draft != null -> getString(R.string.messages_compose_title_draft); replyTo != null -> getString(R.string.messages_compose_title_reply); else -> getString(R.string.messages_compose_title_new) })
             .setView(scroll)
-            .setPositiveButton("Senden") { _, _ ->
+            .setPositiveButton(getString(R.string.messages_compose_btn_send)) { _, _ ->
                 val subject = etSubject.text.toString().trim()
                 val body    = etBody.text.toString().trim()
                 val ids     = selectedRecipients.map { it.userId }
                 if (subject.isBlank() || body.isBlank() || ids.isEmpty()) {
-                    Toast.makeText(ctx, "Bitte Betreff, Empfänger und Nachricht ausfüllen.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(ctx, getString(R.string.messages_compose_error_empty), Toast.LENGTH_LONG).show()
                     composeOpen = false; return@setPositiveButton
                 }
                 val fromSecond = hasSecond && accountSpinner.selectedItemPosition == 1
                 viewModel.sendMessage(subject, body, ids, fromSecond, replyTo?.id)
                 composeOpen = false
             }
-            .setNeutralButton("Entwurf speichern") { _, _ ->
+            .setNeutralButton(getString(R.string.messages_compose_btn_save_draft)) { _, _ ->
                 val subject    = etSubject.text.toString().trim()
                 val body       = etBody.text.toString()
                 val fromSecond = hasSecond && accountSpinner.selectedItemPosition == 1
                 viewModel.saveDraft(subject, body, fromSecond, draftId = draft?.id)
                 composeOpen = false
             }
-            .setNegativeButton("Abbrechen") { _, _ -> viewModel.closeCompose(); composeOpen = false }
+            .setNegativeButton(getString(R.string.messages_compose_btn_cancel)) { _, _ -> viewModel.closeCompose(); composeOpen = false }
             .setOnDismissListener { composeOpen = false }
             .show()
     }
 
     private fun confirmDelete(msg: Message) {
         AlertDialog.Builder(requireContext())
-            .setTitle(if (msg.isDraft) "Entwurf löschen?" else "Nachricht löschen?")
-            .setMessage(msg.subject ?: "(Kein Betreff)")
-            .setPositiveButton("Löschen") { _, _ -> viewModel.deleteMessage(msg) }
-            .setNegativeButton("Abbrechen", null)
+            .setTitle(if (msg.isDraft) getString(R.string.messages_delete_draft_title) else getString(R.string.messages_delete_message_title))
+            .setMessage(msg.subject ?: getString(R.string.messages_no_subject))
+            .setPositiveButton(getString(R.string.messages_delete_btn)) { _, _ -> viewModel.deleteMessage(msg) }
+            .setNegativeButton(getString(R.string.btn_cancel), null)
             .show()
     }
 
@@ -472,12 +472,12 @@ class MessagesFragment : Fragment() {
                     put(MediaStore.Downloads.IS_PENDING, 1)
                 }
                 val uri = ctx.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv)
-                    ?: throw Exception("MediaStore insert fehlgeschlagen")
+                    ?: throw Exception(getString(R.string.error_mediastore_insert))
                 ctx.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                    ?: throw Exception("OutputStream konnte nicht geöffnet werden")
+                    ?: throw Exception(getString(R.string.error_outputstream_open))
                 cv.clear(); cv.put(MediaStore.Downloads.IS_PENDING, 0)
                 ctx.contentResolver.update(uri, cv, null, null)
-                Toast.makeText(ctx, "✓ Gespeichert: $filename", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, getString(R.string.message_saved_filename, filename), Toast.LENGTH_SHORT).show()
                 val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
                     setDataAndType(uri, mimeType(filename))
                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -488,10 +488,10 @@ class MessagesFragment : Fragment() {
                 val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 dir.mkdirs()
                 java.io.File(dir, filename).writeBytes(bytes)
-                Toast.makeText(ctx, "✓ Gespeichert: $filename", Toast.LENGTH_LONG).show()
+                Toast.makeText(ctx, getString(R.string.message_saved_filename, filename), Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
-            Toast.makeText(requireContext(), "Speichern fehlgeschlagen: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), getString(R.string.error_save_failed, e.message), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -528,6 +528,7 @@ class MessageAdapter(
 
         fun bind(msg: Message, expanded: Map<Int, Message>) {
             // Sender line: for sent/draft show recipients instead
+            val ctx = b.root.context
             b.textSender.text = when {
                 msg.isSent || msg.isDraft -> {
                     val r = msg.recipientPersons?.mapNotNull { it.displayName }?.joinToString(", ")
@@ -535,7 +536,7 @@ class MessageAdapter(
                 }
                 else -> msg.sender?.displayName ?: "–"
             }
-            b.textSubject.text = msg.subject ?: "(Kein Betreff)"
+            b.textSubject.text = msg.subject ?: ctx.getString(R.string.messages_no_subject)
             b.textPreview.text = msg.content?.takeIf { it.isNotBlank() } ?: msg.contentPreview ?: ""
             b.textDate.text    = msg.sentDateFormatted
             b.iconUnread.isVisible     = msg.isMessageRead == false && !msg.isSent && !msg.isDraft
