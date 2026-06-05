@@ -19,7 +19,15 @@ class ClassbookViewModel @Inject constructor(
     private val _state = MutableStateFlow<UiState<List<ClassbookEntry>>>(UiState.Loading)
     val state: StateFlow<UiState<List<ClassbookEntry>>> = _state
 
-    init { load() }
+    private val _schoolYearLabel = MutableStateFlow<String?>(null)
+    val schoolYearLabel: StateFlow<String?> = _schoolYearLabel
+
+    init {
+        load()
+        viewModelScope.launch {
+            repository.getCurrentSchoolYearName().onSuccess { _schoolYearLabel.value = it }
+        }
+    }
 
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {

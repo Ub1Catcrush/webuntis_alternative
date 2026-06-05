@@ -237,6 +237,12 @@ interface WebUntisService {
         @Header("Authorization") authorization: String
     ): Response<ResponseBody>
 
+    // ── School Years ─────────────────────────────────────────────────────────
+    @GET("api/rest/view/v1/schoolyears")
+    suspend fun getSchoolYears(
+        @Header("Authorization") authorization: String?
+    ): Response<ResponseBody>
+
     // ── Absences ──────────────────────────────────────────────────────────────
     @GET("api/classreg/absences/students")
     suspend fun getAbsences(

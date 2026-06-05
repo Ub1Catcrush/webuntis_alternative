@@ -150,6 +150,7 @@ class WebUntisRepository @Inject constructor(
     private var cacheHomework:     CacheEntry<Pair<List<Homework>, Map<String, String>>>? = null
     private var cacheEvents:       CacheEntry<List<SchoolEvent>>?                         = null
     private var cacheClassbook:    CacheEntry<List<ClassbookEntry>>?                      = null
+    private var cacheSchoolYear:   CacheEntry<List<com.webuntis.dashboard.model.SchoolYearInfo>>? = null
     private var cacheAbsences:     CacheEntry<List<Absence>>?                             = null
     private var cacheMessages:     CacheEntry<List<Message>>?                             = null
     private var cacheSentMessages: CacheEntry<List<Message>>?                             = null
@@ -164,7 +165,7 @@ class WebUntisRepository @Inject constructor(
 
     private fun clearAllDataCaches() {
         cacheTimetable = null; cacheHomework = null; cacheEvents = null
-        cacheClassbook = null; cacheAbsences = null; cacheMessages = null; cacheSentMessages = null; cacheDraftMessages = null; cacheTeachers = null
+        cacheClassbook = null; cacheSchoolYear = null; cacheAbsences = null; cacheMessages = null; cacheSentMessages = null; cacheDraftMessages = null; cacheTeachers = null
         cacheAbsencesMeta = null
     }
 
@@ -675,6 +676,34 @@ class WebUntisRepository @Inject constructor(
         }
     }
 
+    /** Returns the display name (e.g. "2025/2026") of the current school year, for UI use. */
+    suspend fun getCurrentSchoolYearName(): Result<String> =
+        getCurrentSchoolYear().mapCatching { it.name }
+
+    private suspend fun getCurrentSchoolYear(): Result<com.webuntis.dashboard.model.SchoolYearInfo> =
+        withCacheOrFetch(
+            forceRefresh = false,
+            cache = { cacheSchoolYear },
+            store = { cacheSchoolYear = it },
+        ) {
+            try {
+                val token = getAuthHeader()
+                val resp = service().getSchoolYears(token)
+                val raw = rawBody(resp) ?: return@withCacheOrFetch Result.failure(Exception("Keine Schuldaten"))
+                val years: List<com.webuntis.dashboard.model.SchoolYearInfo> =
+                    parseJson(raw, object : com.google.gson.reflect.TypeToken<List<com.webuntis.dashboard.model.SchoolYearInfo>>() {})
+                Result.success(years)
+            } catch (e: Exception) { Result.failure(e) }
+        }.mapCatching { years ->
+            val today = LocalDate.now()
+            val fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+            years.firstOrNull { year ->
+                val start = LocalDate.parse(year.dateRange.start, fmt)
+                val end   = LocalDate.parse(year.dateRange.end, fmt)
+                !today.isBefore(start) && !today.isAfter(end)
+            } ?: years.firstOrNull() ?: throw Exception("Kein Schuljahr gefunden")
+        }
+
     suspend fun getClassbookEntries(forceRefresh: Boolean = false): Result<List<ClassbookEntry>> = withCacheOrFetch(
         forceRefresh = forceRefresh,
         cache = { cacheClassbook },
@@ -682,8 +711,23 @@ class WebUntisRepository @Inject constructor(
     ) {
         try {
             val token = getAuthHeader()
-            val start = LocalDate.now().minusDays(30).toUntis()
-            val end   = LocalDate.now().toUntis()
+            val today = LocalDate.now()
+            val yearStart = if (today.monthValue >= 8) today.year else today.year - 1
+            // Fetch current school year from API to get exact dates (avoids MULTIPLE_SCHOOLYEARS_IN_RANGE)
+            val schoolYear = getCurrentSchoolYear().getOrNull()
+            val start: String
+            val end: String
+            if (schoolYear != null) {
+                // API returns "yyyy-MM-dd", service expects "yyyyMMdd"
+                val fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                val outFmt = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")
+                start = LocalDate.parse(schoolYear.dateRange.start, fmt).format(outFmt)
+                end   = LocalDate.parse(schoolYear.dateRange.end, fmt).format(outFmt)
+            } else {
+                // Fallback: use a single month to avoid the multi-year error
+                start = LocalDate.now().withDayOfMonth(1).toUntis()
+                end   = LocalDate.now().toUntis()
+            }
             val session = sessionManager.session
                 ?: return@withCacheOrFetch Result.failure(Exception("Nicht angemeldet"))
             if (session.personType == 12 && sessionManager.studentId == 0) {
@@ -742,8 +786,16 @@ class WebUntisRepository @Inject constructor(
             val classId = sessionManager.studentId
             if (classId == 0) return@withCacheOrFetch Result.success(emptyList<SchoolEvent>())
             val today = LocalDate.now()
-            val start = if (includePast) today.minusDays(365) else today
-            val end   = today.plusDays(90)
+            // Use school year bounds to avoid MULTIPLE_SCHOOLYEARS_IN_RANGE error
+            val schoolYear = getCurrentSchoolYear().getOrNull()
+            val syFmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+            val syStart = schoolYear?.let { LocalDate.parse(it.dateRange.start, syFmt) }
+                ?: if (today.monthValue >= 8) today.withMonth(8).withDayOfMonth(1)
+                   else today.withYear(today.year - 1).withMonth(8).withDayOfMonth(1)
+            val syEnd = schoolYear?.let { LocalDate.parse(it.dateRange.end, syFmt) }
+                ?: syStart.plusYears(1).withMonth(7).withDayOfMonth(31)
+            val start = if (includePast) syStart else today
+            val end   = minOf(today.plusDays(90), syEnd)
             val resp = callTimetableV1(start.toIso(), end.toIso(), classId)
             val raw = rawBody(resp) ?: return@withCacheOrFetch Result.success(emptyList<SchoolEvent>())
             val ttResp: TimetableV1Response = parseJson(raw)
@@ -775,7 +827,9 @@ class WebUntisRepository @Inject constructor(
                     }
                 }
             }
-            Result.success(events.sortedBy { it.date ?: 0 })
+            val sorted = if (includePast) events.sortedByDescending { it.date ?: 0 }
+                         else events.sortedBy { it.date ?: 0 }
+            Result.success(sorted)
         } catch (e: Exception) { Result.failure(e) }
     }
 
@@ -797,9 +851,9 @@ class WebUntisRepository @Inject constructor(
     }.getOrDefault(0)
 
     suspend fun getAbsences(forceRefresh: Boolean = false, excuseStatusId: Int = -1): Result<List<Absence>> = withCacheOrFetch(
-        forceRefresh = forceRefresh,
-        cache = { cacheAbsences },
-        store = { cacheAbsences = it },
+        forceRefresh = forceRefresh || excuseStatusId != -1,
+        cache = { if (excuseStatusId != -1) null else cacheAbsences },
+        store = { if (excuseStatusId == -1) cacheAbsences = it },
     ) {
         try {
             val token = getAuthHeader()

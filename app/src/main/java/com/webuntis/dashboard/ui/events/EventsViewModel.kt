@@ -36,8 +36,11 @@ class EventsViewModel @Inject constructor(
         }
     }
 
-    fun toggleShowPast() {
-        _showPast.value = !_showPast.value
+    fun setShowPast(past: Boolean) {
+        if (_showPast.value == past) return
+        _showPast.value = past
         load(forceRefresh = true)
     }
+
+    fun toggleShowPast() = setShowPast(!_showPast.value)
 }

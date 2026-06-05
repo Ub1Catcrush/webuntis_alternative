@@ -72,6 +72,10 @@
     <string name="error_homework_prefix">Homework: %s</string>
 
     <!-- Events -->
+    <string name="label_tab_events_upcoming">Upcoming</string>
+    <string name="label_tab_events_past">Past</string>
+    <string name="classbook_subtitle">%d entries</string>
+    <string name="classbook_subtitle_year">School year %d/%d</string>
     <string name="label_no_events">No events in the next 90 days 📅</string>
     <string name="label_no_events_including_past">No events found 📅</string>
     <string name="action_show_past_events">Show past events</string>
@@ -98,6 +102,15 @@
     <string name="label_absence_fullday">All day</string>
     <string name="label_no_absences">No absences recorded ✅</string>
     <string name="label_no_absences_short">No absences</string>
+    <string name="action_filter">Filter</string>
+    <string name="fab_add_absence">Add absence</string>
+    <string name="fab_new_message">New message</string>
+    <string name="dialog_absence_section_start">Start</string>
+    <string name="dialog_absence_section_end">End</string>
+    <string name="dialog_absence_btn_date">Date</string>
+    <string name="dialog_absence_btn_time">Time</string>
+    <string name="dialog_absence_reason_hint">Reason</string>
+    <string name="dialog_absence_note_hint">Note</string>
     <string name="absence_filter_title">Filter by status</string>
     <string name="absence_filter_all">All</string>
     <string name="absence_filter_active">Filtered: %s</string>
@@ -109,6 +122,7 @@
     <string name="absence_delete_message">Do you really want to delete this absence?</string>
     <string name="absence_delete_confirm">Delete</string>
     <string name="btn_cancel">Cancel</string>
+    <string name="btn_save">Save</string>
 
     <!-- Messages -->
     <string name="label_no_messages">No messages</string>

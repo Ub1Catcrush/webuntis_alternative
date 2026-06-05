@@ -10,76 +10,91 @@ import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+enum class AbsenceFilter { ALL, EXCUSED, UNEXCUSED, PENDING }
 
 @HiltViewModel
 class AbsencesViewModel @Inject constructor(
     private val repository: WebUntisRepository
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow<UiState<List<Absence>>>(UiState.Loading)
-    val state: StateFlow<UiState<List<Absence>>> = _state
+    // Raw list from server (unfiltered)
+    private val _allAbsences = MutableStateFlow<UiState<List<Absence>>>(UiState.Loading)
 
     private val _meta = MutableStateFlow<AbsencesMetaData?>(null)
     val meta: StateFlow<AbsencesMetaData?> = _meta
 
-    private var currentFilterId: Int = -1
+    private val _filter = MutableStateFlow(AbsenceFilter.ALL)
+    val filter: StateFlow<AbsenceFilter> = _filter
+
+    // Derived: filtered view exposed to the UI
+    private val _state = MutableStateFlow<UiState<List<Absence>>>(UiState.Loading)
+    val state: StateFlow<UiState<List<Absence>>> = _state
 
     val isParent: Boolean get() = repository.sessionManager.session?.isParent == true
     val studentId: Int get() = repository.sessionManager.studentId
 
     init {
+        // Re-apply filter whenever raw data or filter changes
+        viewModelScope.launch {
+            combine(_allAbsences, _filter) { raw, f ->
+                when (raw) {
+                    is UiState.Success -> UiState.Success(applyFilter(raw.data, f))
+                    else -> raw
+                }
+            }.collect { _state.value = it }
+        }
         load(forceRefresh = false)
         loadMeta()
     }
 
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
-            if (forceRefresh || _state.value !is UiState.Success) {
-                _state.value = UiState.Loading
+            if (forceRefresh || _allAbsences.value !is UiState.Success) {
+                _allAbsences.value = UiState.Loading
             }
-            repository.getAbsences(forceRefresh, currentFilterId).fold(
-                onSuccess = { _state.value = UiState.Success(it) },
-                onFailure = { _state.value = UiState.Error(it.message ?: "Fehler beim Laden") }
+            // Always fetch all absences; filtering is done client-side
+            repository.getAbsences(forceRefresh).fold(
+                onSuccess = { _allAbsences.value = UiState.Success(it) },
+                onFailure = { _allAbsences.value = UiState.Error(it.message ?: "Fehler beim Laden") }
             )
         }
     }
 
     private fun loadMeta() {
         viewModelScope.launch {
-            repository.getAbsencesMeta().onSuccess {
-                _meta.value = it
-            }
+            repository.getAbsencesMeta().onSuccess { _meta.value = it }
         }
     }
 
-    fun setFilter(statusId: Int) {
-        if (currentFilterId == statusId) return
-        currentFilterId = statusId
-        load(forceRefresh = true)
+    fun setFilter(f: AbsenceFilter) {
+        _filter.value = f
     }
 
-    /** Returns the index in the "Alle + statuses" list for the SingleChoiceItems dialog. */
-    fun currentFilterIndex(statuses: List<com.webuntis.dashboard.model.ExcuseStatus>): Int {
-        if (currentFilterId == -1) return 0
-        val idx = statuses.indexOfFirst { it.id.toIntOrNull() == currentFilterId }
-        return if (idx >= 0) idx + 1 else 0
+    private fun applyFilter(list: List<Absence>, f: AbsenceFilter): List<Absence> = when (f) {
+        AbsenceFilter.ALL      -> list
+        AbsenceFilter.EXCUSED  -> list.filter { it.isExcused == true }
+        AbsenceFilter.UNEXCUSED-> list.filter { it.isExcused == false }
+        AbsenceFilter.PENDING  -> list.filter { it.isExcused == null || isPending(it.excuseStatus) }
     }
 
-    /** Returns the label of the active filter, or null if no filter is set. */
-    fun activeFilterLabel(statuses: List<com.webuntis.dashboard.model.ExcuseStatus>): String? {
-        if (currentFilterId == -1) return null
-        return statuses.firstOrNull { it.id.toIntOrNull() == currentFilterId }?.label
+    private fun isPending(status: String?): Boolean {
+        if (status == null) return false
+        val s = status.lowercase()
+        return s.contains("ausstehend") || s.contains("pending") || s.contains("offen") || s.contains("open")
     }
+
+    /** Count of unexcused absences in the full (unfiltered) list. */
+    fun unexcusedCount(): Int =
+        (_allAbsences.value as? UiState.Success)?.data?.count { it.isExcused == false } ?: 0
 
     fun createAbsence(req: CreateAbsenceRequest, onResult: (Result<Absence>) -> Unit) {
         viewModelScope.launch {
             val res = repository.createAbsence(req)
-            if (res.isSuccess) {
-                repository.clearAllCaches() // Invalidate cache to see new item
-                load(forceRefresh = true)
-            }
+            if (res.isSuccess) { repository.clearAllCaches(); load(forceRefresh = true) }
             onResult(res)
         }
     }
@@ -87,10 +102,7 @@ class AbsencesViewModel @Inject constructor(
     fun updateAbsence(id: Int, req: CreateAbsenceRequest, onResult: (Result<Absence>) -> Unit) {
         viewModelScope.launch {
             val res = repository.updateAbsence(id, req)
-            if (res.isSuccess) {
-                repository.clearAllCaches()
-                load(forceRefresh = true)
-            }
+            if (res.isSuccess) { repository.clearAllCaches(); load(forceRefresh = true) }
             onResult(res)
         }
     }
@@ -98,10 +110,7 @@ class AbsencesViewModel @Inject constructor(
     fun deleteAbsence(id: Int, onResult: (Result<Unit>) -> Unit) {
         viewModelScope.launch {
             val res = repository.deleteAbsence(id)
-            if (res.isSuccess) {
-                repository.clearAllCaches()
-                load(forceRefresh = true)
-            }
+            if (res.isSuccess) { repository.clearAllCaches(); load(forceRefresh = true) }
             onResult(res)
         }
     }

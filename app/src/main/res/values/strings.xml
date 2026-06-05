@@ -72,6 +72,10 @@
     <string name="error_homework_prefix">Hausaufgaben: %s</string>
 
     <!-- Events / Termine -->
+    <string name="label_tab_events_upcoming">Kommende</string>
+    <string name="label_tab_events_past">Vergangene</string>
+    <string name="classbook_subtitle">%d Einträge</string>
+    <string name="classbook_subtitle_year">Schuljahr %d/%d</string>
     <string name="label_no_events">Keine Termine in den nächsten 90 Tagen 📅</string>
     <string name="label_no_events_including_past">Keine Termine gefunden 📅</string>
     <string name="action_show_past_events">Vergangene anzeigen</string>
@@ -98,6 +102,15 @@
     <string name="label_absence_fullday">Ganztägig</string>
     <string name="label_no_absences">Keine Abwesenheiten eingetragen ✅</string>
     <string name="label_no_absences_short">Keine Abwesenheiten</string>
+    <string name="action_filter">Filtern</string>
+    <string name="fab_add_absence">Abwesenheit hinzufügen</string>
+    <string name="fab_new_message">Neue Nachricht</string>
+    <string name="dialog_absence_section_start">Beginn</string>
+    <string name="dialog_absence_section_end">Ende</string>
+    <string name="dialog_absence_btn_date">Datum</string>
+    <string name="dialog_absence_btn_time">Uhrzeit</string>
+    <string name="dialog_absence_reason_hint">Grund</string>
+    <string name="dialog_absence_note_hint">Bemerkung</string>
     <string name="absence_filter_title">Nach Status filtern</string>
     <string name="absence_filter_all">Alle</string>
     <string name="absence_filter_active">Gefiltert: %s</string>
@@ -109,6 +122,7 @@
     <string name="absence_delete_message">Möchten Sie diese Abwesenheit wirklich löschen?</string>
     <string name="absence_delete_confirm">Löschen</string>
     <string name="btn_cancel">Abbrechen</string>
+    <string name="btn_save">Speichern</string>
 
     <!-- Messages -->
     <string name="label_no_messages">Keine Nachrichten</string>

@@ -335,6 +335,10 @@ data class EventsData(
     @SerializedName("exams") val exams: List<SchoolEvent>?
 )
 
+// ── School Year ───────────────────────────────────────────────────────────────
+data class SchoolYearDateRange(val start: String, val end: String)
+data class SchoolYearInfo(val id: Int, val name: String, val dateRange: SchoolYearDateRange)
+
 data class SchoolEvent(
     val id: Int, val subject: String?, val title: String?,
     val text: String?, val remark: String?,

@@ -53,7 +53,7 @@ class ClassbookFragment : Fragment() {
                     }
                     is UiState.Success -> {
                         binding.progressBar.isVisible = false
-                        binding.toolbar.subtitle = "${state.data.size} Einträge"
+                        updateSubtitle(state.data.size)
                         if (state.data.isEmpty()) {
                             binding.recyclerView.isVisible = false
                             binding.emptyView.isVisible = true
@@ -73,6 +73,21 @@ class ClassbookFragment : Fragment() {
                 }
             }
         }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.schoolYearLabel.collect {
+                val count = (viewModel.state.value as? UiState.Success)?.data?.size
+                if (count != null) updateSubtitle(count)
+            }
+        }
+    }
+
+    private fun updateSubtitle(count: Int) {
+        val yearLabel = viewModel.schoolYearLabel.value
+        binding.toolbar.subtitle = if (yearLabel != null)
+            "$yearLabel · ${getString(R.string.classbook_subtitle, count)}"
+        else
+            getString(R.string.classbook_subtitle, count)
     }
 
     override fun onDestroyView() {

@@ -14,14 +14,14 @@
             android:id="@+id/text_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Abwesenheit melden"
+            android:text="@string/absence_dialog_title_add"
             android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
             android:layout_marginBottom="16dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Beginn"
+            android:text="@string/dialog_absence_section_start"
             android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
             android:layout_marginBottom="4dp" />
 
@@ -37,7 +37,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Datum" />
+                android:text="@string/dialog_absence_btn_date" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_start_time"
@@ -46,13 +46,13 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginStart="8dp"
-                android:text="Uhrzeit" />
+                android:text="@string/dialog_absence_btn_time" />
         </LinearLayout>
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Ende"
+            android:text="@string/dialog_absence_section_end"
             android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
             android:layout_marginBottom="4dp" />
 
@@ -68,7 +68,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Datum" />
+                android:text="@string/dialog_absence_btn_date" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_end_time"
@@ -77,14 +77,14 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginStart="8dp"
-                android:text="Uhrzeit" />
+                android:text="@string/dialog_absence_btn_time" />
         </LinearLayout>
 
         <com.google.android.material.textfield.TextInputLayout
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Grund"
+            android:hint="@string/dialog_absence_reason_hint"
             android:layout_marginBottom="16dp">
 
             <AutoCompleteTextView
@@ -98,7 +98,7 @@
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Bemerkung"
+            android:hint="@string/dialog_absence_note_hint"
             android:layout_marginBottom="24dp">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -119,7 +119,7 @@
                 style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Löschen"
+                android:text="@string/absence_delete_confirm"
                 android:textColor="?attr/colorError"
                 android:visibility="gone" />
 
@@ -133,14 +133,14 @@
                 style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Abbrechen" />
+                android:text="@string/btn_cancel" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_save"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:text="Speichern" />
+                android:text="@string/btn_save" />
         </LinearLayout>
 
     </LinearLayout>

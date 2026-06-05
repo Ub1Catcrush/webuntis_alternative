@@ -15,7 +15,7 @@
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            app:title="Stundenplan"
+            app:title="@string/nav_timetable"
             app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge" />
 
         <!-- "Heute"-Zeile: nur sichtbar wenn man nicht bei heute ist -->
@@ -32,7 +32,7 @@
                 style="@style/Widget.Material3.Button"
                 android:layout_width="wrap_content"
                 android:layout_height="28dp"
-                android:text="Heute"
+                android:text="@string/label_today"
                 android:textSize="12sp"
                 android:textColor="@android:color/white"
                 android:minWidth="0dp"

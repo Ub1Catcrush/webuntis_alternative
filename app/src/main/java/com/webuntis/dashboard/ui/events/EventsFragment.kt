@@ -2,8 +2,6 @@ package com.webuntis.dashboard.ui.events
 
 import android.os.Bundle
 import android.view.*
-import androidx.core.view.MenuHost
-import androidx.core.view.MenuProvider
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -11,6 +9,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.tabs.TabLayout
 import com.webuntis.dashboard.R
 import com.webuntis.dashboard.databinding.FragmentEventsBinding
 import com.webuntis.dashboard.model.UiState
@@ -33,7 +32,6 @@ class EventsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        setupMenu()
 
         val adapter = EventsAdapter()
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
@@ -41,66 +39,52 @@ class EventsFragment : Fragment() {
 
         binding.swipeRefresh.setOnRefreshListener { viewModel.load(forceRefresh = true) }
 
+        // Sync tab to current ViewModel state (e.g. after rotation)
+        binding.tabLayout.getTabAt(if (viewModel.showPast.value) 1 else 0)?.select()
+
+        binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                viewModel.setShowPast(tab?.position == 1)
+            }
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
+
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                launch {
-                    viewModel.state.collect { state ->
-                        binding.swipeRefresh.isRefreshing = state is UiState.Loading
-                        when (state) {
-                            is UiState.Loading -> {
-                                binding.recyclerView.isVisible = false
-                                binding.emptyView.isVisible = false
-                            }
-                            is UiState.Success -> {
-                                if (state.data.isEmpty()) {
-                                    binding.recyclerView.isVisible = false
-                                    binding.emptyView.isVisible = true
-                                    binding.emptyView.text = getString(R.string.label_no_events)
-                                } else {
-                                    binding.recyclerView.isVisible = true
-                                    binding.emptyView.isVisible = false
-                                    adapter.submitList(state.data)
-                                }
-                            }
-                            is UiState.Error -> {
+                viewModel.state.collect { state ->
+                    binding.swipeRefresh.isRefreshing = state is UiState.Loading
+                    when (state) {
+                        is UiState.Loading -> {
+                            binding.progressBar.isVisible = true
+                            binding.recyclerView.isVisible = false
+                            binding.emptyView.isVisible = false
+                        }
+                        is UiState.Success -> {
+                            binding.progressBar.isVisible = false
+                            if (state.data.isEmpty()) {
                                 binding.recyclerView.isVisible = false
                                 binding.emptyView.isVisible = true
-                                binding.emptyView.text = state.message
+                                binding.emptyView.text = if (viewModel.showPast.value)
+                                    getString(R.string.label_no_events_including_past)
+                                else
+                                    getString(R.string.label_no_events)
+                            } else {
+                                binding.recyclerView.isVisible = true
+                                binding.emptyView.isVisible = false
+                                adapter.submitList(state.data)
                             }
                         }
-                    }
-                }
-                launch {
-                    viewModel.showPast.collect { showPast ->
-                        binding.toolbar.subtitle = if (showPast) getString(R.string.events_subtitle_including_past) else ""
-                        requireActivity().invalidateOptionsMenu()
+                        is UiState.Error -> {
+                            binding.progressBar.isVisible = false
+                            binding.recyclerView.isVisible = false
+                            binding.emptyView.isVisible = true
+                            binding.emptyView.text = state.message
+                        }
                     }
                 }
             }
         }
-    }
-
-    private fun setupMenu() {
-        val menuHost: MenuHost = requireActivity()
-        menuHost.addMenuProvider(object : MenuProvider {
-            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
-                menuInflater.inflate(R.menu.menu_events, menu)
-                val item = menu.findItem(R.id.action_toggle_past)
-                item?.isChecked = viewModel.showPast.value
-                item?.title = if (viewModel.showPast.value)
-                    getString(R.string.action_hide_past_events)
-                else
-                    getString(R.string.action_show_past_events)
-            }
-
-            override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
-                if (menuItem.itemId == R.id.action_toggle_past) {
-                    viewModel.toggleShowPast()
-                    return true
-                }
-                return false
-            }
-        }, viewLifecycleOwner, Lifecycle.State.RESUMED)
     }
 
     override fun onDestroyView() {
