@@ -26,6 +26,12 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
     var showLongRooms: Boolean = false
         set(value) { field = value; notifyDataSetChanged() }
 
+    var isPast: Boolean = false
+        set(value) { field = value; notifyDataSetChanged() }
+    /** -1 = not today; otherwise = current time in minutes for per-lesson past detection */
+    var currentTimeMin: Int = -1
+        set(value) { field = value; notifyDataSetChanged() }
+
     var onLessonClick: ((Lesson) -> Unit)? = null
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): GroupViewHolder {
@@ -34,14 +40,17 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
     }
 
     override fun onBindViewHolder(holder: GroupViewHolder, position: Int) {
-        holder.bind(getItem(position), showLongSubjects, showLongTeachers, showLongRooms, onLessonClick)
+        holder.bind(getItem(position), showLongSubjects, showLongTeachers, showLongRooms, onLessonClick, isPast, currentTimeMin)
     }
 
     class GroupViewHolder(private val b: ItemLessonGroupBinding) : RecyclerView.ViewHolder(b.root) {
         
-        fun bind(group: LessonGroup, showLongSubjects: Boolean, showLongTeachers: Boolean, showLongRooms: Boolean, onClick: ((Lesson) -> Unit)?) {
+        fun bind(group: LessonGroup, showLongSubjects: Boolean, showLongTeachers: Boolean, showLongRooms: Boolean, onClick: ((Lesson) -> Unit)?, isPast: Boolean = false, currentTimeMin: Int = -1) {
             val ctx = b.root.context
             val first = group.lessons.firstOrNull() ?: return
+            // Per-group past detection for today (currentTimeMin >= 0)
+            val groupEndMin = (group.endTime / 100) * 60 + (group.endTime % 100)
+            val isGroupPast = isPast || (currentTimeMin >= 0 && currentTimeMin > groupEndMin)
             
             b.textTime.text = "${first.startTimeFormatted}\n${first.endTimeFormatted}"
             
@@ -60,7 +69,7 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
             group.lessons.forEachIndexed { index, lesson ->
                 val lessonBinding = ItemLessonBinding.inflate(LayoutInflater.from(ctx), b.lessonsContainer, false)
                 lessonBinding.root.minimumHeight = minHeightPx
-                bindLesson(lessonBinding, lesson, showLongSubjects, showLongTeachers, showLongRooms, onClick)
+                bindLesson(lessonBinding, lesson, showLongSubjects, showLongTeachers, showLongRooms, onClick, isGroupPast)
                 
                 val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
                 if (index > 0) lp.marginStart = (4 * ctx.resources.displayMetrics.density).toInt()
@@ -69,7 +78,7 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
             }
         }
 
-        private fun bindLesson(b: ItemLessonBinding, lesson: Lesson, showLongSubjects: Boolean, showLongTeachers: Boolean, showLongRooms: Boolean, onClick: ((Lesson) -> Unit)?) {
+        private fun bindLesson(b: ItemLessonBinding, lesson: Lesson, showLongSubjects: Boolean, showLongTeachers: Boolean, showLongRooms: Boolean, onClick: ((Lesson) -> Unit)?, isPast: Boolean = false) {
             val ctx = b.root.context
 
             b.textSubject.text = lesson.displaySubject(showLongSubjects)
@@ -154,6 +163,14 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
                     b.badgeChip.setChipBackgroundColorResource(R.color.green_container)
                     b.badgeChip.setTextColor(ContextCompat.getColor(ctx, R.color.green))
                 }
+            }
+            // Dim past lessons with a slight grey overlay
+            if (isPast) {
+                val currentAlpha = b.root.alpha
+                b.root.alpha = (currentAlpha * 0.45f).coerceAtLeast(0.35f)
+                b.cardRoot.alpha = 0.55f
+            } else {
+                b.cardRoot.alpha = 1f
             }
         }
 

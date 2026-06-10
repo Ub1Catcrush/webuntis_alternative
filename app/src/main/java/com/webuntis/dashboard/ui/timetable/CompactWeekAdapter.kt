@@ -10,6 +10,7 @@ import com.webuntis.dashboard.R
 import com.webuntis.dashboard.databinding.ItemCompactDayBinding
 import com.webuntis.dashboard.databinding.ItemCompactLessonBinding
 import com.webuntis.dashboard.model.Lesson
+import java.time.LocalDate
 
 class CompactWeekAdapter : ListAdapter<SchoolDay, CompactWeekAdapter.DayViewHolder>(DayDiff) {
 
@@ -19,6 +20,10 @@ class CompactWeekAdapter : ListAdapter<SchoolDay, CompactWeekAdapter.DayViewHold
         set(value) { field = value; notifyDataSetChanged() }
     
     var onLessonClick: ((Lesson) -> Unit)? = null
+    var isPastDay: Boolean = false
+        set(value) { field = value; notifyDataSetChanged() }
+    var currentTimeMin: Int = -1
+        set(value) { field = value; notifyDataSetChanged() }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): DayViewHolder {
         val b = ItemCompactDayBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -26,17 +31,22 @@ class CompactWeekAdapter : ListAdapter<SchoolDay, CompactWeekAdapter.DayViewHold
     }
 
     override fun onBindViewHolder(holder: DayViewHolder, position: Int) {
-        holder.bind(getItem(position), showLongSubjects, showLongRooms, onLessonClick)
+        holder.bind(getItem(position), showLongSubjects, showLongRooms, onLessonClick, isPastDay, currentTimeMin)
     }
 
     class DayViewHolder(private val b: ItemCompactDayBinding) : RecyclerView.ViewHolder(b.root) {
-        fun bind(day: SchoolDay, longSubjects: Boolean, longRooms: Boolean, onClick: ((Lesson) -> Unit)?) {
+        fun bind(day: SchoolDay, longSubjects: Boolean, longRooms: Boolean, onClick: ((Lesson) -> Unit)?, isPastDay: Boolean = false, currentTimeMin: Int = -1) {
+            val today = LocalDate.now()
+            val isPastDay = day.date.isBefore(today)
+            val isToday   = day.date == today
             b.textDayLabel.text = day.tabLabel
             b.rvLessons.layoutManager = LinearLayoutManager(b.root.context)
             val adapter = CompactLessonAdapter()
             adapter.showLongSubjects = longSubjects
             adapter.showLongRooms    = longRooms
             adapter.onLessonClick    = onClick
+            adapter.isPastDay        = isPastDay
+            adapter.currentTimeMin   = if (isToday) com.webuntis.dashboard.ui.timetable.TimeIndicatorView.currentTimeMinutes() else -1
             b.rvLessons.adapter = adapter
             adapter.submitList(day.lessons)
         }
@@ -53,6 +63,8 @@ class CompactLessonAdapter : ListAdapter<Lesson, CompactLessonAdapter.LessonView
     var showLongSubjects: Boolean = false
     var showLongRooms:    Boolean = false
     var onLessonClick: ((Lesson) -> Unit)? = null
+    var isPastDay: Boolean = false
+    var currentTimeMin: Int = -1
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): LessonViewHolder {
         val b = ItemCompactLessonBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -60,11 +72,11 @@ class CompactLessonAdapter : ListAdapter<Lesson, CompactLessonAdapter.LessonView
     }
 
     override fun onBindViewHolder(holder: LessonViewHolder, position: Int) {
-        holder.bind(getItem(position), showLongSubjects, showLongRooms, onLessonClick)
+        holder.bind(getItem(position), showLongSubjects, showLongRooms, onLessonClick, isPastDay, currentTimeMin)
     }
 
     class LessonViewHolder(private val b: ItemCompactLessonBinding) : RecyclerView.ViewHolder(b.root) {
-        fun bind(lesson: Lesson, longSubjects: Boolean, longRooms: Boolean, onClick: ((Lesson) -> Unit)?) {
+        fun bind(lesson: Lesson, longSubjects: Boolean, longRooms: Boolean, onClick: ((Lesson) -> Unit)?, isPastDay: Boolean = false, currentTimeMin: Int = -1) {
             val ctx = b.root.context
             b.textSubject.text = lesson.displaySubject(longSubjects)
             
@@ -94,6 +106,15 @@ class CompactLessonAdapter : ListAdapter<Lesson, CompactLessonAdapter.LessonView
                     b.textSubject.paintFlags = b.textSubject.paintFlags and android.graphics.Paint.STRIKE_THRU_TEXT_FLAG.inv()
                     b.root.alpha = 1.0f
                 }
+            }
+            // Dim past lessons (past days or today's finished lessons)
+            val lessonEndMin = (lesson.endTime / 100) * 60 + (lesson.endTime % 100)
+            val isLessonPast = isPastDay || (currentTimeMin >= 0 && currentTimeMin > lessonEndMin)
+            if (isLessonPast) {
+                b.root.alpha = (b.root.alpha * 0.45f).coerceAtLeast(0.35f)
+                b.cardRoot.alpha = 0.55f
+            } else {
+                b.cardRoot.alpha = 1f
             }
         }
     }

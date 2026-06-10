@@ -22,6 +22,7 @@ import com.webuntis.dashboard.model.Absence
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.delay
 import java.time.LocalDate
+import java.time.LocalTime
 
 class TimetablePagerAdapter(
     fragment: Fragment,
@@ -111,20 +112,44 @@ class DayFragment : Fragment() {
                                 binding.emptyView.text = getString(R.string.label_no_lessons_today)
                                 binding.timeIndicator.isVisible = false
                             } else {
+                                val today = LocalDate.now()
+                                val isToday  = day.day.date == today
+                                val isPastDay = day.day.date.isBefore(today)
+
+                                // Mark lessons as past:
+                                // - past days: all lessons are past
+                                // - today: lessons whose endTime is before now are past
+                                val nowMin = TimeIndicatorView.currentTimeMinutes()
+                                adapter.isPast = isPastDay || (isToday && run {
+                                    // All lessons already ended → whole day is past
+                                    val lastEnd = day.day.lessons.maxOf {
+                                        (it.endTime / 100) * 60 + (it.endTime % 100)
+                                    }
+                                    nowMin > lastEnd
+                                })
+
+                                // For today, set isPast per-lesson via a custom flag approach:
+                                // We re-use adapter.isPast for the whole day when it's a past day.
+                                // For today with mixed lessons we mark it on each group via the
+                                // currentTimeMin stored in the adapter (see below).
+                                adapter.currentTimeMin = if (isToday) nowMin else -1
+                                adapter.isPast = isPastDay
+
                                 binding.recyclerView.isVisible = true
                                 binding.emptyView.isVisible = false
                                 adapter.submitList(day.groupedLessons)
-                                // Time indicator: only show on today's tab
-                                val isToday = day.day.date == LocalDate.now()
+
+                                // Time indicator
                                 val allLessons = day.day.lessons
                                 val startMin = allLessons.minOf { (it.startTime / 100) * 60 + (it.startTime % 100) }
                                 val endMin   = allLessons.maxOf { (it.endTime   / 100) * 60 + (it.endTime   % 100) }
                                 binding.timeIndicator.dayStartMin = startMin
                                 binding.timeIndicator.dayEndMin   = endMin
-                                if (isToday) {
-                                    binding.timeIndicator.currentTimeMin = TimeIndicatorView.currentTimeMinutes()
-                                }
+                                binding.timeIndicator.currentTimeMin = TimeIndicatorView.currentTimeMinutes()
+                                // Fully visible on today, 25% alpha on other days
+                                binding.timeIndicator.alpha = if (isToday) 1f else 0.25f
                                 binding.timeIndicator.isVisible = true
+
                                 // Pass absences for this specific date
                                 updateAbsenceOverlay(day.day.date)
                             }

@@ -107,26 +107,39 @@ class TimetableViewModel @Inject constructor(
     }
 
     /**
-     * Shifts the displayed window by [schoolDays] real school days
-     * (positive = forward, negative = backward).
-     * Uses the currently loaded days to determine the next anchor date.
+     * Extends the displayed window by [schoolDays] real school days
+     * (positive = append more future days, negative = prepend more past days).
+     * The existing days stay visible; new ones are appended/prepended.
      */
     fun shiftDays(schoolDays: Int) {
         viewModelScope.launch {
-            val currentDays = (_days.value as? UiState.Success)?.data
-            val newAnchor = if (schoolDays > 0) {
-                // Move forward: start after the last currently shown day
-                val lastDate = currentDays?.lastOrNull()?.date ?: LocalDate.now()
-                lastDate.plusDays(1)
+            val currentDays = (_days.value as? UiState.Success)?.data ?: emptyList()
+            val numDays = repository.sessionManager.timetableDays
+
+            if (schoolDays > 0) {
+                // Append: load the next [numDays] days after the last currently shown day
+                val lastDate = currentDays.lastOrNull()?.date ?: LocalDate.now()
+                val newAnchor = lastDate.plusDays(1)
+                val extra = repository.getSchoolDaysFrom(newAnchor, numDays)
+                    .getOrNull()?.map { SchoolDay(it) } ?: emptyList()
+                if (extra.isNotEmpty()) {
+                    _days.value = UiState.Success(currentDays + extra)
+                }
             } else {
-                // Move backward: search backwards from anchor − 1
-                val currentAnchor = _anchorDate.value ?: LocalDate.now()
-                val searchFrom    = currentAnchor.minusDays(1)
-                // Find the date |schoolDays| school days back
-                findSchoolDayOffset(searchFrom, schoolDays)
+                // Prepend: load [numDays] days before the first currently shown day
+                val firstDate = currentDays.firstOrNull()?.date ?: LocalDate.now()
+                val searchFrom = firstDate.minusDays(1)
+                val newAnchor = findSchoolDayOffset(searchFrom, -numDays)
+                val extra = repository.getSchoolDaysFrom(newAnchor, numDays)
+                    .getOrNull()
+                    ?.map { SchoolDay(it) }
+                    ?.filter { it.date.isBefore(firstDate) }
+                    ?: emptyList()
+                if (extra.isNotEmpty()) {
+                    _anchorDate.value = extra.first().date
+                    _days.value = UiState.Success(extra + currentDays)
+                }
             }
-            _anchorDate.value = newAnchor
-            loadAll(forceRefresh = false)
         }
     }
 

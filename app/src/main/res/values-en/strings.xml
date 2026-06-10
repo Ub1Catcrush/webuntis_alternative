@@ -36,10 +36,12 @@
     <string name="dialog_select_student_cancel">Cancel</string>
 
     <!-- Timetable -->
-    <string name="label_today">Today</string>
+    <string name="label_today">To current week</string>
     <string name="label_tomorrow">Tomorrow</string>
     <string name="label_day_fallback">Day %d</string>
     <string name="label_no_lessons_today">No lessons today 🎉</string>
+    <string name="label_school_holiday">School holiday</string>
+    <string name="label_school_holiday_subtitle">No school days scheduled in the next 7 days.</string>
     <string name="label_no_lessons_tomorrow">No lessons tomorrow 🎉</string>
     <string name="label_no_lessons_generic">No lessons 🎉</string>
     <string name="error_timetable">Could not load timetable</string>

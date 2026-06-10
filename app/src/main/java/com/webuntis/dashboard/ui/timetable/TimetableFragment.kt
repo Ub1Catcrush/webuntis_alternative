@@ -70,30 +70,39 @@ class TimetableFragment : Fragment() {
                 viewModel.days.collect { state ->
                     val isCompact = viewModel.useCompactWeekView
                     
-                    // Toggle visibility based on mode
-                    // AppBar stays visible for Toolbar, but TabLayout is hidden in compact mode
-                    binding.tabLayout.isVisible = !isCompact
-                    binding.viewPager.isVisible = !isCompact
-                    binding.compactRecyclerView.isVisible = isCompact
+                    // Note: tabLayout/viewPager/compactRecyclerView visibility is managed
+                    // in the Success branch below (also respects holidayBanner)
 
                     when (state) {
                         is UiState.Loading -> {
                             binding.swipeRefresh.isRefreshing = true
+                            binding.holidayBanner.isVisible = false
+                            // Keep tabLayout/viewPager/compact visible as-is during reload
                         }
                         is UiState.Success -> {
                             binding.swipeRefresh.isRefreshing = false
                             val days = state.data
-                            
-                            if (isCompact) {
-                                compactAdapter.showLongSubjects = viewModel.showLongSubjects
-                                compactAdapter.showLongRooms = viewModel.showLongRooms
-                                compactAdapter.submitList(days)
-                            } else {
-                                setupViewPager(days)
+
+                            // Show holiday banner ONLY when there are no school days at all to display
+                            val showHoliday = days.isEmpty()
+                            binding.holidayBanner.isVisible = showHoliday
+                            binding.tabLayout.isVisible = !isCompact && !showHoliday
+                            binding.viewPager.isVisible = !isCompact && !showHoliday
+                            binding.compactRecyclerView.isVisible = isCompact && !showHoliday
+
+                            if (!showHoliday) {
+                                if (isCompact) {
+                                    compactAdapter.showLongSubjects = viewModel.showLongSubjects
+                                    compactAdapter.showLongRooms = viewModel.showLongRooms
+                                    compactAdapter.submitList(days)
+                                } else {
+                                    setupViewPager(days)
+                                }
                             }
                         }
                         is UiState.Error -> {
                             binding.swipeRefresh.isRefreshing = false
+                            binding.holidayBanner.isVisible = false
                         }
                     }
                 }
