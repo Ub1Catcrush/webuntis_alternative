@@ -1,5 +1,6 @@
 package com.webuntis.dashboard.model
 
+import androidx.annotation.Keep
 import com.google.gson.annotations.SerializedName
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
@@ -589,17 +590,43 @@ data class Absence(
     }
     val isFullDay: Boolean get() = startTime == 800 && (endTime == 1600 || endTime == 2000)
 }
+// ─── ABSENCES META ────────────────────────────────────────────────────────────
 
-data class AbsencesMetaResponse(val data: AbsencesMetaData?)
-data class AbsencesMetaData(
-    val excuseStatuses: List<ExcuseStatus>?,
-    val absenceReasons: List<AbsenceReason>?,
-    val defaultAbsenceReason: Int?,
-    val defaultDate: Int?,
-    val defaultStartTime: Int?,
-    val defaultEndTime: Int?,
-    val canReportAbsence: Boolean?
+data class AbsenceReason(
+    @SerializedName("id")   val id: Int,
+    @SerializedName("name") val name: String
 )
 
-data class ExcuseStatus(val id: String, val label: String)
-data class AbsenceReason(val id: Int, val name: String)
+data class AbsencesMetaData(
+    @SerializedName("canReportAbsence")     val canReportAbsence: Boolean? = null,
+    @SerializedName("absenceReasons")       val absenceReasons: List<AbsenceReason>? = null,
+    @SerializedName("defaultAbsenceReason") val defaultAbsenceReason: Int? = null,
+    @SerializedName("defaultDate")          val defaultDate: Int? = null,
+    @SerializedName("defaultStartTime")     val defaultStartTime: Int? = null,
+    @SerializedName("defaultEndTime")       val defaultEndTime: Int? = null
+)
+
+data class AbsencesMetaResponse(
+    @SerializedName("data") val data: AbsencesMetaData? = null
+)
+
+// ─── TIMEGRID ─────────────────────────────────────────────────────────────────
+
+@Keep
+data class TimegridRow(
+    @SerializedName("period")    val period: Int = 0,
+    @SerializedName("startTime") val startTime: Int = 0,
+    @SerializedName("endTime")   val endTime: Int = 0,
+    @SerializedName("description") val description: String? = null
+)
+
+@Keep
+data class TimegridData(
+    @SerializedName("schoolyearId") val schoolyearId: Int = 0,
+    @SerializedName("rows") val rows: List<TimegridRow> = emptyList()
+)
+
+@Keep
+data class TimegridResponse(
+    @SerializedName("data") val data: TimegridData? = null
+)

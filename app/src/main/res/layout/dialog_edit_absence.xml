@@ -18,6 +18,23 @@
             android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
             android:layout_marginBottom="16dp" />
 
+        <!-- Period quick-select: tap a period chip to set both start and end time at once -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/dialog_absence_period_hint"
+            android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+            android:layout_marginBottom="4dp" />
+
+        <!-- chip_group_periods is a vertical LinearLayout populated at runtime
+             with two rows of time-chips (Beginn / Ende), each in its own HorizontalScrollView -->
+        <LinearLayout
+            android:id="@+id/chip_group_periods"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="16dp" />
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

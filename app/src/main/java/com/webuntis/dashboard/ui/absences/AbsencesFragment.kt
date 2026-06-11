@@ -18,7 +18,11 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.webuntis.dashboard.model.AbsencesMetaData
+import com.webuntis.dashboard.model.AbsenceReason
+import com.webuntis.dashboard.model.TimegridRow
 import com.webuntis.dashboard.R
 import com.webuntis.dashboard.api.CreateAbsenceRequest
 import com.webuntis.dashboard.databinding.DialogEditAbsenceBinding
@@ -28,6 +32,8 @@ import com.webuntis.dashboard.model.Absence
 import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -157,6 +163,7 @@ class AbsencesFragment : Fragment() {
     }
 
     private fun showEditAbsenceDialog(absence: Absence?) {
+        // For new absences, we'll override the default times with timetable data asynchronously
         val context = requireContext()
         val meta = viewModel.meta.value ?: return
         val reasons = meta.absenceReasons ?: emptyList()
@@ -164,27 +171,98 @@ class AbsencesFragment : Fragment() {
         val dialogBinding = DialogEditAbsenceBinding.inflate(LayoutInflater.from(context))
 
         var start = absence?.let { untisIntToDate(it.startDate ?: 0) }
-                    ?: meta.defaultDate?.let { untisIntToDate(it) }
                     ?: LocalDate.now()
-        var end = absence?.let { untisIntToDate(it.endDate ?: 0) }
-                  ?: meta.defaultDate?.let { untisIntToDate(it) }
-                  ?: LocalDate.now()
+        var end   = absence?.let { untisIntToDate(it.endDate ?: 0) }
+                    ?: LocalDate.now()
         var startTime = absence?.startTime?.let { untisIntToTime(it) }
-                        ?: meta.defaultStartTime?.let { untisIntToTime(it) }
                         ?: LocalTime.of(8, 0)
-        var endTime = absence?.endTime?.let { untisIntToTime(it) }
-                      ?: meta.defaultEndTime?.let { untisIntToTime(it) }
-                      ?: LocalTime.of(16, 0)
+        var endTime   = absence?.endTime?.let { untisIntToTime(it) }
+                        ?: LocalTime.of(16, 0)
         var selectedReasonId = absence?.reasonId ?: meta.defaultAbsenceReason ?: -1
+
+        val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
 
         val updateButtons = {
             dialogBinding.btnStartDate.text = start.format(dateFmt)
-            dialogBinding.btnEndDate.text = end.format(dateFmt)
-            dialogBinding.btnStartTime.text = startTime.toString()
-            dialogBinding.btnEndTime.text = endTime.toString()
+            dialogBinding.btnEndDate.text   = end.format(dateFmt)
+            dialogBinding.btnStartTime.text = startTime.format(timeFmt)
+            dialogBinding.btnEndTime.text   = endTime.format(timeFmt)
         }
         updateButtons()
 
+        // ── Period quick-select chips ─────────────────────────────────────────
+        // Two chip rows: one for start time, one for end time. Each chip shows HH:mm.
+        viewLifecycleOwner.lifecycleScope.launch {
+            val rows = withContext(Dispatchers.IO) {
+                viewModel.getTimegrid()
+            }
+            if (rows.isEmpty()) return@launch
+
+            val chipGroup = dialogBinding.chipGroupPeriods
+            chipGroup.removeAllViews()
+
+            // Helper: build one row label + chips
+            fun addTimechips(
+                labelText: String,
+                isStart: Boolean,
+                initialTime: LocalTime
+            ) {
+                // Section label
+                val label = android.widget.TextView(context).apply {
+                    text = labelText
+                    setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelSmall)
+                    setPadding(0, 8, 0, 2)
+                }
+                chipGroup.addView(label)
+
+                // Horizontal scroll for the chips in this row
+                val hscroll = android.widget.HorizontalScrollView(context).apply {
+                    isHorizontalScrollBarEnabled = false
+                    layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                }
+                val row = com.google.android.material.chip.ChipGroup(context).apply {
+                    isSingleSelection = true
+                    chipSpacingHorizontal = 4
+                }
+                hscroll.addView(row)
+                chipGroup.addView(hscroll)
+
+                rows.forEach { r ->
+                    val time = if (isStart)
+                        LocalTime.of(r.startTime / 100, r.startTime % 100)
+                    else
+                        LocalTime.of(r.endTime / 100, r.endTime % 100)
+                    val chip = Chip(context).apply {
+                        text = time.format(timeFmt)
+                        isCheckable = true
+                        tag = time
+                        isChecked = time == initialTime
+                    }
+                    chip.setOnClickListener {
+                        if (chip.isChecked) {
+                            if (isStart) startTime = time else endTime = time
+                            updateButtons()
+                        }
+                    }
+                    row.addView(chip)
+                }
+            }
+
+            addTimechips(getString(R.string.dialog_absence_section_start), isStart = true,  initialTime = startTime)
+            addTimechips(getString(R.string.dialog_absence_section_end),   isStart = false, initialTime = endTime)
+
+            // For new absences: set initial start/end from timegrid
+            if (absence == null) {
+                startTime = LocalTime.of(rows.first().startTime / 100, rows.first().startTime % 100)
+                endTime   = LocalTime.of(rows.last().endTime   / 100, rows.last().endTime   % 100)
+                updateButtons()
+            }
+        }
+
+        // ── Date & time pickers ───────────────────────────────────────────────
         dialogBinding.btnStartDate.setOnClickListener {
             DatePickerDialog(context, { _, y, m, d ->
                 start = LocalDate.of(y, m + 1, d)
@@ -201,16 +279,20 @@ class AbsencesFragment : Fragment() {
         dialogBinding.btnStartTime.setOnClickListener {
             TimePickerDialog(context, { _, h, m ->
                 startTime = LocalTime.of(h, m)
+                // Deselect start-time chips since user manually picked a time
+                clearChipGroupRow(dialogBinding.chipGroupPeriods, rowIndex = 1)
                 updateButtons()
             }, startTime.hour, startTime.minute, true).show()
         }
         dialogBinding.btnEndTime.setOnClickListener {
             TimePickerDialog(context, { _, h, m ->
                 endTime = LocalTime.of(h, m)
+                clearChipGroupRow(dialogBinding.chipGroupPeriods, rowIndex = 3)
                 updateButtons()
             }, endTime.hour, endTime.minute, true).show()
         }
 
+        // ── Reason spinner ────────────────────────────────────────────────────
         val reasonNames = reasons.map { it.name }
         val spinnerAdapter = ArrayAdapter(context, android.R.layout.simple_dropdown_item_1line, reasonNames)
         dialogBinding.spinnerReason.setAdapter(spinnerAdapter)
@@ -222,7 +304,10 @@ class AbsencesFragment : Fragment() {
         }
 
         dialogBinding.editText.setText(absence?.text ?: "")
-        dialogBinding.textTitle.text = if (absence == null) getString(R.string.absence_dialog_title_add) else getString(R.string.absence_dialog_title_edit)
+        dialogBinding.textTitle.text = if (absence == null)
+            getString(R.string.absence_dialog_title_add)
+        else
+            getString(R.string.absence_dialog_title_edit)
 
         if (absence != null) dialogBinding.btnDelete.isVisible = true
 
@@ -234,21 +319,23 @@ class AbsencesFragment : Fragment() {
 
         dialogBinding.btnSave.setOnClickListener {
             val req = CreateAbsenceRequest(
-                startDate = dateToUntis(start),
-                startTime = timeToUntis(startTime),
-                endDate = dateToUntis(end),
-                endTime = timeToUntis(endTime),
-                text = dialogBinding.editText.text.toString(),
-                reasonId = selectedReasonId,
-                studentId = viewModel.studentId
+                startDate  = dateToUntis(start),
+                startTime  = timeToUntis(startTime),
+                endDate    = dateToUntis(end),
+                endTime    = timeToUntis(endTime),
+                text       = dialogBinding.editText.text.toString(),
+                reasonId   = selectedReasonId,
+                studentId  = viewModel.studentId
             )
             if (absence == null) {
                 viewModel.createAbsence(req) { res ->
-                    res.onSuccess { dialog.dismiss() }.onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
+                    res.onSuccess { dialog.dismiss() }
+                       .onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
                 }
             } else {
                 viewModel.updateAbsence(absence.id, req) { res ->
-                    res.onSuccess { dialog.dismiss() }.onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
+                    res.onSuccess { dialog.dismiss() }
+                       .onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
                 }
             }
         }
@@ -260,7 +347,8 @@ class AbsencesFragment : Fragment() {
                 .setNegativeButton(getString(R.string.btn_cancel), null)
                 .setPositiveButton(getString(R.string.absence_delete_confirm)) { _, _ ->
                     viewModel.deleteAbsence(absence!!.id) { res ->
-                        res.onSuccess { dialog.dismiss() }.onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
+                        res.onSuccess { dialog.dismiss() }
+                           .onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
                     }
                 }
                 .show()
@@ -269,7 +357,18 @@ class AbsencesFragment : Fragment() {
         dialog.show()
     }
 
-    private fun untisIntToDate(d: Int): LocalDate {
+        /**
+         * Clears chip selection inside a nested ChipGroup.
+         * Container layout: [TextView, HScrollView(ChipGroup), TextView, HScrollView(ChipGroup)]
+         * rowIndex 1 = start chips (index 1), rowIndex 3 = end chips (index 3)
+         */
+        private fun clearChipGroupRow(container: android.widget.LinearLayout, rowIndex: Int) {
+            val hscroll = container.getChildAt(rowIndex) as? android.widget.HorizontalScrollView ?: return
+            val cg = hscroll.getChildAt(0) as? com.google.android.material.chip.ChipGroup ?: return
+            for (i in 0 until cg.childCount) (cg.getChildAt(i) as? Chip)?.isChecked = false
+        }
+
+        private fun untisIntToDate(d: Int): LocalDate {
         val s = d.toString()
         if (s.length != 8) return LocalDate.now()
         return LocalDate.of(s.substring(0, 4).toInt(), s.substring(4, 6).toInt(), s.substring(6, 8).toInt())

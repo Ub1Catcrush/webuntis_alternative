@@ -157,16 +157,22 @@ class WebUntisRepository @Inject constructor(
     private var cacheDraftMessages:CacheEntry<List<Message>>?                             = null
     private var cacheTeachers:     List<com.webuntis.dashboard.model.RecipientPerson>?   = null
     private var cacheAbsencesMeta: CacheEntry<AbsencesMetaData>?                        = null
+    private var cacheTimegrid:     CacheEntry<List<com.webuntis.dashboard.model.TimegridRow>>? = null
 
     fun clearAllCaches() {
         clearAllDataCaches()
         sessionManager.clearAll()
     }
 
+    /** Invalidates only data caches (timetable, absences, …) without touching the session or credentials. */
+    fun clearDataCachesOnly() {
+        clearAllDataCaches()
+    }
+
     private fun clearAllDataCaches() {
         cacheTimetable = null; cacheHomework = null; cacheEvents = null
         cacheClassbook = null; cacheSchoolYear = null; cacheAbsences = null; cacheMessages = null; cacheSentMessages = null; cacheDraftMessages = null; cacheTeachers = null
-        cacheAbsencesMeta = null
+        cacheAbsencesMeta = null; cacheTimegrid = null
     }
 
     fun isHomeworkCacheFresh():  Boolean { val e = cacheHomework  ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
@@ -208,6 +214,16 @@ class WebUntisRepository @Inject constructor(
         val raw = if (r.isSuccessful) r.body()?.string() else r.errorBody()?.string()
         val bodyText = raw?.trim() ?: ""
 
+        // WebUntis returns 403 (not 401) when a JWT Bearer token has expired.
+        // Only treat 403 as session-expired when the body is an HTML error page
+        // (i.e. not a real API permission error which would return JSON).
+        if (r.code() == 403 &&
+            (bodyText.startsWith("<html", ignoreCase = true) ||
+             bodyText.startsWith("<!DOCTYPE", ignoreCase = true) ||
+             bodyText.isBlank())) {
+            throw SessionExpiredException()
+        }
+
         if (bodyText.contains("-32001") || 
             bodyText.contains("Session abgelaufen", ignoreCase = true) ||
             bodyText.contains("login.do", ignoreCase = true) ||
@@ -236,6 +252,17 @@ class WebUntisRepository @Inject constructor(
         } catch (e: Exception) {
             raw.replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim().take(150).ifEmpty { null }
         }
+    }
+
+    /** Extracts the tenant_id claim from the current JWT bearer token (base64url decode of payload). */
+    private fun tenantIdFromToken(): String? {
+        val token = bearerToken ?: return null
+        return try {
+            val payload = token.split(".").getOrNull(1) ?: return null
+            val padded = payload + "=".repeat((4 - payload.length % 4) % 4)
+            val json = String(android.util.Base64.decode(padded, android.util.Base64.URL_SAFE))
+            com.google.gson.JsonParser.parseString(json).asJsonObject.get("tenant_id")?.asString
+        } catch (e: Exception) { null }
     }
 
     private suspend fun fetchBearerToken(): Result<String?> {
@@ -850,6 +877,26 @@ class WebUntisRepository @Inject constructor(
         }
     }.getOrDefault(0)
 
+    /**
+     * Fetches the school's timegrid (lesson periods with start/end times).
+     * Uses the current school year ID. Cached with normal TTL.
+     */
+    suspend fun getTimegrid(forceRefresh: Boolean = false): Result<List<com.webuntis.dashboard.model.TimegridRow>> = withCacheOrFetch(
+        forceRefresh = forceRefresh,
+        cache = { cacheTimegrid },
+        store = { cacheTimegrid = it },
+    ) {
+        try {
+            val token = getAuthHeader()
+            val schoolYear = getCurrentSchoolYear().getOrNull()
+            val schoolYearId = schoolYear?.id ?: 0
+            val resp = service().getTimegrid(token, schoolYearId)
+            val raw = rawBody(resp) ?: return@withCacheOrFetch Result.success(emptyList())
+            val timegridResp: com.webuntis.dashboard.model.TimegridResponse = parseJson(raw)
+            Result.success(timegridResp.data?.rows ?: emptyList())
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
     suspend fun getAbsences(forceRefresh: Boolean = false, excuseStatusId: Int = -1): Result<List<Absence>> = withCacheOrFetch(
         forceRefresh = forceRefresh || excuseStatusId != -1,
         cache = { if (excuseStatusId != -1) null else cacheAbsences },
@@ -886,8 +933,10 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun createAbsence(req: CreateAbsenceRequest): Result<Absence> = withSessionRetry {
         try {
-            val token = getAuthHeader()
-            val resp = service().createAbsence(token, req)
+            // WebUntis write endpoints require Tenant-Id header (from JWT claim) + JSESSIONID cookie.
+            // The Bearer token is intentionally omitted (scope mg:r = read-only).
+            val tenantId = tenantIdFromToken()
+            val resp = service().createAbsence(null, tenantId, req)
             val raw = rawBody(resp) ?: return@withSessionRetry Result.failure(Exception("Fehler beim Erstellen"))
             val json = JsonParser.parseString(raw).asJsonObject
             val resultObj = json.getAsJsonObject("data")?.getAsJsonObject("result")
@@ -898,8 +947,8 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun updateAbsence(id: Int, req: CreateAbsenceRequest): Result<Absence> = withSessionRetry {
         try {
-            val token = getAuthHeader()
-            val resp = service().updateAbsence(token, id, req)
+            val tenantId = tenantIdFromToken()
+            val resp = service().updateAbsence(null, tenantId, id, req)
             val raw = rawBody(resp) ?: return@withSessionRetry Result.failure(Exception("Fehler beim Aktualisieren"))
             val json = JsonParser.parseString(raw).asJsonObject
             val resultObj = json.getAsJsonObject("data")?.getAsJsonObject("result")
@@ -910,10 +959,15 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun deleteAbsence(id: Int): Result<Unit> = withSessionRetry {
         try {
-            val token = getAuthHeader()
-            val resp = service().deleteAbsence(token, id)
-            if (resp.isSuccessful) Result.success(Unit)
-            else Result.failure(Exception("error_delete_failed"))
+            val tenantId = tenantIdFromToken()
+            val resp = service().deleteAbsence(null, tenantId, DeleteAbsenceRequest(listOf(id)))
+            val raw = if (resp.isSuccessful) resp.body()?.string() else resp.errorBody()?.string()
+            if (resp.isSuccessful) {
+                // Response: {"data":{"success":true}} or just 2xx
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("error_delete_failed"))
+            }
         } catch (e: Exception) { Result.failure(e) }
     }
 

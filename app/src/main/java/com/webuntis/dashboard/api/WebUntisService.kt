@@ -243,6 +243,13 @@ interface WebUntisService {
         @Header("Authorization") authorization: String?
     ): Response<ResponseBody>
 
+    // ── Timegrid ──────────────────────────────────────────────────────────────
+    @GET("api/public/timegrid")
+    suspend fun getTimegrid(
+        @Header("Authorization") authorization: String?,
+        @Query("schoolyearId") schoolyearId: Int
+    ): Response<ResponseBody>
+
     // ── Absences ──────────────────────────────────────────────────────────────
     @GET("api/classreg/absences/students")
     suspend fun getAbsences(
@@ -261,21 +268,44 @@ interface WebUntisService {
     @POST("api/classreg/absences/students/self")
     suspend fun createAbsence(
         @Header("Authorization") authorization: String?,
+        @Header("Tenant-Id") tenantId: String?,
         @Body body: CreateAbsenceRequest
     ): Response<ResponseBody>
 
     @PUT("api/classreg/absences/students/self/{id}")
     suspend fun updateAbsence(
         @Header("Authorization") authorization: String?,
+        @Header("Tenant-Id") tenantId: String?,
         @Path("id") id: Int,
         @Body body: CreateAbsenceRequest
     ): Response<ResponseBody>
 
-    @DELETE("api/classreg/absences/students/self/{id}")
+    // Correct bulk-delete endpoint: DELETE /students with body {"absenceIds":[id]}
+    @HTTP(method = "DELETE", path = "api/classreg/absences/students", hasBody = true)
     suspend fun deleteAbsence(
         @Header("Authorization") authorization: String?,
-        @Path("id") id: Int
+        @Header("Tenant-Id") tenantId: String?,
+        @Body body: DeleteAbsenceRequest
     ): Response<ResponseBody>
+
+    // ── Parent account endpoints (personType=12) ──────────────────────────────
+    // Parents must use /students/{studentId} instead of /students/self
+
+    @POST("api/classreg/absences/students/{studentId}")
+    suspend fun createAbsenceForStudent(
+        @Header("Authorization") authorization: String?,
+        @Path("studentId") studentId: Int,
+        @Body body: CreateAbsenceRequest
+    ): Response<ResponseBody>
+
+    @PUT("api/classreg/absences/students/{studentId}/{id}")
+    suspend fun updateAbsenceForStudent(
+        @Header("Authorization") authorization: String?,
+        @Path("studentId") studentId: Int,
+        @Path("id") id: Int,
+        @Body body: CreateAbsenceRequest
+    ): Response<ResponseBody>
+
 }
 
 @Keep
@@ -302,4 +332,9 @@ data class CreateAbsenceRequest(
     val text: String,
     val reasonId: Int,
     val studentId: Int
+)
+
+@Keep
+data class DeleteAbsenceRequest(
+    val absenceIds: List<Int>
 )

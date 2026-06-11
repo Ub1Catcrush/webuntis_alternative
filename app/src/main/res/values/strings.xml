@@ -42,6 +42,7 @@
     <string name="label_no_lessons_today">Heute keine Stunden 🎉</string>
     <string name="label_school_holiday">Schulfrei / Ferien</string>
     <string name="label_school_holiday_subtitle">In den nächsten 7 Tagen sind keine Schultage geplant.</string>
+    <string name="dialog_absence_period_hint">Schnellauswahl Uhrzeit</string>
     <string name="label_no_lessons_tomorrow">Morgen keine Stunden 🎉</string>
     <string name="label_no_lessons_generic">Keine Stunden 🎉</string>
     <string name="error_timetable">Stundenplan konnte nicht geladen werden</string>

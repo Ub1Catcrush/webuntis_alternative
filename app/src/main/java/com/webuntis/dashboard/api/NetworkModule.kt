@@ -73,9 +73,14 @@ object NetworkModule {
                         .httpOnly()
                         .build())
 
+                    // WebUntis expects schoolname cookie as "_" + Base64(schoolname)
+                    val schoolnameEncoded = "_" + android.util.Base64.encodeToString(
+                        session.schoolname.toByteArray(Charsets.UTF_8),
+                        android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+                    )
                     stored.add(Cookie.Builder()
                         .name("schoolname")
-                        .value(session.schoolname)
+                        .value(schoolnameEncoded)
                         .domain(host)
                         .path(path)
                         .secure()
