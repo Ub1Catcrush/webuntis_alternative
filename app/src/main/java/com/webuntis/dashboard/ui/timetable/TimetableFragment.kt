@@ -48,6 +48,14 @@ class TimetableFragment : Fragment() {
         binding.btnNextDays.setOnClickListener { viewModel.shiftDays(+5) }
         binding.btnToday.setOnClickListener    { viewModel.resetToToday() }
 
+        // Personal / Class timetable switch — only shown once a class id is known
+        binding.btnToggleViewMode.isVisible = viewModel.canShowClassTimetable
+        updateViewModeButtonLabel()
+        binding.btnToggleViewMode.setOnClickListener {
+            viewModel.toggleTimetableViewMode()
+            updateViewModeButtonLabel()
+        }
+
         // Show/hide the entire today-row (not just the button)
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -108,6 +116,14 @@ class TimetableFragment : Fragment() {
                 }
             }
         }
+    }
+
+    /** Label always shows the view the button switches TO, not the currently active one. */
+    private fun updateViewModeButtonLabel() {
+        val showsClass = viewModel.timetableViewMode == com.webuntis.dashboard.api.SessionManager.TimetableViewMode.CLASS
+        binding.btnToggleViewMode.text = getString(
+            if (showsClass) R.string.timetable_view_mode_personal else R.string.timetable_view_mode_class
+        )
     }
 
     private fun setupViewPager(days: List<SchoolDay>) {

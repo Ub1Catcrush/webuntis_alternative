@@ -16,7 +16,25 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             app:title="@string/nav_timetable"
-            app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge" />
+            app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge">
+
+            <!-- Personal / Class timetable switch — hidden when no class id is known -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_toggle_view_mode"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_gravity="end|center_vertical"
+                android:minWidth="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:textSize="12sp"
+                android:visibility="gone"
+                android:text="@string/timetable_view_mode_class" />
+
+        </com.google.android.material.appbar.MaterialToolbar>
 
         <!-- "Heute"-Zeile: nur sichtbar wenn man nicht bei heute ist -->
         <LinearLayout

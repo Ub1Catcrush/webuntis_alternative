@@ -15,6 +15,10 @@ data class AuthResult(
     val sessionId: String,
     val personType: Int?,
     val personId: Int?,
+    // The official WebUntis JSON-RPC "authenticate" response names this field "klasseId",
+    // not "classId" — without this alias it always deserializes to null/0, which silently
+    // breaks the class-timetable feature (no class id ever gets stored).
+    @SerializedName(value = "classId", alternate = ["klasseId"])
     val classId: Int?,
     val personName: String?
 )
@@ -181,6 +185,14 @@ data class TimetableV1Element(
 
 data class CalendarEntryDetailResponse(val calendarEntries: List<CalendarEntryDetail>?)
 
+data class CalendarEntryClass(
+    val id: Int?,
+    val shortName: String?,
+    val longName: String?,
+    val displayName: String?,
+    val hasTimetable: Boolean?   // true, false
+)
+
 data class CalendarEntryDetailTeacher(
     val id: Int?,
     val shortName: String?,
@@ -216,13 +228,17 @@ data class CalendarEntryDetail(
     val status: String?,          // TAKING_PLACE, CANCELLED, etc.
     val type: String?,            // NORMAL_TEACHING_PERIOD, SUBSTITUTION, CANCELLATION, etc.
     val color: String?,
+    val klasses: List<CalendarEntryClass>?,
     val teachers: List<CalendarEntryDetailTeacher>?,
     val rooms: List<CalendarEntryDetailRoom>?,
     val subject: CalendarEntryDetailSubject?
 ) {
+    val classes: List<Int?>
+        get() = klasses?.mapNotNull { it.id ?: it.id } ?: emptyList()
+
     val removedTeachers: List<String>
         get() = teachers?.filter { it.status == "REMOVED" }
-                        ?.mapNotNull { it.longName ?: it.shortName } ?: emptyList()
+    ?.mapNotNull { it.longName ?: it.shortName } ?: emptyList()
 
     val substitutedTeachers: List<String>
         get() = teachers?.filter { it.status == "SUBSTITUTION" }

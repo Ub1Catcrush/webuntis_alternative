@@ -45,7 +45,7 @@ class WebUntisRepository @Inject constructor(
     }
 
     /**
-     * Performs a full re-authentication. 
+     * Performs a full re-authentication.
      * @param force If true, skips the session age check (essential for recovery flows).
      */
     private suspend fun reAuthSilently(
@@ -54,29 +54,29 @@ class WebUntisRepository @Inject constructor(
         // Double check: if someone else refreshed while we waited for the lock
         if (sessionManager.isSessionFresh() && !force) {
             android.util.Log.d("WebUntis", "Using existing fresh session.")
-            return sessionManager.session?.let { Result.success(it) } 
+            return sessionManager.session?.let { Result.success(it) }
                 ?: Result.failure(Exception("Sitzung verloren"))
         }
 
         android.util.Log.i("WebUntis", "Performing silent re-authentication (force=$force)...")
         bearerToken = null // Reset token to ensure it gets refreshed
-        
+
         val rpc = loginViaJsonRpc(server, schoolname, username, password)
         val result = if (rpc.isSuccess) rpc else {
             kotlinx.coroutines.yield()
             loginViaRest(server, schoolname, username, password)
         }
-        
+
         if (result.isSuccess) {
             val session = result.getOrNull()
             sessionManager.storedCredentials = Pair(username, password)
-            
+
             // Auto-recover lost studentId (important for parent accounts)
             if (session != null && sessionManager.studentId == 0) {
                 val id = if (session.classId > 0) session.classId else session.personId
                 if (id > 0) sessionManager.studentId = id
             }
-            
+
             fetchBearerToken()
             clearAllDataCaches() // Flush stale data from old session
             android.util.Log.i("WebUntis", "Silent re-auth successful. Session valid.")
@@ -114,13 +114,13 @@ class WebUntisRepository @Inject constructor(
         return try {
             reLoginIfNeeded()
             val result = block()
-            
+
             val error = result.exceptionOrNull()
-            if (error is SessionExpiredException || 
+            if (error is SessionExpiredException ||
                 (error != null && (error.message?.contains("-32001") == true || error.message?.contains("Session abgelaufen") == true))) {
                 throw SessionExpiredException(error.message ?: "Session abgelaufen")
             }
-            
+
             if (result.isSuccess) sessionManager.touchSession()
             result
         } catch (e: SessionExpiredException) {
@@ -128,10 +128,10 @@ class WebUntisRepository @Inject constructor(
             val creds   = sessionManager.storedCredentials
             val session = sessionManager.session
             if (creds == null || session == null) return Result.failure(e)
-            
+
             val reAuth = reAuthSilently(session.server, session.schoolname, creds.first, creds.second, force = true)
             if (reAuth.isFailure) return Result.failure(reAuth.exceptionOrNull() ?: e)
-            
+
             try {
                 val retry = block()
                 if (retry.isSuccess) sessionManager.touchSession()
@@ -173,6 +173,13 @@ class WebUntisRepository @Inject constructor(
         cacheTimetable = null; cacheHomework = null; cacheEvents = null
         cacheClassbook = null; cacheSchoolYear = null; cacheAbsences = null; cacheMessages = null; cacheSentMessages = null; cacheDraftMessages = null; cacheTeachers = null
         cacheAbsencesMeta = null; cacheTimegrid = null
+    }
+
+    /** Switches between the personal ("MY_TIMETABLE") and class ("STANDARD") timetable views. */
+    fun setTimetableViewMode(mode: SessionManager.TimetableViewMode) {
+        if (sessionManager.timetableViewMode == mode) return
+        sessionManager.timetableViewMode = mode
+        cacheTimetable = null
     }
 
     fun isHomeworkCacheFresh():  Boolean { val e = cacheHomework  ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
@@ -224,7 +231,7 @@ class WebUntisRepository @Inject constructor(
             throw SessionExpiredException()
         }
 
-        if (bodyText.contains("-32001") || 
+        if (bodyText.contains("-32001") ||
             bodyText.contains("Session abgelaufen", ignoreCase = true) ||
             bodyText.contains("login.do", ignoreCase = true) ||
             bodyText.contains("index.do", ignoreCase = true) ||
@@ -236,11 +243,11 @@ class WebUntisRepository @Inject constructor(
             val msg = tryExtractMessage(bodyText) ?: "HTTP ${r.code()}"
             throw Exception(msg)
         }
-        
+
         if (bodyText.startsWith("<html", ignoreCase = true) || bodyText.startsWith("<!DOCTYPE", ignoreCase = true)) {
             throw SessionExpiredException()
         }
-        
+
         return bodyText.ifEmpty { null }
     }
 
@@ -278,19 +285,22 @@ class WebUntisRepository @Inject constructor(
     }
 
     private suspend fun callTimetableV1(
-        startIso: String, endIso: String, classId: Int
+        startIso: String, endIso: String, elementId: Int,
+        resourceType: String = "STUDENT", timetableType: String = "MY_TIMETABLE"
     ): retrofit2.Response<okhttp3.ResponseBody> {
         val token = getAuthHeader()
         val resp = if (token != null) {
             service().getTimetableV1Auth(
                 authorization = token,
                 start = startIso, end = endIso,
-                resourceType = "STUDENT", resources = classId.toString()
+                resourceType = resourceType, resources = elementId.toString(),
+                timetableType = timetableType
             )
         } else {
             service().getTimetableV1(
                 start = startIso, end = endIso,
-                resourceType = "STUDENT", resources = classId.toString()
+                resourceType = resourceType, resources = elementId.toString(),
+                timetableType = timetableType
             )
         }
         if (resp.code() in listOf(401, 403)) {
@@ -299,7 +309,8 @@ class WebUntisRepository @Inject constructor(
             return service().getTimetableV1Auth(
                 authorization = fresh,
                 start = startIso, end = endIso,
-                resourceType = "STUDENT", resources = classId.toString()
+                resourceType = resourceType, resources = elementId.toString(),
+                timetableType = timetableType
             )
         }
         return resp
@@ -425,16 +436,35 @@ class WebUntisRepository @Inject constructor(
         val session = sessionManager.session
             ?: return Result.failure(Exception("Nicht angemeldet"))
 
+        // In CLASS mode we show the whole class's timetable (resourceType=CLASS) instead of
+        // the logged-in person's own schedule (resourceType=STUDENT). Falls back to PERSONAL
+        // if no class element id is known (e.g. it wasn't resolved yet).
+        val wantsClassView = sessionManager.timetableViewMode == SessionManager.TimetableViewMode.CLASS &&
+            sessionManager.canShowClassTimetable
+        val classElementId = session.classId
+
         val effectiveClassId = sessionManager.studentId
-        if (effectiveClassId != 0) {
+        if (wantsClassView || effectiveClassId != 0) {
             val startIso = "${startDate.substring(0,4)}-${startDate.substring(4,6)}-${startDate.substring(6,8)}"
             val endIso   = "${endDate.substring(0,4)}-${endDate.substring(4,6)}-${endDate.substring(6,8)}"
+            val elementId: Int
+            val resourceType: String
+            val timetableType: String
+            val elementType: Int
+            if (wantsClassView) {
+                elementId = classElementId; resourceType = "CLASS"; timetableType = "STANDARD"; elementType = 1
+            } else {
+                elementId = effectiveClassId; resourceType = "STUDENT"; timetableType = "MY_TIMETABLE"; elementType = 5
+            }
             return try {
-                val response = callTimetableV1(startIso, endIso, effectiveClassId)
+                val response = callTimetableV1(
+                    startIso, endIso, elementId,
+                    resourceType = resourceType, timetableType = timetableType
+                )
                 val raw = rawBody(response) ?: return Result.success(emptyList())
                 val ttResp: TimetableV1Response = parseJson(raw)
                 val lessons = ttResp.toLessons()
-                val enriched = enrichLessonsWithDetail(lessons, effectiveClassId, 5)
+                val enriched = enrichLessonsWithDetail(lessons, elementId, elementType)
                 Result.success(enriched)
             } catch (e: Exception) {
                 Result.failure(e)
@@ -475,9 +505,9 @@ class WebUntisRepository @Inject constructor(
             .groupBy { it.date }.entries
             .filter { (d, _) -> !untisIntToDate(d).isBefore(today) && untisIntToDate(d).dayOfWeek.value <= 5 }
             .sortedBy { it.key }.take(numDays)
-            .map { (d, lessons) -> 
-                val merged = mergeOverlappingLessons(lessons)
-                TimetableDay(untisIntToDate(d), merged.sortedBy { it.startTime }) 
+            .map { (d, lessons) ->
+                val merged = mergeLessonsForCurrentView(lessons)
+                TimetableDay(untisIntToDate(d), merged.sortedBy { it.startTime })
             }
         Result.success(byDate)
     }
@@ -506,7 +536,7 @@ class WebUntisRepository @Inject constructor(
             }
             .sortedBy { it.key }
             .map { (d, lessons) ->
-                TimetableDay(untisIntToDate(d), mergeOverlappingLessons(lessons).sortedBy { it.startTime })
+                TimetableDay(untisIntToDate(d), mergeLessonsForCurrentView(lessons).sortedBy { it.startTime })
             }
 
         // Find the index of the first day >= anchorDate
@@ -519,6 +549,22 @@ class WebUntisRepository @Inject constructor(
     private fun untisIntToDate(d: Int): LocalDate {
         val s = d.toString().padStart(8, '0')
         return LocalDate.of(s.substring(0,4).toInt(), s.substring(4,6).toInt(), s.substring(6,8).toInt())
+    }
+
+    /**
+     * Merges cancelled+active lesson pairs into a single "statt [Old Subject]" entry — but only
+     * for the PERSONAL timetable, where an overlap reliably means "this replaces that". A CLASS
+     * timetable can have several unrelated parallel courses (differentiated groups, religion vs.
+     * ethics, electives) at the same time slot, so pairing by time overlap alone would risk
+     * attaching the wrong "statt" label to an unrelated course. In CLASS mode, cancelled and
+     * active lessons are therefore kept separate; [TimetableViewModel]'s grouping already displays
+     * that mix vertically instead of merging it.
+     */
+    private fun mergeLessonsForCurrentView(lessons: List<Lesson>): List<Lesson> {
+        if (sessionManager.timetableViewMode == SessionManager.TimetableViewMode.CLASS) {
+            return lessons
+        }
+        return mergeOverlappingLessons(lessons)
     }
 
     private fun mergeOverlappingLessons(lessons: List<Lesson>): List<Lesson> {
@@ -617,7 +663,15 @@ class WebUntisRepository @Inject constructor(
                 detail.isSubstitution        -> "subst"
                 else                         -> null
             }
-            
+
+            if(detail.classes.size == 1)
+            {
+                if (detail.classes[0] != null &&
+                    detail.classes[0] != 0 &&
+                    sessionManager.classId == 0)
+                    sessionManager.classId = detail.classes[0] as Int
+            }
+
             val mergedRemoved = ((lesson.removedTeachers ?: emptyList<String>()) + (removed ?: emptyList<String>())).distinct().ifEmpty { null }
             
             lesson.copy(
@@ -685,7 +739,7 @@ class WebUntisRepository @Inject constructor(
             val token = getAuthHeader()
             val attachmentId = attachment.id ?: return@withSessionRetry Result.failure(Exception("Anhang-ID fehlt"))
             val resp = service().downloadHomeworkAttachment(token, homeworkId, attachmentId)
-            
+
             if (resp.headers()["X-WebUntis-Session-Expired"] == "true" || resp.code() == 401) {
                 throw SessionExpiredException()
             }
@@ -693,7 +747,7 @@ class WebUntisRepository @Inject constructor(
             if (!resp.isSuccessful) {
                 return@withSessionRetry Result.failure(Exception("HTTP ${resp.code()}"))
             }
-            
+
             val bytes = resp.body()?.bytes() ?: return@withSessionRetry Result.failure(Exception("Keine Daten"))
             val filename = attachment.uploadedFileName ?: attachment.name ?: "Anhang"
             Result.success(Pair(bytes, filename))

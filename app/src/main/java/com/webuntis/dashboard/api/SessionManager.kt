@@ -177,6 +177,12 @@ class SessionManager @Inject constructor(
         get() = prefs.getInt(KEY_STUDENT_ID, 0)
         set(v) = prefs.edit().putInt(KEY_STUDENT_ID, v).apply()
 
+    // ── Class ID ─────────────────────────────────────
+
+    var classId: Int
+        get() = prefs.getInt(KEY_CLASS_ID, 0)
+        set(v) = prefs.edit().putInt(KEY_CLASS_ID, v).apply()
+
     // ── Second account ────────────────────────────────────────────────────────
 
     data class SecondAccount(
@@ -245,6 +251,17 @@ class SessionManager @Inject constructor(
         get() = plainPrefs.getBoolean(KEY_USE_COMPACT_WEEK_VIEW, false)
         set(value) { plainPrefs.edit().putBoolean(KEY_USE_COMPACT_WEEK_VIEW, value).apply() }
 
+    /** Whether the timetable shows the logged-in person's own schedule or a whole class's schedule. */
+    enum class TimetableViewMode { PERSONAL, CLASS }
+
+    var timetableViewMode: TimetableViewMode
+        get() = if (plainPrefs.getString(KEY_TIMETABLE_VIEW_MODE, null) == TimetableViewMode.CLASS.name)
+            TimetableViewMode.CLASS else TimetableViewMode.PERSONAL
+        set(value) { plainPrefs.edit().putString(KEY_TIMETABLE_VIEW_MODE, value.name).apply() }
+
+    /** True if a class element id is known (i.e. a "Klassenstundenplan" can actually be requested). */
+    val canShowClassTimetable: Boolean get() = (session?.classId ?: 0) > 0
+
     var cacheTtlMinutes: Int
         get() = plainPrefs.getInt(KEY_CACHE_TTL, DEFAULT_CACHE_TTL)
         set(value) { plainPrefs.edit().putInt(KEY_CACHE_TTL, value.coerceIn(MIN_CACHE_TTL, MAX_CACHE_TTL)).apply() }
@@ -284,6 +301,7 @@ class SessionManager @Inject constructor(
             addProperty("showLongRooms",      showLongRooms)
             addProperty("useCompactWeekView", useCompactWeekView)
             addProperty("cacheTtlMinutes",    cacheTtlMinutes)
+            addProperty("timetableViewMode",  timetableViewMode.name)
         }
         return gson.toJson(obj)
     }
@@ -336,6 +354,9 @@ class SessionManager @Inject constructor(
             obj.get("showLongRooms")?.asBoolean?.let    { showLongRooms     = it }
             obj.get("useCompactWeekView")?.asBoolean?.let { useCompactWeekView = it }
             obj.get("cacheTtlMinutes")?.asInt?.let    { cacheTtlMinutes    = it }
+            obj.get("timetableViewMode")?.asString?.let { raw ->
+                runCatching { TimetableViewMode.valueOf(raw) }.getOrNull()?.let { timetableViewMode = it }
+            }
 
             ImportResult.Success(primaryUpdated = primaryUpdated, secondUpdated = secondUpdated)
         } catch (e: Exception) {
@@ -371,6 +392,7 @@ class SessionManager @Inject constructor(
         private const val KEY_SHOW_LONG_TEACHERS     = "show_long_teachers"
         private const val KEY_SHOW_LONG_ROOMS        = "show_long_rooms"
         private const val KEY_USE_COMPACT_WEEK_VIEW  = "use_compact_week_view"
+        private const val KEY_TIMETABLE_VIEW_MODE    = "timetable_view_mode"
         private const val KEY_CACHE_TTL              = "cache_ttl_minutes"
         const val DEFAULT_TIMETABLE_DAYS = 5
         const val MIN_TIMETABLE_DAYS     = 1

@@ -2,6 +2,7 @@ package com.webuntis.dashboard.ui.timetable
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.webuntis.dashboard.api.SessionManager
 import com.webuntis.dashboard.api.TimetableDay
 import com.webuntis.dashboard.api.WebUntisRepository
 import com.webuntis.dashboard.model.Lesson
@@ -73,6 +74,25 @@ class TimetableViewModel @Inject constructor(
     val showLongTeachers: Boolean get() = repository.sessionManager.showLongTeachers
     val showLongRooms:    Boolean get() = repository.sessionManager.showLongRooms
     val useCompactWeekView: Boolean get() = repository.sessionManager.useCompactWeekView
+
+    // ── Personal / Class timetable switch ───────────────────────────────────────
+
+    val timetableViewMode: SessionManager.TimetableViewMode get() = repository.sessionManager.timetableViewMode
+    /** True once a class element id is known, i.e. the class timetable can actually be requested. */
+    val canShowClassTimetable: Boolean get() = repository.sessionManager.canShowClassTimetable
+
+    /** Switches between the personal and the class timetable and reloads. */
+    fun setTimetableViewMode(mode: SessionManager.TimetableViewMode) {
+        if (repository.sessionManager.timetableViewMode == mode) return
+        repository.setTimetableViewMode(mode)
+        loadAll(forceRefresh = true)
+    }
+
+    fun toggleTimetableViewMode() {
+        val next = if (timetableViewMode == SessionManager.TimetableViewMode.PERSONAL)
+            SessionManager.TimetableViewMode.CLASS else SessionManager.TimetableViewMode.PERSONAL
+        setTimetableViewMode(next)
+    }
 
     // ── Date navigation ───────────────────────────────────────────────────────
 

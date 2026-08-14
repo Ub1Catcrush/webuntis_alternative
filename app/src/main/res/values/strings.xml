@@ -59,6 +59,8 @@
     <string name="timetable_detail_close">Schließen</string>
     <string name="timetable_time_range">%1$s - %2$s</string>
     <string name="timetable_replaced_subject">statt %s</string>
+    <string name="timetable_view_mode_class">Klasse</string>
+    <string name="timetable_view_mode_personal">Ich</string>
 
     <!-- Homework -->
     <string name="label_no_homework">Keine Hausaufgaben eingetragen ✅</string>
