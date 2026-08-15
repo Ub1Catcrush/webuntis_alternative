@@ -47,7 +47,7 @@ In den Einstellungen kann ein zweiter Account (z. B. für ein zweites Kind oder 
 
 | Screen | Beschreibung |
 |---|---|
-| **Stundenplan** | Konfigurierbare Anzahl Schultage (1–20) mit Vertretungs-Info, Unterrichtsinhalt, Lehrer-Notizen und farbigen Status-Badges. |
+| **Stundenplan** | Konfigurierbare Anzahl Schultage (1–20) mit Vertretungs-Info, Unterrichtsinhalt, Lehrer-Notizen und farbigen Status-Badges. Umschaltbar zwischen **eigenem Plan**, **Klassenstundenplan** (kompletter Plan der eigenen Klasse) und **kombiniertem Stundenplan** (eigener Plan, in dem freie Stunden mit frei wählbaren Klassenfächern aufgefüllt werden). |
 | **Hausaufgaben** | Liste mit Abhak-Funktion, Fälligkeits-Ampel, Fachfarben und Anhang-Download. |
 | **Nachrichten** | Posteingang inkl. Anhang-Download, Anzeige des Nachrichtenverlaufs und Account-Labeling. |
 | **Abwesenheiten** | Übersicht aller Fehlzeiten des aktuellen Schuljahres mit Entschuldigungs-Status und **Filter nach Status**. |
@@ -61,6 +61,8 @@ In den Einstellungen kann ein zweiter Account (z. B. für ein zweites Kind oder 
 - ✅ **Sicherheit:** AES-256 verschlüsselte Speicherung der Zugangsdaten.
 - ✅ **Multi-Account:** Nachrichten-Aggregation von zwei verschiedenen WebUntis-Profilen.
 - ✅ **Intelligenter Stundenplan:** Einstellbare Tagesanzahl, Vertretungsvisualisierung, Status-Badges (Ausfall, Vertretung, Zusatz, Prüfung).
+- ✅ **Klassenstundenplan:** Umschalten auf den vollständigen Plan der eigenen Klasse statt nur der eigenen Fächer.
+- ✅ **Kombinierter Stundenplan:** Frei wählbare Klassenfächer (mit ausgeschriebenem Namen + Kürzel zur besseren Unterscheidung) werden nur in freie Stunden des persönlichen Plans eingeblendet.
 - ✅ **Hausaufgaben:** Lokaler Abhak-Status, Anhang-Download.
 - ✅ **Nachrichten:** Anhang-Download (inkl. S3-URL Handling), Verlaufsanzeige, Entwürfe.
 - ✅ **Abwesenheiten:** Filter nach Entschuldigungs-Status (alle / einzelne Stati).
@@ -155,7 +157,7 @@ A second account (e.g. for a second child, or a parent account alongside a stude
 
 | Screen | Description |
 |---|---|
-| **Timetable** | Configurable number of school days (1–20) with substitution info, lesson content, teacher notes and colour-coded status badges. |
+| **Timetable** | Configurable number of school days (1–20) with substitution info, lesson content, teacher notes and colour-coded status badges. Switchable between **personal plan**, **class timetable** (the full plan of your own class) and **combined timetable** (your personal plan with freely selectable class subjects filled into free periods). |
 | **Homework** | List with check-off function, due-date traffic light, subject colours and attachment download. |
 | **Messages** | Inbox incl. attachment download, message history display and account labelling. |
 | **Absences** | Overview of all absences for the current school year with excuse status and **filter by status**. |
@@ -169,6 +171,8 @@ A second account (e.g. for a second child, or a parent account alongside a stude
 - ✅ **Security:** AES-256 encrypted storage of credentials.
 - ✅ **Multi-account:** Message aggregation from two WebUntis profiles.
 - ✅ **Smart timetable:** Configurable day count, substitution visualisation, status badges (cancelled, substitution, extra, exam).
+- ✅ **Class timetable:** Switch to the whole class's schedule instead of just your own subjects.
+- ✅ **Combined timetable:** Freely selectable class subjects (shown with their full name + abbreviation to avoid ambiguity) are filled into free periods of your personal plan.
 - ✅ **Homework:** Local check-off state, attachment download.
 - ✅ **Messages:** Attachment download (incl. S3 URL handling), history view, drafts.
 - ✅ **Absences:** Filter by excuse status (all / individual statuses).
