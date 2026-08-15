@@ -89,10 +89,30 @@ class TimetableViewModel @Inject constructor(
     }
 
     fun toggleTimetableViewMode() {
-        val next = if (timetableViewMode == SessionManager.TimetableViewMode.PERSONAL)
-            SessionManager.TimetableViewMode.CLASS else SessionManager.TimetableViewMode.PERSONAL
+        val next = when (timetableViewMode) {
+            SessionManager.TimetableViewMode.PERSONAL -> SessionManager.TimetableViewMode.CLASS
+            SessionManager.TimetableViewMode.CLASS     -> SessionManager.TimetableViewMode.COMBINED
+            SessionManager.TimetableViewMode.COMBINED  -> SessionManager.TimetableViewMode.PERSONAL
+        }
         setTimetableViewMode(next)
     }
+
+    // ── Combined view: which class-plan subjects fill gaps in the personal plan ────────────────
+
+    val combinedOverlaySubjects: Set<String> get() = repository.sessionManager.combinedOverlaySubjects
+
+    /** Saves the chosen subjects and reloads. Switches to COMBINED mode if not already active. */
+    fun setCombinedOverlaySubjects(subjects: Set<String>) {
+        repository.setCombinedOverlaySubjects(subjects)
+        if (timetableViewMode != SessionManager.TimetableViewMode.COMBINED) {
+            repository.setTimetableViewMode(SessionManager.TimetableViewMode.COMBINED)
+        }
+        loadAll(forceRefresh = true)
+    }
+
+    /** Distinct subjects currently available in the class plan, for the picker dialog. */
+    suspend fun loadAvailableClassSubjects(): List<com.webuntis.dashboard.model.ClassSubjectOption> =
+        repository.getAvailableClassSubjects()
 
     // ── Date navigation ───────────────────────────────────────────────────────
 

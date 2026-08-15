@@ -172,6 +172,26 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
             } else {
                 b.cardRoot.alpha = 1f
             }
+
+            // Combined view: mark entries filled in from the class plan (not part of the
+            // personal timetable) with a distinct border + badge, in addition to any status badge.
+            if (lesson.isFromClassPlan) {
+                b.cardRoot.strokeColor = ContextCompat.getColor(ctx, R.color.primary_variant)
+                b.cardRoot.strokeWidth = (1.5f * ctx.resources.displayMetrics.density).toInt()
+                if (!b.badgeChip.isVisible) {
+                    b.badgeChip.isVisible = true
+                    b.badgeChip.text = ctx.getString(R.string.timetable_combined_label)
+                    b.badgeChip.chipBackgroundColor = android.content.res.ColorStateList.valueOf(
+                        ContextCompat.getColor(ctx, R.color.primary_variant)
+                    )
+                    b.badgeChip.setTextColor(ContextCompat.getColor(ctx, R.color.white))
+                }
+            } else {
+                b.cardRoot.strokeColor = com.google.android.material.color.MaterialColors.getColor(
+                    b.root, com.google.android.material.R.attr.colorOutlineVariant
+                )
+                b.cardRoot.strokeWidth = (1 * ctx.resources.displayMetrics.density).toInt()
+            }
         }
 
         private fun subjectColor(name: String, ctx: android.content.Context): Int {

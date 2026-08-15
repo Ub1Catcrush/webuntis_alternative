@@ -107,6 +107,16 @@ class CompactLessonAdapter : ListAdapter<Lesson, CompactLessonAdapter.LessonView
                     b.root.alpha = 1.0f
                 }
             }
+            // Combined view: mark entries filled in from the class plan with a distinct border.
+            if (lesson.isFromClassPlan) {
+                b.cardRoot.strokeColor = androidx.core.content.ContextCompat.getColor(ctx, R.color.primary_variant)
+                b.cardRoot.strokeWidth = (1.5f * ctx.resources.displayMetrics.density).toInt()
+            } else {
+                b.cardRoot.strokeColor = com.google.android.material.color.MaterialColors.getColor(
+                    b.root, com.google.android.material.R.attr.colorOutlineVariant
+                )
+                b.cardRoot.strokeWidth = (1 * ctx.resources.displayMetrics.density).toInt()
+            }
             // Dim past lessons (past days or today's finished lessons)
             val lessonEndMin = (lesson.endTime / 100) * 60 + (lesson.endTime % 100)
             val isLessonPast = isPastDay || (currentTimeMin >= 0 && currentTimeMin > lessonEndMin)

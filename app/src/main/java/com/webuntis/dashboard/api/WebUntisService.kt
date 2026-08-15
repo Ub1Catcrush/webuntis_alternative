@@ -68,6 +68,18 @@ interface WebUntisService {
         @Query("layout") layout: String = "START_TIME"
     ): Response<ResponseBody>
 
+    // Returns { "preSelected": { "id": <classId>, ... } } for the logged-in person's own class.
+    // Used to reliably resolve the class element id right after login — many WebUntis servers
+    // don't include it in the authenticate/login response itself.
+    @GET("api/rest/view/v1/timetable/filter")
+    suspend fun getTimetableFilterV1(
+        @Header("Authorization") authorization: String,
+        @Query("resourceType") resourceType: String = "CLASS",
+        @Query("timetableType") timetableType: String = "STANDARD",
+        @Query("start") start: String,
+        @Query("end") end: String
+    ): Response<ResponseBody>
+
     // ── Calendar Entry Detail (v2) — carries substText, lessonInfo per entry ──
     @GET("api/rest/view/v2/calendar-entry/detail")
     suspend fun getCalendarEntryDetail(

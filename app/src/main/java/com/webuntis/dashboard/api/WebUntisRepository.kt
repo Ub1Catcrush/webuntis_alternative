@@ -39,6 +39,40 @@ class WebUntisRepository @Inject constructor(
         set(v) { _bearerToken.set(v) }
     private val loginMutex = Mutex()
 
+    /**
+     * Resolves the logged-in person's own class element id via /timetable/filter's "preSelected".
+     * Many WebUntis servers don't include a usable class id in the authenticate/login response
+     * itself, so this dedicated call is the reliable source. Must be awaited during login/re-auth
+     * — BEFORE the UI is allowed to render — so the class-timetable toggle is correct on the very
+     * first frame instead of only appearing after a later reload happens to discover it.
+     */
+    private suspend fun resolveClassId(): Int? {
+        return try {
+            val token = getAuthHeader() ?: return null
+            val today = LocalDate.now().toIso()
+            val resp = service().getTimetableFilterV1(
+                authorization = token,
+                start = today, end = today
+            )
+            val raw = rawBody(resp) ?: return null
+            val filterResp: TimetableFilterResponse = parseJson(raw)
+            filterResp.preSelected?.id?.takeIf { it > 0 }
+        } catch (e: Exception) {
+            android.util.Log.w("WebUntis", "Could not resolve classId via /timetable/filter: ${e.message}")
+            null
+        }
+    }
+
+    /** Ensures [sessionManager]'s persisted session has a class id, resolving it if missing. */
+    private suspend fun ensureClassIdResolved(session: SessionData): SessionData {
+        if (session.classId > 0) return session
+        val resolved = resolveClassId() ?: return session
+        val updated = session.copy(classId = resolved)
+        sessionManager.session = updated
+        android.util.Log.i("WebUntis", "Resolved classId=$resolved via /timetable/filter")
+        return updated
+    }
+
     private suspend fun getAuthHeader(): String? {
         val token = bearerToken ?: fetchBearerToken().getOrNull()
         return token?.let { "Bearer $it" }
@@ -70,16 +104,21 @@ class WebUntisRepository @Inject constructor(
         if (result.isSuccess) {
             val session = result.getOrNull()
             sessionManager.storedCredentials = Pair(username, password)
+            fetchBearerToken()
+
+            // Resolve classId now — awaited — so the class-timetable toggle is already correct
+            // by the time the UI renders, instead of only appearing after a later reload.
+            val resolvedSession = session?.let { ensureClassIdResolved(it) } ?: session
 
             // Auto-recover lost studentId (important for parent accounts)
-            if (session != null && sessionManager.studentId == 0) {
-                val id = if (session.classId > 0) session.classId else session.personId
+            if (resolvedSession != null && sessionManager.studentId == 0) {
+                val id = if (resolvedSession.classId > 0) resolvedSession.classId else resolvedSession.personId
                 if (id > 0) sessionManager.studentId = id
             }
 
-            fetchBearerToken()
             clearAllDataCaches() // Flush stale data from old session
             android.util.Log.i("WebUntis", "Silent re-auth successful. Session valid.")
+            return resolvedSession?.let { Result.success(it) } ?: result
         } else {
             android.util.Log.e("WebUntis", "Silent re-auth FAILED: ${result.exceptionOrNull()?.message}")
         }
@@ -180,6 +219,38 @@ class WebUntisRepository @Inject constructor(
         if (sessionManager.timetableViewMode == mode) return
         sessionManager.timetableViewMode = mode
         cacheTimetable = null
+    }
+
+    /** Updates which class-plan subjects are allowed to fill gaps in COMBINED mode and refreshes. */
+    fun setCombinedOverlaySubjects(subjects: Set<String>) {
+        if (sessionManager.combinedOverlaySubjects == subjects) return
+        sessionManager.combinedOverlaySubjects = subjects
+        cacheTimetable = null
+    }
+
+    /**
+     * Returns the distinct subject names currently available in the class plan, for the
+     * "which subjects should fill gaps in my plan?" picker. Best-effort — returns an empty
+     * list if the class plan can't be fetched right now.
+     */
+    suspend fun getAvailableClassSubjects(): List<ClassSubjectOption> {
+        val session = sessionManager.session ?: return emptyList()
+        if (!sessionManager.canShowClassTimetable) return emptyList()
+        val today = LocalDate.now()
+        val startIso = today.toIso()
+        val endIso = today.plusDays(sessionManager.timetableDays.coerceAtLeast(7).toLong()).toIso()
+        val result = fetchLessonsV1(startIso, endIso, session.classId, "CLASS", "STANDARD", 1)
+        val lessons = result.getOrNull() ?: return emptyList()
+        // Keyed by shortName (what's actually matched/stored) — first non-blank long name wins,
+        // since the same abbreviation can occasionally carry slightly different lessonInfo per entry.
+        val byShortName = linkedMapOf<String, String>()
+        lessons.forEach { lesson ->
+            val short = lesson.subjectName.takeIf { it.isNotBlank() && it != "–" } ?: return@forEach
+            val long = lesson.subjectLongName.takeIf { it.isNotBlank() && it != "–" } ?: short
+            if (byShortName[short].isNullOrBlank() || byShortName[short] == short) byShortName[short] = long
+        }
+        return byShortName.map { (short, long) -> ClassSubjectOption(short, long) }
+            .sortedBy { it.displayLabel.lowercase() }
     }
 
     fun isHomeworkCacheFresh():  Boolean { val e = cacheHomework  ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
@@ -327,12 +398,17 @@ class WebUntisRepository @Inject constructor(
         if (result.isSuccess) {
             // Persist credentials so auto-login works after app restart
             sessionManager.storedCredentials = Pair(username, password)
+            fetchBearerToken()
             val session = result.getOrNull()
-            if (session != null && sessionManager.studentId == 0) {
-                val id = if (session.classId > 0) session.classId else session.personId
+            // Resolve classId now — awaited — so the class-timetable toggle is already correct
+            // by the time the UI renders (e.g. right after LoginViewModel sets isLoggedIn=true),
+            // instead of only appearing later once some other request happens to discover it.
+            val resolvedSession = session?.let { ensureClassIdResolved(it) } ?: session
+            if (resolvedSession != null && sessionManager.studentId == 0) {
+                val id = if (resolvedSession.classId > 0) resolvedSession.classId else resolvedSession.personId
                 if (id > 0) sessionManager.studentId = id
             }
-            fetchBearerToken()
+            return@withLock resolvedSession?.let { Result.success(it) } ?: result
         }
         result
     }
@@ -436,17 +512,44 @@ class WebUntisRepository @Inject constructor(
         val session = sessionManager.session
             ?: return Result.failure(Exception("Nicht angemeldet"))
 
+        val mode = sessionManager.timetableViewMode
+        val classElementId = session.classId
+        val effectiveClassId = sessionManager.studentId
+        val canShowClass = sessionManager.canShowClassTimetable
+
+        val startIso = "${startDate.substring(0,4)}-${startDate.substring(4,6)}-${startDate.substring(6,8)}"
+        val endIso   = "${endDate.substring(0,4)}-${endDate.substring(4,6)}-${endDate.substring(6,8)}"
+
+        // COMBINED: personal plan + selected class-plan subjects filled into the gaps.
+        // Falls back to plain PERSONAL if no class id is known or nothing is selected to overlay.
+        if (mode == SessionManager.TimetableViewMode.COMBINED && canShowClass && effectiveClassId != 0) {
+            return try {
+                coroutineScope {
+                    val personalDeferred = async {
+                        fetchLessonsV1(startIso, endIso, effectiveClassId, "STUDENT", "MY_TIMETABLE", 5)
+                    }
+                    val classDeferred = async {
+                        fetchLessonsV1(startIso, endIso, classElementId, "CLASS", "STANDARD", 1)
+                    }
+                    val personalResult = personalDeferred.await()
+                    val personal = personalResult.getOrNull()
+                        ?: return@coroutineScope Result.failure(personalResult.exceptionOrNull() ?: Exception("Unbekannter Fehler"))
+                    // The class-plan overlay is best-effort: if it fails, still show the personal plan.
+                    val classLessons = classDeferred.await().getOrDefault(emptyList())
+                    val allowed = sessionManager.combinedOverlaySubjects
+                    Result.success(buildCombinedLessons(personal, classLessons, allowed))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
         // In CLASS mode we show the whole class's timetable (resourceType=CLASS) instead of
         // the logged-in person's own schedule (resourceType=STUDENT). Falls back to PERSONAL
         // if no class element id is known (e.g. it wasn't resolved yet).
-        val wantsClassView = sessionManager.timetableViewMode == SessionManager.TimetableViewMode.CLASS &&
-            sessionManager.canShowClassTimetable
-        val classElementId = session.classId
+        val wantsClassView = mode == SessionManager.TimetableViewMode.CLASS && canShowClass
 
-        val effectiveClassId = sessionManager.studentId
         if (wantsClassView || effectiveClassId != 0) {
-            val startIso = "${startDate.substring(0,4)}-${startDate.substring(4,6)}-${startDate.substring(6,8)}"
-            val endIso   = "${endDate.substring(0,4)}-${endDate.substring(4,6)}-${endDate.substring(6,8)}"
             val elementId: Int
             val resourceType: String
             val timetableType: String
@@ -456,19 +559,7 @@ class WebUntisRepository @Inject constructor(
             } else {
                 elementId = effectiveClassId; resourceType = "STUDENT"; timetableType = "MY_TIMETABLE"; elementType = 5
             }
-            return try {
-                val response = callTimetableV1(
-                    startIso, endIso, elementId,
-                    resourceType = resourceType, timetableType = timetableType
-                )
-                val raw = rawBody(response) ?: return Result.success(emptyList())
-                val ttResp: TimetableV1Response = parseJson(raw)
-                val lessons = ttResp.toLessons()
-                val enriched = enrichLessonsWithDetail(lessons, elementId, elementType)
-                Result.success(enriched)
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
+            return fetchLessonsV1(startIso, endIso, elementId, resourceType, timetableType, elementType)
         }
 
         val (id, type) = when (session.personType) {
@@ -489,6 +580,45 @@ class WebUntisRepository @Inject constructor(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    /** Fetches + enriches a single timetable/v1 view (personal or class). */
+    private suspend fun fetchLessonsV1(
+        startIso: String, endIso: String, elementId: Int,
+        resourceType: String, timetableType: String, elementType: Int
+    ): Result<List<Lesson>> {
+        return try {
+            val response = callTimetableV1(
+                startIso, endIso, elementId,
+                resourceType = resourceType, timetableType = timetableType
+            )
+            val raw = rawBody(response) ?: return Result.success(emptyList())
+            val ttResp: TimetableV1Response = parseJson(raw)
+            val lessons = ttResp.toLessons()
+            val enriched = enrichLessonsWithDetail(lessons, elementId, elementType)
+            Result.success(enriched)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Adds class-plan lessons into the personal list, but ONLY for slots that are actually empty
+     * in the personal plan (same date, no time overlap with any personal lesson) and only for
+     * subjects the user has opted into via [SessionManager.combinedOverlaySubjects]. Added entries
+     * are marked [Lesson.isFromClassPlan] so the UI can label/style them distinctly.
+     */
+    private fun buildCombinedLessons(
+        personal: List<Lesson>, classLessons: List<Lesson>, allowedSubjects: Set<String>
+    ): List<Lesson> {
+        if (allowedSubjects.isEmpty()) return personal
+        val personalByDate = personal.groupBy { it.date }
+        val overlay = classLessons.filter { cl ->
+            if (cl.subjectName !in allowedSubjects && cl.subjectLongName !in allowedSubjects) return@filter false
+            val sameDayPersonal = personalByDate[cl.date] ?: emptyList()
+            sameDayPersonal.none { p -> p.startTime < cl.endTime && cl.startTime < p.endTime }
+        }.map { it.copy(isFromClassPlan = true) }
+        return personal + overlay
     }
 
     suspend fun getTwoSchoolDays(forceRefresh: Boolean = false): Result<List<TimetableDay>> = withCacheOrFetch(
@@ -564,7 +694,13 @@ class WebUntisRepository @Inject constructor(
         if (sessionManager.timetableViewMode == SessionManager.TimetableViewMode.CLASS) {
             return lessons
         }
-        return mergeOverlappingLessons(lessons)
+        // In COMBINED mode, only merge cancelled/active pairs among the personal-plan lessons —
+        // overlay entries filled in from the class plan can include several unrelated parallel
+        // class-plan subjects and must never be paired into a false "statt" substitution.
+        val overlay = lessons.filter { it.isFromClassPlan }
+        if (overlay.isEmpty()) return mergeOverlappingLessons(lessons)
+        val personalOnly = lessons.filter { !it.isFromClassPlan }
+        return mergeOverlappingLessons(personalOnly) + overlay
     }
 
     private fun mergeOverlappingLessons(lessons: List<Lesson>): List<Lesson> {

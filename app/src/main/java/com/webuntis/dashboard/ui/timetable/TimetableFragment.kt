@@ -48,13 +48,18 @@ class TimetableFragment : Fragment() {
         binding.btnNextDays.setOnClickListener { viewModel.shiftDays(+5) }
         binding.btnToday.setOnClickListener    { viewModel.resetToToday() }
 
-        // Personal / Class timetable switch — only shown once a class id is known
+        // Personal / Class / Combined timetable switch — only shown once a class id is known
         binding.btnToggleViewMode.isVisible = viewModel.canShowClassTimetable
+        binding.btnEditCombinedSubjects.isVisible = viewModel.canShowClassTimetable &&
+            viewModel.timetableViewMode == com.webuntis.dashboard.api.SessionManager.TimetableViewMode.COMBINED
         updateViewModeButtonLabel()
         binding.btnToggleViewMode.setOnClickListener {
             viewModel.toggleTimetableViewMode()
             updateViewModeButtonLabel()
+            binding.btnEditCombinedSubjects.isVisible = viewModel.canShowClassTimetable &&
+                viewModel.timetableViewMode == com.webuntis.dashboard.api.SessionManager.TimetableViewMode.COMBINED
         }
+        binding.btnEditCombinedSubjects.setOnClickListener { showCombinedSubjectsDialog() }
 
         // Show/hide the entire today-row (not just the button)
         viewLifecycleOwner.lifecycleScope.launch {
@@ -91,6 +96,12 @@ class TimetableFragment : Fragment() {
                             binding.swipeRefresh.isRefreshing = false
                             val days = state.data
 
+                            // Re-check on every successful load — defensive, in case the class id
+                            // was only just resolved (e.g. as a fallback from lesson details).
+                            binding.btnToggleViewMode.isVisible = viewModel.canShowClassTimetable
+                            binding.btnEditCombinedSubjects.isVisible = viewModel.canShowClassTimetable &&
+                                viewModel.timetableViewMode == com.webuntis.dashboard.api.SessionManager.TimetableViewMode.COMBINED
+
                             // Show holiday banner ONLY when there are no school days at all to display
                             val showHoliday = days.isEmpty()
                             binding.holidayBanner.isVisible = showHoliday
@@ -118,12 +129,60 @@ class TimetableFragment : Fragment() {
         }
     }
 
-    /** Label always shows the view the button switches TO, not the currently active one. */
+    /** Shows the currently active mode; tapping cycles Ich → Klasse → Kombiniert → Ich. */
     private fun updateViewModeButtonLabel() {
-        val showsClass = viewModel.timetableViewMode == com.webuntis.dashboard.api.SessionManager.TimetableViewMode.CLASS
-        binding.btnToggleViewMode.text = getString(
-            if (showsClass) R.string.timetable_view_mode_personal else R.string.timetable_view_mode_class
-        )
+        val labelRes = when (viewModel.timetableViewMode) {
+            com.webuntis.dashboard.api.SessionManager.TimetableViewMode.PERSONAL -> R.string.timetable_view_mode_personal
+            com.webuntis.dashboard.api.SessionManager.TimetableViewMode.CLASS    -> R.string.timetable_view_mode_class
+            com.webuntis.dashboard.api.SessionManager.TimetableViewMode.COMBINED -> R.string.timetable_view_mode_combined
+        }
+        binding.btnToggleViewMode.text = getString(labelRes)
+    }
+
+    /** Multi-choice picker for which class-plan subjects should fill gaps in the personal plan. */
+    private fun showCombinedSubjectsDialog() {
+        binding.btnEditCombinedSubjects.isEnabled = false
+        viewLifecycleOwner.lifecycleScope.launch {
+            val available = viewModel.loadAvailableClassSubjects()
+            binding.btnEditCombinedSubjects.isEnabled = true
+
+            if (available.isEmpty()) {
+                MaterialAlertDialogBuilder(requireContext())
+                    .setTitle(R.string.timetable_combined_dialog_title)
+                    .setMessage(R.string.timetable_combined_dialog_empty)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
+                return@launch
+            }
+
+            val selected = viewModel.combinedOverlaySubjects
+            // Stored/compared by shortName (abbreviation) — matches Lesson.subjectName elsewhere —
+            // but shown as "Langname (Kürzel)" since abbreviations alone (e.g. "Sp", "D_G") can be
+            // ambiguous to the user.
+            val checked = BooleanArray(available.size) { available[it].shortName in selected }
+            val labels = available.map { it.displayLabel }.toTypedArray()
+
+            // IMPORTANT: never combine setMessage() with setMultiChoiceItems()/setItems() on the
+            // same AlertDialog.Builder. AlertController only shows ONE of message-or-list — if a
+            // message is set, the list view never gets attached to the dialog at all, so it would
+            // silently render as an empty picker even though `available` is non-empty. The
+            // explanatory text is shown as a subtitle line under the title instead.
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle(
+                    getString(R.string.timetable_combined_dialog_title) + "\n" +
+                    getString(R.string.timetable_combined_dialog_message)
+                )
+                .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
+                    checked[which] = isChecked
+                }
+                .setPositiveButton(R.string.timetable_combined_dialog_apply) { _, _ ->
+                    val chosen = available.filterIndexed { index, _ -> checked[index] }
+                        .map { it.shortName }.toSet()
+                    viewModel.setCombinedOverlaySubjects(chosen)
+                }
+                .setNegativeButton(R.string.timetable_combined_dialog_cancel, null)
+                .show()
+        }
     }
 
     private fun setupViewPager(days: List<SchoolDay>) {

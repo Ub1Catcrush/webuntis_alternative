@@ -49,7 +49,10 @@ data class Lesson(
     val substitutedTeachers: List<String>? = null, // teachers with status SUBSTITUTION
     // Directly from v1 gridEntry — no detail call needed
     val notesForAll: String? = null,
-    val replacedSubject: String? = null
+    val replacedSubject: String? = null,
+    // True when this entry was filled in from the class plan in COMBINED mode (i.e. it is not
+    // part of the logged-in person's own personal timetable). UI uses this to label/style it.
+    val isFromClassPlan: Boolean = false
 ) {
     val isCancelled: Boolean get() = code == "cancelled" || lstype == "cancel"
     val isSubstitution: Boolean get() = code == "irregular" || lstype == "subst"
@@ -81,6 +84,15 @@ data class Lesson(
         val s = t.toString().padStart(4, '0')
         return "${s.substring(0, 2)}:${s.substring(2)}"
     }
+}
+
+/** One subject as offered by the class plan for the COMBINED-mode overlay picker.
+ *  [shortName] is what's actually stored/matched against (Lesson.subjectName uses the same
+ *  abbreviation), [longName] is only for display since abbreviations can be ambiguous. */
+data class ClassSubjectOption(val shortName: String, val longName: String) {
+    /** "Langname (Kürzel)", or just the abbreviation if no distinct long name is known. */
+    val displayLabel: String
+        get() = if (longName.isNotBlank() && longName != shortName) "$longName ($shortName)" else shortName
 }
 
 data class NamedItem(val id: Int?, val name: String?, val longname: String?)
@@ -398,6 +410,19 @@ data class ExamRpcEntry(
 }
 
 // ─── SESSION ──────────────────────────────────────────────────────────────────
+
+// Response of GET api/rest/view/v1/timetable/filter — used to reliably resolve the
+// logged-in person's own class element id via the "preSelected" field.
+data class TimetableFilterResponse(
+    val resourceType: String?,
+    val preSelected: TimetableFilterElement?
+)
+data class TimetableFilterElement(
+    val id: Int?,
+    val shortName: String?,
+    val longName: String?,
+    val displayName: String?
+)
 
 data class SessionData(
     val server: String, val schoolname: String, val username: String,

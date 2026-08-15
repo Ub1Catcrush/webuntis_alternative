@@ -251,16 +251,36 @@ class SessionManager @Inject constructor(
         get() = plainPrefs.getBoolean(KEY_USE_COMPACT_WEEK_VIEW, false)
         set(value) { plainPrefs.edit().putBoolean(KEY_USE_COMPACT_WEEK_VIEW, value).apply() }
 
-    /** Whether the timetable shows the logged-in person's own schedule or a whole class's schedule. */
-    enum class TimetableViewMode { PERSONAL, CLASS }
+    /** Whether the timetable shows the logged-in person's own schedule, a whole class's
+     *  schedule, or the personal schedule with selected class-plan subjects filled into gaps. */
+    enum class TimetableViewMode { PERSONAL, CLASS, COMBINED }
 
     var timetableViewMode: TimetableViewMode
-        get() = if (plainPrefs.getString(KEY_TIMETABLE_VIEW_MODE, null) == TimetableViewMode.CLASS.name)
-            TimetableViewMode.CLASS else TimetableViewMode.PERSONAL
+        get() = when (plainPrefs.getString(KEY_TIMETABLE_VIEW_MODE, null)) {
+            TimetableViewMode.CLASS.name    -> TimetableViewMode.CLASS
+            TimetableViewMode.COMBINED.name -> TimetableViewMode.COMBINED
+            else -> TimetableViewMode.PERSONAL
+        }
         set(value) { plainPrefs.edit().putString(KEY_TIMETABLE_VIEW_MODE, value.name).apply() }
 
     /** True if a class element id is known (i.e. a "Klassenstundenplan" can actually be requested). */
     val canShowClassTimetable: Boolean get() = (session?.classId ?: 0) > 0
+
+    // ── Combined view: which class-plan subjects may fill gaps in the personal plan ────────────
+
+    private val overlayGson = com.google.gson.Gson()
+
+    /** Subject names (as shown in the class plan) that are allowed to fill empty slots in COMBINED mode. */
+    var combinedOverlaySubjects: Set<String>
+        get() {
+            val raw = plainPrefs.getString(KEY_COMBINED_OVERLAY_SUBJECTS, null) ?: return emptySet()
+            return runCatching {
+                overlayGson.fromJson(raw, Array<String>::class.java)?.toSet() ?: emptySet()
+            }.getOrDefault(emptySet())
+        }
+        set(value) {
+            plainPrefs.edit().putString(KEY_COMBINED_OVERLAY_SUBJECTS, overlayGson.toJson(value.toTypedArray())).apply()
+        }
 
     var cacheTtlMinutes: Int
         get() = plainPrefs.getInt(KEY_CACHE_TTL, DEFAULT_CACHE_TTL)
@@ -302,6 +322,9 @@ class SessionManager @Inject constructor(
             addProperty("useCompactWeekView", useCompactWeekView)
             addProperty("cacheTtlMinutes",    cacheTtlMinutes)
             addProperty("timetableViewMode",  timetableViewMode.name)
+            add("combinedOverlaySubjects", com.google.gson.JsonArray().apply {
+                combinedOverlaySubjects.forEach { add(it) }
+            })
         }
         return gson.toJson(obj)
     }
@@ -357,6 +380,9 @@ class SessionManager @Inject constructor(
             obj.get("timetableViewMode")?.asString?.let { raw ->
                 runCatching { TimetableViewMode.valueOf(raw) }.getOrNull()?.let { timetableViewMode = it }
             }
+            obj.getAsJsonArray("combinedOverlaySubjects")?.let { arr ->
+                combinedOverlaySubjects = arr.mapNotNull { it.asString }.toSet()
+            }
 
             ImportResult.Success(primaryUpdated = primaryUpdated, secondUpdated = secondUpdated)
         } catch (e: Exception) {
@@ -393,6 +419,7 @@ class SessionManager @Inject constructor(
         private const val KEY_SHOW_LONG_ROOMS        = "show_long_rooms"
         private const val KEY_USE_COMPACT_WEEK_VIEW  = "use_compact_week_view"
         private const val KEY_TIMETABLE_VIEW_MODE    = "timetable_view_mode"
+        private const val KEY_COMBINED_OVERLAY_SUBJECTS = "combined_overlay_subjects"
         private const val KEY_CACHE_TTL              = "cache_ttl_minutes"
         const val DEFAULT_TIMETABLE_DAYS = 5
         const val MIN_TIMETABLE_DAYS     = 1

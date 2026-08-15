@@ -61,6 +61,14 @@
     <string name="timetable_replaced_subject">instead of %s</string>
     <string name="timetable_view_mode_class">Class</string>
     <string name="timetable_view_mode_personal">Me</string>
+    <string name="timetable_view_mode_combined">Combined</string>
+    <string name="timetable_combined_edit_subjects">Choose subjects for combined plan</string>
+    <string name="timetable_combined_dialog_title">Show class subjects</string>
+    <string name="timetable_combined_dialog_message">Selected subjects from the class plan are only filled into free slots in your personal plan.</string>
+    <string name="timetable_combined_dialog_empty">No subjects found in the class plan.</string>
+    <string name="timetable_combined_dialog_apply">Apply</string>
+    <string name="timetable_combined_dialog_cancel">Cancel</string>
+    <string name="timetable_combined_label">from class plan</string>
 
     <!-- Homework -->
     <string name="label_no_homework">No homework assigned ✅</string>

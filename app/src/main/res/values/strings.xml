@@ -61,6 +61,14 @@
     <string name="timetable_replaced_subject">statt %s</string>
     <string name="timetable_view_mode_class">Klasse</string>
     <string name="timetable_view_mode_personal">Ich</string>
+    <string name="timetable_view_mode_combined">Kombiniert</string>
+    <string name="timetable_combined_edit_subjects">Fächer für kombinierten Plan wählen</string>
+    <string name="timetable_combined_dialog_title">Klassenfächer einblenden</string>
+    <string name="timetable_combined_dialog_message">Ausgewählte Fächer aus dem Klassenplan werden nur in freie Stunden deines persönlichen Plans eingeblendet.</string>
+    <string name="timetable_combined_dialog_empty">Im Klassenplan wurden keine Fächer gefunden.</string>
+    <string name="timetable_combined_dialog_apply">Übernehmen</string>
+    <string name="timetable_combined_dialog_cancel">Abbrechen</string>
+    <string name="timetable_combined_label">aus Klassenplan</string>
 
     <!-- Homework -->
     <string name="label_no_homework">Keine Hausaufgaben eingetragen ✅</string>
