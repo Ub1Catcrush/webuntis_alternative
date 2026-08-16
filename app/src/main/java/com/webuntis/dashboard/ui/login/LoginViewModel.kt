@@ -57,7 +57,7 @@ class LoginViewModel @Inject constructor(
             val result = repository.login(cleanServer, schoolname.trim(), username.trim(), password)
             result.fold(
                 onSuccess = {
-                    viewModelScope.launch { repository.primeCachedElementIdIfNeeded() }
+                    repository.primeCachedElementIdIfNeeded()
                     _isLoggedIn.value = true
                     _loginState.value = LoginState.Success
                     isLoggingIn = false

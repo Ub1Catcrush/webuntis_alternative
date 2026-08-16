@@ -135,7 +135,7 @@ class SessionManager @Inject constructor(
             .remove(KEY_PERSON_NAME).remove(KEY_PERSON_TYPE).remove(KEY_SESSION_TIME)
             .apply()
         // studentId is session-derived — clear it too so it gets re-resolved after next login
-        prefs.edit().remove(KEY_STUDENT_ID).apply()
+        prefs.edit().remove(KEY_STUDENT_ID).remove(KEY_STUDENT_ID_HEALED_V2).apply()
     }
 
     /** Clears everything including credentials. Use only on explicit logout. */
@@ -176,6 +176,15 @@ class SessionManager @Inject constructor(
     var studentId: Int
         get() = prefs.getInt(KEY_STUDENT_ID, 0)
         set(v) = prefs.edit().putInt(KEY_STUDENT_ID, v).apply()
+
+    /** One-time migration flag: forces a fresh, authoritative studentId re-resolution for
+     *  parent accounts once, to clean up installs affected by earlier bugs where studentId
+     *  got silently set to a wrong value (the class's own id, or an arbitrary classmate's id
+     *  picked up from a class-wide homework entry). Only ever flips false → true, and only
+     *  once resolution has actually succeeded — see WebUntisRepository.primeCachedElementIdIfNeeded(). */
+    var studentIdHealedV2: Boolean
+        get() = prefs.getBoolean(KEY_STUDENT_ID_HEALED_V2, false)
+        set(v) = prefs.edit().putBoolean(KEY_STUDENT_ID_HEALED_V2, v).apply()
 
     // ── Class ID ─────────────────────────────────────
 
@@ -428,6 +437,7 @@ class SessionManager @Inject constructor(
         private const val KEY_STORED_USER  = "stored_user"
         private const val KEY_STORED_PASS  = "stored_pass"
         private const val KEY_STUDENT_ID   = "student_id"
+        private const val KEY_STUDENT_ID_HEALED_V2 = "student_id_healed_v2"
         private const val KEY_SECOND_USER  = "second_user"
         private const val KEY_SECOND_PASS  = "second_pass"
         private const val KEY_SECOND_LABEL = "second_label"

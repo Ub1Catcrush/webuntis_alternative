@@ -438,16 +438,25 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun primeCachedElementIdIfNeeded() {
         val session = sessionManager.session ?: return
-        // Self-heal installs affected by a previous bug where studentId was wrongly set to
-        // classId (the *class's* element id, e.g. "8c" → 688) instead of the student's own
-        // element id. That corrupted value is indistinguishable from a valid one by the
-        // `studentId != 0` check alone, so it would otherwise be stuck forever, breaking
-        // personal/combined timetable, absences, classbook and events (HTTP 500/404) while
-        // class mode kept working (it's the only feature that doesn't depend on studentId).
-        if (session.classId > 0 && sessionManager.studentId == session.classId) {
-            android.util.Log.w("WebUntis", "Detected corrupted studentId==classId (${session.classId}), resetting for re-resolution")
+
+        // Self-heal installs affected by earlier bugs where studentId got silently set to a
+        // *wrong* value instead of the student's own element id — either the class's own id
+        // (e.g. "8c" → 688), or, for parents, an arbitrary classmate's id picked up from a
+        // class-wide homework's elementIds list. Both corrupted values look just as "valid" as
+        // a real studentId to the plain `studentId != 0` check below, so they'd otherwise be
+        // stuck forever, breaking personal/combined timetable, absences, classbook and events
+        // (HTTP 500/404) while class mode kept working (the only feature independent of
+        // studentId). For parent accounts we can't reliably tell a wrong-but-plausible id apart
+        // from a correct one after the fact, so instead of pattern-matching known-bad values we
+        // force one authoritative re-resolution via /app/data per install (studentIdHealedV2),
+        // regardless of whatever is currently cached.
+        val knownCorruptValue = session.classId > 0 && sessionManager.studentId == session.classId
+        val needsForcedHeal = session.personType == 12 && !sessionManager.studentIdHealedV2
+        if (knownCorruptValue || needsForcedHeal) {
+            android.util.Log.w("WebUntis", "Forcing studentId re-resolution (corrupt=$knownCorruptValue, unhealed=$needsForcedHeal)")
             sessionManager.studentId = 0
         }
+
         if (sessionManager.studentId != 0) return
         // For a student's own account, personId already IS their own element id — no network
         // round-trip needed. Only parent accounts (personType=12) need the appData/homework
@@ -457,31 +466,51 @@ class WebUntisRepository @Inject constructor(
             return
         }
         // For parent accounts (personType=12) the timetable needs the child's element ID.
-        // Try the /app/data endpoint first — it returns the selected student's element ID.
-        if (session.personType == 12) {
-            try {
-                val token = getAuthHeader()
-                if (token != null) {
-                    val resp = service().getAppData(token)
-                    val raw  = rawBody(resp)
-                    if (raw != null) {
-                        // Response contains { "userData": { "elemId": <int>, "elemType": 5 } }
-                        val json = com.google.gson.JsonParser.parseString(raw).asJsonObject
-                        val elemId = json.getAsJsonObject("userData")
-                            ?.get("elemId")?.asInt ?: 0
-                        if (elemId > 0) {
-                            sessionManager.studentId = elemId
-                            android.util.Log.i("WebUntis", "Resolved student elemId=$elemId from appData")
-                            return
+        // Try the /app/data endpoint first — it's authoritative and returns the currently
+        // selected student's own element ID (unlike the homework-based fallback below, which
+        // can only guess).
+        try {
+            val token = getAuthHeader()
+            if (token != null) {
+                val resp = service().getAppData(token)
+                val raw  = rawBody(resp)
+                if (raw != null) {
+                    val json = com.google.gson.JsonParser.parseString(raw).asJsonObject
+                    val userObj = json.getAsJsonObject("user")
+                    val roles = userObj?.getAsJsonArray("roles")
+                        ?.map { it.asString } ?: emptyList()
+
+                    val elemId: Int? = when {
+                        roles.contains("LEGAL_GUARDIAN") -> {
+                            userObj?.getAsJsonArray("students")
+                                ?.firstOrNull()
+                                ?.asJsonObject
+                                ?.get("id")?.asInt
                         }
+                        roles.contains("STUDENT") -> {
+                            userObj?.getAsJsonObject("person")
+                                ?.get("id")?.asInt
+                        }
+                        else -> null
+                    }
+
+                    if (elemId != null && elemId > 0) {
+                        sessionManager.studentId = elemId
+                        sessionManager.studentIdHealedV2 = true
+                        android.util.Log.i("WebUntis", "Resolved student elemId=$elemId from appData (roles=$roles)")
+                        return
+                    } else {
+                        android.util.Log.w("WebUntis", "No elemId resolvable for roles=$roles, userId=${userObj?.get("id")?.asInt}")
                     }
                 }
-            } catch (e: Exception) {
-                android.util.Log.w("WebUntis", "Could not resolve elemId from appData: ${e.message}")
             }
-            // Fallback: try homework endpoint which also resolves the student element
-            getHomework(forceRefresh = true)
+        } catch (e: Exception) {
+            android.util.Log.w("WebUntis", "Could not resolve elemId from appData: ${e.message}")
         }
+        // Last-resort fallback: try the homework endpoint, which also resolves the student
+        // element (see getHomework() for why it only trusts individually-targeted records).
+        getHomework(forceRefresh = true)
+        if (sessionManager.studentId != 0) sessionManager.studentIdHealedV2 = true
     }
 
     private suspend fun loginViaJsonRpc(
@@ -552,6 +581,18 @@ class WebUntisRepository @Inject constructor(
         val session = sessionManager.session
             ?: return Result.failure(Exception("Nicht angemeldet"))
 
+        // Defensive re-resolution: TimetableViewModel.init{} can fire loadAll() before
+        // LoginViewModel's own primeCachedElementIdIfNeeded() call has finished (e.g. the
+        // Fragment is recreated while login/heal is still in flight), leaving studentId at 0
+        // for parent accounts even though it would resolve correctly a moment later. Without
+        // this, execution fell through all the way to the legacy JSON-RPC fallback below using
+        // session.personId (the guardian's own id) as a timetable elementId — which the server
+        // always rejects with "no such element" for parent accounts. Idempotent/cheap when
+        // studentId is already resolved.
+        if (session.personType == 12 && sessionManager.studentId == 0) {
+            primeCachedElementIdIfNeeded()
+        }
+
         val mode = sessionManager.timetableViewMode
         val classElementId = session.classId
         val effectiveClassId = sessionManager.studentId
@@ -600,6 +641,15 @@ class WebUntisRepository @Inject constructor(
                 elementId = effectiveClassId; resourceType = "STUDENT"; timetableType = "MY_TIMETABLE"; elementType = 5
             }
             return fetchLessonsV1(startIso, endIso, elementId, resourceType, timetableType, elementType)
+        }
+
+        // Parent accounts have no personal timetable of their own — session.personId is the
+        // guardian's element id, never a valid timetable target (type 5 = student). Reaching
+        // this point means studentId resolution failed (e.g. offline/appData error); firing the
+        // request anyway would just produce a confusing "no such element" server error, so fail
+        // fast with a clear message instead.
+        if (session.personType == 12) {
+            return Result.failure(Exception("Konnte Kind-ID nicht auflösen (bitte erneut versuchen)"))
         }
 
         val (id, type) = when (session.personType) {
@@ -874,8 +924,21 @@ class WebUntisRepository @Inject constructor(
             val response = service().getHomework(token, start, end)
             val raw = rawBody(response) ?: return@withCacheOrFetch Result.success(Pair(emptyList<Homework>(), emptyMap<String, String>()))
             val hwResp: HomeworkResponse = parseJson(raw)
-            hwResp.data?.records?.firstOrNull()?.elementIds?.firstOrNull()?.let {
-                if (it != 0) sessionManager.studentId = it
+            // Opportunistic studentId resolution — last resort only, see primeCachedElementIdIfNeeded()
+            // for the primary (/app/data) resolution path. Two important constraints here, both
+            // fixing real bugs that kept corrupting an already-correct studentId:
+            //  1. Only ever act as a fallback (studentId still 0) — this used to run unconditionally
+            //     on every single getHomework() call and could clobber a correctly resolved id later.
+            //  2. Only trust records where elementIds has exactly one entry. For class-wide homework,
+            //     elementIds lists *every* student in the class — blindly taking elementIds.firstOrNull()
+            //     of the first record picked an essentially arbitrary classmate, not necessarily our own
+            //     child, which still caused wrong-student HTTP 404s on absences/classbook/events even
+            //     after the classId-based corruption was fixed.
+            if (sessionManager.studentId == 0) {
+                hwResp.data?.records
+                    ?.firstOrNull { it.elementIds?.size == 1 }
+                    ?.elementIds?.firstOrNull()
+                    ?.let { if (it != 0) sessionManager.studentId = it }
             }
             val lessonMap = hwResp.data?.lessons
                 ?.filter { it.id != null && !it.subject.isNullOrBlank() }
@@ -987,8 +1050,11 @@ class WebUntisRepository @Inject constructor(
             }
             val session = sessionManager.session
                 ?: return@withCacheOrFetch Result.failure(Exception("Nicht angemeldet"))
+            // See fetchLessonsInRange() for why the authoritative primeCachedElementIdIfNeeded()
+            // (appData first, homework only as last resort) is used here instead of jumping
+            // straight to the weaker homework-only fallback.
             if (session.personType == 12 && sessionManager.studentId == 0) {
-                getHomework(forceRefresh = false)
+                primeCachedElementIdIfNeeded()
             }
             val studentId = sessionManager.studentId
             val response = when {
@@ -1038,7 +1104,7 @@ class WebUntisRepository @Inject constructor(
             val token = getAuthHeader()
             val eventSession = sessionManager.session
             if (eventSession?.personType == 12 && sessionManager.studentId == 0) {
-                getHomework(forceRefresh = false)
+                primeCachedElementIdIfNeeded()
             }
             val classId = sessionManager.studentId
             if (classId == 0) return@withCacheOrFetch Result.success(emptyList<SchoolEvent>())
