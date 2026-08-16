@@ -18,6 +18,10 @@ class CompactWeekAdapter : ListAdapter<SchoolDay, CompactWeekAdapter.DayViewHold
         set(value) { field = value; notifyDataSetChanged() }
     var showLongRooms:    Boolean = false
         set(value) { field = value; notifyDataSetChanged() }
+    var showShortSubjectInParens: Boolean = false
+        set(value) { field = value; notifyDataSetChanged() }
+    var showShortRoomInParens: Boolean = false
+        set(value) { field = value; notifyDataSetChanged() }
     
     var onLessonClick: ((Lesson) -> Unit)? = null
     var isPastDay: Boolean = false
@@ -31,11 +35,19 @@ class CompactWeekAdapter : ListAdapter<SchoolDay, CompactWeekAdapter.DayViewHold
     }
 
     override fun onBindViewHolder(holder: DayViewHolder, position: Int) {
-        holder.bind(getItem(position), showLongSubjects, showLongRooms, onLessonClick, isPastDay, currentTimeMin)
+        holder.bind(
+            getItem(position), showLongSubjects, showLongRooms,
+            showShortSubjectInParens, showShortRoomInParens,
+            onLessonClick, isPastDay, currentTimeMin
+        )
     }
 
     class DayViewHolder(private val b: ItemCompactDayBinding) : RecyclerView.ViewHolder(b.root) {
-        fun bind(day: SchoolDay, longSubjects: Boolean, longRooms: Boolean, onClick: ((Lesson) -> Unit)?, isPastDay: Boolean = false, currentTimeMin: Int = -1) {
+        fun bind(
+            day: SchoolDay, longSubjects: Boolean, longRooms: Boolean,
+            shortSubjectInParens: Boolean, shortRoomInParens: Boolean,
+            onClick: ((Lesson) -> Unit)?, isPastDay: Boolean = false, currentTimeMin: Int = -1
+        ) {
             val today = LocalDate.now()
             val isPastDay = day.date.isBefore(today)
             val isToday   = day.date == today
@@ -44,6 +56,8 @@ class CompactWeekAdapter : ListAdapter<SchoolDay, CompactWeekAdapter.DayViewHold
             val adapter = CompactLessonAdapter()
             adapter.showLongSubjects = longSubjects
             adapter.showLongRooms    = longRooms
+            adapter.showShortSubjectInParens = shortSubjectInParens
+            adapter.showShortRoomInParens    = shortRoomInParens
             adapter.onLessonClick    = onClick
             adapter.isPastDay        = isPastDay
             adapter.currentTimeMin   = if (isToday) com.webuntis.dashboard.ui.timetable.TimeIndicatorView.currentTimeMinutes() else -1
@@ -62,6 +76,8 @@ class CompactLessonAdapter : ListAdapter<Lesson, CompactLessonAdapter.LessonView
 
     var showLongSubjects: Boolean = false
     var showLongRooms:    Boolean = false
+    var showShortSubjectInParens: Boolean = false
+    var showShortRoomInParens:    Boolean = false
     var onLessonClick: ((Lesson) -> Unit)? = null
     var isPastDay: Boolean = false
     var currentTimeMin: Int = -1
@@ -72,18 +88,26 @@ class CompactLessonAdapter : ListAdapter<Lesson, CompactLessonAdapter.LessonView
     }
 
     override fun onBindViewHolder(holder: LessonViewHolder, position: Int) {
-        holder.bind(getItem(position), showLongSubjects, showLongRooms, onLessonClick, isPastDay, currentTimeMin)
+        holder.bind(
+            getItem(position), showLongSubjects, showLongRooms,
+            showShortSubjectInParens, showShortRoomInParens,
+            onLessonClick, isPastDay, currentTimeMin
+        )
     }
 
     class LessonViewHolder(private val b: ItemCompactLessonBinding) : RecyclerView.ViewHolder(b.root) {
-        fun bind(lesson: Lesson, longSubjects: Boolean, longRooms: Boolean, onClick: ((Lesson) -> Unit)?, isPastDay: Boolean = false, currentTimeMin: Int = -1) {
+        fun bind(
+            lesson: Lesson, longSubjects: Boolean, longRooms: Boolean,
+            shortSubjectInParens: Boolean, shortRoomInParens: Boolean,
+            onClick: ((Lesson) -> Unit)?, isPastDay: Boolean = false, currentTimeMin: Int = -1
+        ) {
             val ctx = b.root.context
-            b.textSubject.text = lesson.displaySubject(longSubjects)
+            b.textSubject.text = lesson.displaySubject(longSubjects, shortSubjectInParens)
             
             // Use localized string resource instead of String.format
             b.textTime.text = ctx.getString(R.string.timetable_time_range, lesson.startTimeFormatted, lesson.endTimeFormatted)
             
-            val room = lesson.displayRooms(longRooms)
+            val room = lesson.displayRooms(longRooms, shortRoomInParens)
             b.textRoom.text = room
             b.textRoom.visibility = if (room.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
             

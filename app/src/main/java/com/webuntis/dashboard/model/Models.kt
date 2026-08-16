@@ -74,10 +74,34 @@ data class Lesson(
             (r.longname?.takeIf(String::isNotBlank) ?: r.name)
         }?.joinToString(", ") ?: ""
 
-    /** Returns the appropriate name depending on the showLongNames preference. */
-    fun displaySubject(long: Boolean) = if (long) subjectLongName else subjectName
-    fun displayTeachers(long: Boolean) = if (long) teacherLongNames else teacherNames
-    fun displayRooms(long: Boolean) = if (long) roomLongNames else roomNames
+    /** Returns the appropriate name depending on the showLongNames preference. When [long] is
+     *  true and [withShortInParens] is also true, appends the abbreviation, e.g. "Mathematik (M)". */
+    fun displaySubject(long: Boolean, withShortInParens: Boolean = false): String {
+        val short = subjectName
+        val longN = subjectLongName
+        if (!long) return short
+        return if (withShortInParens && short.isNotBlank() && short != "–" && short != longN) "$longN ($short)" else longN
+    }
+
+    fun displayTeachers(long: Boolean, withShortInParens: Boolean = false): String {
+        val items = te ?: return ""
+        return items.mapNotNull { t ->
+            val short = t.name?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+            val longN = t.longname?.takeIf(String::isNotBlank) ?: short
+            if (!long) short
+            else if (withShortInParens && short != longN) "$longN ($short)" else longN
+        }.joinToString(", ")
+    }
+
+    fun displayRooms(long: Boolean, withShortInParens: Boolean = false): String {
+        val items = ro ?: return ""
+        return items.mapNotNull { r ->
+            val short = r.name?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+            val longN = r.longname?.takeIf(String::isNotBlank) ?: short
+            if (!long) short
+            else if (withShortInParens && short != longN) "$longN ($short)" else longN
+        }.joinToString(", ")
+    }
     val startTimeFormatted: String get() = formatTime(startTime)
     val endTimeFormatted: String get() = formatTime(endTime)
     private fun formatTime(t: Int): String {

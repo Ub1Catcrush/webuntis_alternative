@@ -386,6 +386,17 @@
                         android:textAppearance="?attr/textAppearanceBodyMedium" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switch_short_subjects_in_parens"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="16dp"
+                        android:minHeight="40dp"
+                        android:paddingVertical="4dp"
+                        android:text="@string/settings_show_short_in_parens"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/switch_long_teachers"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -395,6 +406,17 @@
                         android:textAppearance="?attr/textAppearanceBodyMedium" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switch_short_teachers_in_parens"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="16dp"
+                        android:minHeight="40dp"
+                        android:paddingVertical="4dp"
+                        android:text="@string/settings_show_short_in_parens"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/switch_long_rooms"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -402,6 +424,17 @@
                         android:paddingVertical="4dp"
                         android:text="@string/settings_show_long_rooms"
                         android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switch_short_rooms_in_parens"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="16dp"
+                        android:minHeight="40dp"
+                        android:paddingVertical="4dp"
+                        android:text="@string/settings_show_short_in_parens"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>

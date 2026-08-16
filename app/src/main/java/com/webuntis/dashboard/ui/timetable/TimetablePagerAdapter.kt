@@ -65,6 +65,9 @@ class DayFragment : Fragment() {
         adapter.showLongSubjects = viewModel.showLongSubjects
         adapter.showLongTeachers = viewModel.showLongTeachers
         adapter.showLongRooms    = viewModel.showLongRooms
+        adapter.showShortSubjectInParens = viewModel.showShortSubjectInParens
+        adapter.showShortTeacherInParens = viewModel.showShortTeacherInParens
+        adapter.showShortRoomInParens    = viewModel.showShortRoomInParens
         
         adapter.onLessonClick = { lesson -> showLessonDetail(lesson) }
 
@@ -213,11 +216,11 @@ class DayFragment : Fragment() {
         val dialogBinding = DialogLessonDetailBinding.inflate(LayoutInflater.from(context))
         
         with(dialogBinding) {
-            textSubject.text = lesson.displaySubject(viewModel.showLongSubjects)
+            textSubject.text = lesson.displaySubject(viewModel.showLongSubjects, viewModel.showShortSubjectInParens)
             textTime.text = getString(R.string.timetable_time_range, 
                 lesson.startTimeFormatted, lesson.endTimeFormatted)
 
-            val activeTeachers = lesson.displayTeachers(viewModel.showLongTeachers)
+            val activeTeachers = lesson.displayTeachers(viewModel.showLongTeachers, viewModel.showShortTeacherInParens)
             val removedNames   = lesson.removedTeachers
                 ?: lesson.te?.mapNotNull { it.orgname }?.filter { it.isNotEmpty() }
                     ?.takeIf { lesson.isSubstitution }
@@ -231,7 +234,7 @@ class DayFragment : Fragment() {
                 textTeacherOriginal.isVisible = false
             }
 
-            textRoom.text = lesson.displayRooms(viewModel.showLongRooms).ifEmpty { "–" }
+            textRoom.text = lesson.displayRooms(viewModel.showLongRooms, viewModel.showShortRoomInParens).ifEmpty { "–" }
             
             val info = listOfNotNull(
                 lesson.replacedSubject?.let { getString(R.string.timetable_replaced_subject, it) },

@@ -113,6 +113,8 @@ class TimetableFragment : Fragment() {
                                 if (isCompact) {
                                     compactAdapter.showLongSubjects = viewModel.showLongSubjects
                                     compactAdapter.showLongRooms = viewModel.showLongRooms
+                                    compactAdapter.showShortSubjectInParens = viewModel.showShortSubjectInParens
+                                    compactAdapter.showShortRoomInParens = viewModel.showShortRoomInParens
                                     compactAdapter.submitList(days)
                                 } else {
                                     setupViewPager(days)
@@ -231,14 +233,14 @@ class TimetableFragment : Fragment() {
         val dialogBinding = DialogLessonDetailBinding.inflate(LayoutInflater.from(context))
         
         with(dialogBinding) {
-            textSubject.text = lesson.displaySubject(viewModel.showLongSubjects)
+            textSubject.text = lesson.displaySubject(viewModel.showLongSubjects, viewModel.showShortSubjectInParens)
             
             // Time range from strings.xml
             textTime.text = getString(R.string.timetable_time_range, 
                 lesson.startTimeFormatted, lesson.endTimeFormatted)
 
             // Teacher logic with strikethrough for removed ones
-            val activeTeachers = lesson.displayTeachers(viewModel.showLongTeachers)
+            val activeTeachers = lesson.displayTeachers(viewModel.showLongTeachers, viewModel.showShortTeacherInParens)
             val removedNames   = lesson.removedTeachers
                 ?: lesson.te?.mapNotNull { it.orgname }?.filter { it.isNotEmpty() }
                     ?.takeIf { lesson.isSubstitution }
@@ -252,7 +254,7 @@ class TimetableFragment : Fragment() {
                 textTeacherOriginal.isVisible = false
             }
 
-            textRoom.text = lesson.displayRooms(viewModel.showLongRooms).ifEmpty { "–" }
+            textRoom.text = lesson.displayRooms(viewModel.showLongRooms, viewModel.showShortRoomInParens).ifEmpty { "–" }
             
             val info = listOfNotNull(
                 lesson.replacedSubject?.let { getString(R.string.timetable_replaced_subject, it) },

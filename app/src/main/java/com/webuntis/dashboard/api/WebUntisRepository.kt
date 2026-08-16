@@ -198,7 +198,12 @@ class WebUntisRepository @Inject constructor(
     private var cacheAbsencesMeta: CacheEntry<AbsencesMetaData>?                        = null
     private var cacheTimegrid:     CacheEntry<List<com.webuntis.dashboard.model.TimegridRow>>? = null
 
-    fun clearAllCaches() {
+    /**
+     * Full reset: clears data caches AND wipes the session/credentials/settings entirely.
+     * DANGER: this logs the user out. Only use for an actual "delete everything" action —
+     * never for reacting to a harmless display setting change (use [clearDataCachesOnly] there).
+     */
+    fun resetEverythingIncludingSession() {
         clearAllDataCaches()
         sessionManager.clearAll()
     }
@@ -390,6 +395,11 @@ class WebUntisRepository @Inject constructor(
     suspend fun login(
         server: String, schoolname: String, username: String, password: String
     ): Result<SessionData> = loginMutex.withLock {
+        // Defensively drop any stale in-memory bearer token from a previous session before
+        // authenticating — this repository instance is a Singleton, so a token left over from
+        // an earlier (now invalid) session could otherwise get reused and break every v1 call
+        // (empty timetable, 500s, 404s) even though the login itself succeeds.
+        bearerToken = null
         val rpc = loginViaJsonRpc(server, schoolname, username, password)
         val result = if (rpc.isSuccess) rpc else {
             kotlinx.coroutines.yield()
@@ -398,7 +408,10 @@ class WebUntisRepository @Inject constructor(
         if (result.isSuccess) {
             // Persist credentials so auto-login works after app restart
             sessionManager.storedCredentials = Pair(username, password)
-            fetchBearerToken()
+            val tokenResult = fetchBearerToken()
+            if (tokenResult.isFailure) {
+                android.util.Log.w("WebUntis", "Bearer token fetch failed right after login: ${tokenResult.exceptionOrNull()?.message}")
+            }
             val session = result.getOrNull()
             // Resolve classId now — awaited — so the class-timetable toggle is already correct
             // by the time the UI renders (e.g. right after LoginViewModel sets isLoggedIn=true),

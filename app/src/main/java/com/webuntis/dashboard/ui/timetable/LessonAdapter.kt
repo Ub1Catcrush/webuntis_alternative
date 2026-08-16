@@ -25,6 +25,12 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
         set(value) { field = value; notifyDataSetChanged() }
     var showLongRooms: Boolean = false
         set(value) { field = value; notifyDataSetChanged() }
+    var showShortSubjectInParens: Boolean = false
+        set(value) { field = value; notifyDataSetChanged() }
+    var showShortTeacherInParens: Boolean = false
+        set(value) { field = value; notifyDataSetChanged() }
+    var showShortRoomInParens: Boolean = false
+        set(value) { field = value; notifyDataSetChanged() }
 
     var isPast: Boolean = false
         set(value) { field = value; notifyDataSetChanged() }
@@ -40,12 +46,21 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
     }
 
     override fun onBindViewHolder(holder: GroupViewHolder, position: Int) {
-        holder.bind(getItem(position), showLongSubjects, showLongTeachers, showLongRooms, onLessonClick, isPast, currentTimeMin)
+        holder.bind(
+            getItem(position),
+            showLongSubjects, showLongTeachers, showLongRooms,
+            showShortSubjectInParens, showShortTeacherInParens, showShortRoomInParens,
+            onLessonClick, isPast, currentTimeMin
+        )
     }
 
     class GroupViewHolder(private val b: ItemLessonGroupBinding) : RecyclerView.ViewHolder(b.root) {
-        
-        fun bind(group: LessonGroup, showLongSubjects: Boolean, showLongTeachers: Boolean, showLongRooms: Boolean, onClick: ((Lesson) -> Unit)?, isPast: Boolean = false, currentTimeMin: Int = -1) {
+
+        fun bind(
+            group: LessonGroup, showLongSubjects: Boolean, showLongTeachers: Boolean, showLongRooms: Boolean,
+            showShortSubjectInParens: Boolean, showShortTeacherInParens: Boolean, showShortRoomInParens: Boolean,
+            onClick: ((Lesson) -> Unit)?, isPast: Boolean = false, currentTimeMin: Int = -1
+        ) {
             val ctx = b.root.context
             val first = group.lessons.firstOrNull() ?: return
             // Per-group past detection for today (currentTimeMin >= 0)
@@ -69,7 +84,11 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
             group.lessons.forEachIndexed { index, lesson ->
                 val lessonBinding = ItemLessonBinding.inflate(LayoutInflater.from(ctx), b.lessonsContainer, false)
                 lessonBinding.root.minimumHeight = minHeightPx
-                bindLesson(lessonBinding, lesson, showLongSubjects, showLongTeachers, showLongRooms, onClick, isGroupPast)
+                bindLesson(
+                    lessonBinding, lesson, showLongSubjects, showLongTeachers, showLongRooms,
+                    showShortSubjectInParens, showShortTeacherInParens, showShortRoomInParens,
+                    onClick, isGroupPast
+                )
                 
                 val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
                 if (index > 0) lp.marginStart = (4 * ctx.resources.displayMetrics.density).toInt()
@@ -78,14 +97,18 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
             }
         }
 
-        private fun bindLesson(b: ItemLessonBinding, lesson: Lesson, showLongSubjects: Boolean, showLongTeachers: Boolean, showLongRooms: Boolean, onClick: ((Lesson) -> Unit)?, isPast: Boolean = false) {
+        private fun bindLesson(
+            b: ItemLessonBinding, lesson: Lesson, showLongSubjects: Boolean, showLongTeachers: Boolean, showLongRooms: Boolean,
+            showShortSubjectInParens: Boolean, showShortTeacherInParens: Boolean, showShortRoomInParens: Boolean,
+            onClick: ((Lesson) -> Unit)?, isPast: Boolean = false
+        ) {
             val ctx = b.root.context
 
-            b.textSubject.text = lesson.displaySubject(showLongSubjects)
+            b.textSubject.text = lesson.displaySubject(showLongSubjects, showShortSubjectInParens)
             b.root.setOnClickListener { onClick?.invoke(lesson) }
 
             // Teacher Row
-            val activeTeachers = lesson.displayTeachers(showLongTeachers)
+            val activeTeachers = lesson.displayTeachers(showLongTeachers, showShortTeacherInParens)
             val removedNames   = lesson.removedTeachers
                 ?: lesson.te?.mapNotNull { it.orgname }?.filter { it.isNotEmpty() }
                     ?.takeIf { lesson.isSubstitution }
@@ -120,8 +143,9 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
             }
 
             // Room
-            b.textRoom.text = lesson.displayRooms(showLongRooms)
-            b.textRoom.isVisible = lesson.displayRooms(showLongRooms).isNotEmpty()
+            val roomText = lesson.displayRooms(showLongRooms, showShortRoomInParens)
+            b.textRoom.text = roomText
+            b.textRoom.isVisible = roomText.isNotEmpty()
 
             // Notes (pinned)
             val notes = lesson.notesForAll?.takeIf { it.isNotBlank() }

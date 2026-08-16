@@ -193,6 +193,7 @@
     <string name="settings_show_long_subjects">Fachname ausschreiben (z.B. „Mathematik\")</string>
     <string name="settings_show_long_teachers">Lehrername ausschreiben (z.B. „Mustermann\")</string>
     <string name="settings_show_long_rooms">Raumname ausschreiben (z.B. „Klassenraum 7c\")</string>
+    <string name="settings_show_short_in_parens">Kürzel in Klammern anzeigen (z.B. „Mathematik (M)\")</string>
     <string name="settings_use_compact_week_view">Wochenansicht kompakt nebeneinander</string>
 
     <string name="label_homework_attachment_download">Anhang herunterladen</string>

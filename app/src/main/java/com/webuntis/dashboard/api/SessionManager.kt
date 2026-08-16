@@ -247,6 +247,20 @@ class SessionManager @Inject constructor(
         get() = plainPrefs.getBoolean(KEY_SHOW_LONG_ROOMS, false)
         set(value) { plainPrefs.edit().putBoolean(KEY_SHOW_LONG_ROOMS, value).apply() }
 
+    // Only relevant when the matching showLong* above is enabled — appends the abbreviation
+    // in parentheses after the spelled-out name, e.g. "Mathematik (M)".
+    var showShortSubjectInParens: Boolean
+        get() = plainPrefs.getBoolean(KEY_SHOW_SHORT_SUBJECT_PARENS, false)
+        set(value) { plainPrefs.edit().putBoolean(KEY_SHOW_SHORT_SUBJECT_PARENS, value).apply() }
+
+    var showShortTeacherInParens: Boolean
+        get() = plainPrefs.getBoolean(KEY_SHOW_SHORT_TEACHER_PARENS, false)
+        set(value) { plainPrefs.edit().putBoolean(KEY_SHOW_SHORT_TEACHER_PARENS, value).apply() }
+
+    var showShortRoomInParens: Boolean
+        get() = plainPrefs.getBoolean(KEY_SHOW_SHORT_ROOM_PARENS, false)
+        set(value) { plainPrefs.edit().putBoolean(KEY_SHOW_SHORT_ROOM_PARENS, value).apply() }
+
     var useCompactWeekView: Boolean
         get() = plainPrefs.getBoolean(KEY_USE_COMPACT_WEEK_VIEW, false)
         set(value) { plainPrefs.edit().putBoolean(KEY_USE_COMPACT_WEEK_VIEW, value).apply() }
@@ -319,6 +333,9 @@ class SessionManager @Inject constructor(
             addProperty("showLongSubjects",   showLongSubjects)
             addProperty("showLongTeachers",   showLongTeachers)
             addProperty("showLongRooms",      showLongRooms)
+            addProperty("showShortSubjectInParens", showShortSubjectInParens)
+            addProperty("showShortTeacherInParens", showShortTeacherInParens)
+            addProperty("showShortRoomInParens",    showShortRoomInParens)
             addProperty("useCompactWeekView", useCompactWeekView)
             addProperty("cacheTtlMinutes",    cacheTtlMinutes)
             addProperty("timetableViewMode",  timetableViewMode.name)
@@ -375,6 +392,9 @@ class SessionManager @Inject constructor(
             obj.get("showLongSubjects")?.asBoolean?.let { showLongSubjects  = it }
             obj.get("showLongTeachers")?.asBoolean?.let { showLongTeachers  = it }
             obj.get("showLongRooms")?.asBoolean?.let    { showLongRooms     = it }
+            obj.get("showShortSubjectInParens")?.asBoolean?.let { showShortSubjectInParens = it }
+            obj.get("showShortTeacherInParens")?.asBoolean?.let { showShortTeacherInParens = it }
+            obj.get("showShortRoomInParens")?.asBoolean?.let    { showShortRoomInParens    = it }
             obj.get("useCompactWeekView")?.asBoolean?.let { useCompactWeekView = it }
             obj.get("cacheTtlMinutes")?.asInt?.let    { cacheTtlMinutes    = it }
             obj.get("timetableViewMode")?.asString?.let { raw ->
@@ -417,6 +437,9 @@ class SessionManager @Inject constructor(
         private const val KEY_SHOW_LONG_SUBJECTS     = "show_long_subjects"
         private const val KEY_SHOW_LONG_TEACHERS     = "show_long_teachers"
         private const val KEY_SHOW_LONG_ROOMS        = "show_long_rooms"
+        private const val KEY_SHOW_SHORT_SUBJECT_PARENS = "show_short_subject_parens"
+        private const val KEY_SHOW_SHORT_TEACHER_PARENS = "show_short_teacher_parens"
+        private const val KEY_SHOW_SHORT_ROOM_PARENS    = "show_short_room_parens"
         private const val KEY_USE_COMPACT_WEEK_VIEW  = "use_compact_week_view"
         private const val KEY_TIMETABLE_VIEW_MODE    = "timetable_view_mode"
         private const val KEY_COMBINED_OVERLAY_SUBJECTS = "combined_overlay_subjects"

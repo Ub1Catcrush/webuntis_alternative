@@ -193,6 +193,7 @@
     <string name="settings_show_long_subjects">Spell out subject name (e.g. "Mathematics")</string>
     <string name="settings_show_long_teachers">Spell out teacher name (e.g. "Smith")</string>
     <string name="settings_show_long_rooms">Spell out room name (e.g. "Classroom 7c")</string>
+    <string name="settings_show_short_in_parens">Show abbreviation in parentheses (e.g. "Mathematics (M)")</string>
     <string name="settings_use_compact_week_view">Compact week view side by side</string>
 
     <string name="label_homework_attachment_download">Download attachment</string>

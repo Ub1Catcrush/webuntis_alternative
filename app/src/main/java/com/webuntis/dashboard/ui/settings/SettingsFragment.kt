@@ -126,17 +126,41 @@ class SettingsFragment : Fragment() {
         binding.switchLongSubjects.isChecked = loginViewModel.sessionManager.showLongSubjects
         binding.switchLongSubjects.setOnCheckedChangeListener { _, checked ->
             loginViewModel.sessionManager.showLongSubjects = checked
-            loginViewModel.clearAllCaches(); loginViewModel.refreshTimetable()
+            binding.switchShortSubjectsInParens.isEnabled = checked
+            loginViewModel.clearDataCaches(); loginViewModel.refreshTimetable()
         }
         binding.switchLongTeachers.isChecked = loginViewModel.sessionManager.showLongTeachers
         binding.switchLongTeachers.setOnCheckedChangeListener { _, checked ->
             loginViewModel.sessionManager.showLongTeachers = checked
-            loginViewModel.clearAllCaches(); loginViewModel.refreshTimetable()
+            binding.switchShortTeachersInParens.isEnabled = checked
+            loginViewModel.clearDataCaches(); loginViewModel.refreshTimetable()
         }
         binding.switchLongRooms.isChecked = loginViewModel.sessionManager.showLongRooms
         binding.switchLongRooms.setOnCheckedChangeListener { _, checked ->
             loginViewModel.sessionManager.showLongRooms = checked
-            loginViewModel.clearAllCaches(); loginViewModel.refreshTimetable()
+            binding.switchShortRoomsInParens.isEnabled = checked
+            loginViewModel.clearDataCaches(); loginViewModel.refreshTimetable()
+        }
+
+        // ── "Show abbreviation in parentheses" — only meaningful while the matching
+        //    long-name switch above is on, so each starts disabled unless its parent is checked.
+        binding.switchShortSubjectsInParens.isChecked = loginViewModel.sessionManager.showShortSubjectInParens
+        binding.switchShortSubjectsInParens.isEnabled = loginViewModel.sessionManager.showLongSubjects
+        binding.switchShortSubjectsInParens.setOnCheckedChangeListener { _, checked ->
+            loginViewModel.sessionManager.showShortSubjectInParens = checked
+            loginViewModel.clearDataCaches(); loginViewModel.refreshTimetable()
+        }
+        binding.switchShortTeachersInParens.isChecked = loginViewModel.sessionManager.showShortTeacherInParens
+        binding.switchShortTeachersInParens.isEnabled = loginViewModel.sessionManager.showLongTeachers
+        binding.switchShortTeachersInParens.setOnCheckedChangeListener { _, checked ->
+            loginViewModel.sessionManager.showShortTeacherInParens = checked
+            loginViewModel.clearDataCaches(); loginViewModel.refreshTimetable()
+        }
+        binding.switchShortRoomsInParens.isChecked = loginViewModel.sessionManager.showShortRoomInParens
+        binding.switchShortRoomsInParens.isEnabled = loginViewModel.sessionManager.showLongRooms
+        binding.switchShortRoomsInParens.setOnCheckedChangeListener { _, checked ->
+            loginViewModel.sessionManager.showShortRoomInParens = checked
+            loginViewModel.clearDataCaches(); loginViewModel.refreshTimetable()
         }
 
         // ── Cache TTL slider ──────────────────────────────────────────────────
@@ -159,7 +183,7 @@ class SettingsFragment : Fragment() {
                 override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
                     val ttl = sb?.progress ?: SessionManager.DEFAULT_CACHE_TTL
                     loginViewModel.sessionManager.cacheTtlMinutes = ttl
-                    loginViewModel.clearAllCaches()
+                    loginViewModel.clearDataCaches()
                 }
             }
         )

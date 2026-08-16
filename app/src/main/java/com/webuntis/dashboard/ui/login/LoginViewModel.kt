@@ -91,9 +91,16 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch { repository.getTwoSchoolDays(forceRefresh = true) }
     }
 
-    /** Clears all in-memory caches (e.g. after cache-TTL settings change). */
-    fun clearAllCaches() {
-        repository.clearAllCaches()
+    /**
+     * Clears only in-memory DATA caches (timetable, absences, …) after a display setting
+     * changed (e.g. long names, cache TTL) — does NOT touch the session or credentials.
+     * IMPORTANT: do not delegate this to repository.clearAllCaches() — despite the name, that
+     * method also wipes the session/credentials/settings via sessionManager.clearAll() and is
+     * only meant for an actual logout. Using it here previously logged users out on every
+     * harmless display-setting change.
+     */
+    fun clearDataCaches() {
+        repository.clearDataCachesOnly()
     }
 
     fun primeSecondAccountState() {

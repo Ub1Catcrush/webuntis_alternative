@@ -73,6 +73,9 @@ class TimetableViewModel @Inject constructor(
     val showLongSubjects: Boolean get() = repository.sessionManager.showLongSubjects
     val showLongTeachers: Boolean get() = repository.sessionManager.showLongTeachers
     val showLongRooms:    Boolean get() = repository.sessionManager.showLongRooms
+    val showShortSubjectInParens: Boolean get() = repository.sessionManager.showShortSubjectInParens
+    val showShortTeacherInParens: Boolean get() = repository.sessionManager.showShortTeacherInParens
+    val showShortRoomInParens:    Boolean get() = repository.sessionManager.showShortRoomInParens
     val useCompactWeekView: Boolean get() = repository.sessionManager.useCompactWeekView
 
     // ── Personal / Class timetable switch ───────────────────────────────────────
