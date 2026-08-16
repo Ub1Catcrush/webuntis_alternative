@@ -110,9 +110,17 @@ class WebUntisRepository @Inject constructor(
             // by the time the UI renders, instead of only appearing after a later reload.
             val resolvedSession = session?.let { ensureClassIdResolved(it) } ?: session
 
-            // Auto-recover lost studentId (important for parent accounts)
-            if (resolvedSession != null && sessionManager.studentId == 0) {
-                val id = if (resolvedSession.classId > 0) resolvedSession.classId else resolvedSession.personId
+            // Auto-recover lost studentId for non-parent accounts only: for a student's own
+            // login, personId already IS their own timetable/absences/classbook element id.
+            // NEVER fall back to classId here — it's the class's element id (e.g. "8c"'s id),
+            // not the student's, and silently locking studentId to it broke personal/combined
+            // timetable, absences, classbook and events (HTTP 500/404), while class mode kept
+            // working since it's the only feature that doesn't depend on studentId. Parent
+            // accounts (personType=12) must go through primeCachedElementIdIfNeeded()'s proper
+            // appData/homework resolution instead — their own personId is the guardian's, not
+            // the child's.
+            if (resolvedSession != null && sessionManager.studentId == 0 && resolvedSession.personType != 12) {
+                val id = resolvedSession.personId
                 if (id > 0) sessionManager.studentId = id
             }
 
@@ -417,8 +425,10 @@ class WebUntisRepository @Inject constructor(
             // by the time the UI renders (e.g. right after LoginViewModel sets isLoggedIn=true),
             // instead of only appearing later once some other request happens to discover it.
             val resolvedSession = session?.let { ensureClassIdResolved(it) } ?: session
-            if (resolvedSession != null && sessionManager.studentId == 0) {
-                val id = if (resolvedSession.classId > 0) resolvedSession.classId else resolvedSession.personId
+            // See reAuthSilently() for why this must never fall back to classId, and must be
+            // restricted to non-parent accounts.
+            if (resolvedSession != null && sessionManager.studentId == 0 && resolvedSession.personType != 12) {
+                val id = resolvedSession.personId
                 if (id > 0) sessionManager.studentId = id
             }
             return@withLock resolvedSession?.let { Result.success(it) } ?: result
@@ -428,7 +438,24 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun primeCachedElementIdIfNeeded() {
         val session = sessionManager.session ?: return
+        // Self-heal installs affected by a previous bug where studentId was wrongly set to
+        // classId (the *class's* element id, e.g. "8c" → 688) instead of the student's own
+        // element id. That corrupted value is indistinguishable from a valid one by the
+        // `studentId != 0` check alone, so it would otherwise be stuck forever, breaking
+        // personal/combined timetable, absences, classbook and events (HTTP 500/404) while
+        // class mode kept working (it's the only feature that doesn't depend on studentId).
+        if (session.classId > 0 && sessionManager.studentId == session.classId) {
+            android.util.Log.w("WebUntis", "Detected corrupted studentId==classId (${session.classId}), resetting for re-resolution")
+            sessionManager.studentId = 0
+        }
         if (sessionManager.studentId != 0) return
+        // For a student's own account, personId already IS their own element id — no network
+        // round-trip needed. Only parent accounts (personType=12) need the appData/homework
+        // resolution below, since their personId is the guardian's, not the child's.
+        if (session.personType != 12) {
+            if (session.personId > 0) sessionManager.studentId = session.personId
+            return
+        }
         // For parent accounts (personType=12) the timetable needs the child's element ID.
         // Try the /app/data endpoint first — it returns the selected student's element ID.
         if (session.personType == 12) {
