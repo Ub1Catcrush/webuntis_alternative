@@ -267,6 +267,38 @@ class WebUntisRepository @Inject constructor(
     }
 
     fun isHomeworkCacheFresh():  Boolean { val e = cacheHomework  ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
+
+    /**
+     * Builds a short↔long lookup for subjects and teachers from whatever timetable data is
+     * currently cached (falls back to a small fresh fetch if nothing is cached yet). Homework,
+     * events and messages each carry only a short code or only a long name from their own
+     * endpoints — this lets the UI show both, e.g. "Mathematik (M)" / "Müller (Mü)".
+     */
+    suspend fun getNameCatalog(): NameCatalog {
+        val cachedLessons = cacheTimetable?.data?.getOrNull()?.flatMap { it.lessons }
+        val lessons = if (!cachedLessons.isNullOrEmpty()) cachedLessons else {
+            val start = LocalDate.now().minusDays(7).toUntis()
+            val end   = LocalDate.now().plusDays(14).toUntis()
+            fetchLessonsInRange(start, end).getOrNull() ?: emptyList()
+        }
+        val subjectMap = linkedMapOf<String, String>()
+        val teacherMap = linkedMapOf<String, String>()
+        lessons.forEach { l ->
+            val subjShort = l.subjectName.takeIf { it.isNotBlank() && it != "–" }
+            val subjLong  = l.subjectLongName.takeIf { it.isNotBlank() && it != "–" }
+            if (subjShort != null && subjLong != null && subjectMap[subjShort].isNullOrBlank()) {
+                subjectMap[subjShort] = subjLong
+            }
+            l.te?.forEach { t ->
+                val short = t.name?.takeIf { it.isNotBlank() }
+                val long  = t.longname?.takeIf { it.isNotBlank() }
+                if (short != null && long != null && teacherMap[short].isNullOrBlank()) {
+                    teacherMap[short] = long
+                }
+            }
+        }
+        return NameCatalog(subjectMap, teacherMap)
+    }
     fun isEventsCacheFresh():    Boolean { val e = cacheEvents    ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
     fun isClassbookCacheFresh(): Boolean { val e = cacheClassbook ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
     fun isAbsencesCacheFresh():  Boolean { val e = cacheAbsences  ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
@@ -1139,6 +1171,7 @@ class WebUntisRepository @Inject constructor(
                         events.add(SchoolEvent(
                             id = entry.ids?.firstOrNull() ?: 0,
                             subject = subject?.shortName,
+                            subjectLongName = subject?.longName,
                             title = entry.lessonInfo?.takeIf { it.isNotBlank() }
                                 ?: "${subject?.longName ?: subject?.shortName ?: "Arbeit"}",
                             text = entry.lessonInfo, remark = entry.substitutionText?.takeIf { it.isNotBlank() },

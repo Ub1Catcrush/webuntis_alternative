@@ -165,6 +165,11 @@ class MessagesFragment : Fragment() {
             repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.expanded.collect { adapter.notifyDataSetChanged() } }
         }
 
+        // Short↔long name lookup for sender/recipient display ("Langform (Kürzel)")
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.nameCatalog.collect { adapter.nameCatalog = it } }
+        }
+
         // Downloads
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -518,6 +523,10 @@ class MessageAdapter(
     private val expandedProvider: () -> Map<Int, Message>
 ) : ListAdapter<Message, MessageAdapter.VH>(Diff) {
 
+    /** Short↔long name lookup — enriches sender/recipient names to "Langform (Kürzel)" where known. */
+    var nameCatalog: com.webuntis.dashboard.model.NameCatalog = com.webuntis.dashboard.model.NameCatalog()
+        set(value) { field = value; notifyDataSetChanged() }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
         VH(ItemMessageBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
@@ -531,10 +540,11 @@ class MessageAdapter(
             val ctx = b.root.context
             b.textSender.text = when {
                 msg.isSent || msg.isDraft -> {
-                    val r = msg.recipientPersons?.mapNotNull { it.displayName }?.joinToString(", ")
-                    if (!r.isNullOrBlank()) "An: $r" else msg.sender?.displayName ?: "–"
+                    val r = msg.recipientPersons?.mapNotNull { it.displayName }
+                        ?.joinToString(", ") { nameCatalog.teacherDisplay(it) }
+                    if (!r.isNullOrBlank()) "An: $r" else nameCatalog.teacherDisplay(msg.sender?.displayName).ifBlank { "–" }
                 }
-                else -> msg.sender?.displayName ?: "–"
+                else -> nameCatalog.teacherDisplay(msg.sender?.displayName).ifBlank { "–" }
             }
             b.textSubject.text = msg.subject ?: ctx.getString(R.string.messages_no_subject)
             b.textPreview.text = msg.content?.takeIf { it.isNotBlank() } ?: msg.contentPreview ?: ""
@@ -649,7 +659,7 @@ class MessageAdapter(
 
             val header = TextView(ctx).apply {
                 text = buildString {
-                    append(reply.sender?.displayName ?: "–")
+                    append(nameCatalog.teacherDisplay(reply.sender?.displayName).ifBlank { "–" })
                     reply.sentDateFormatted?.let { append("  ·  $it") }
                 }
                 setTypeface(null, android.graphics.Typeface.BOLD)

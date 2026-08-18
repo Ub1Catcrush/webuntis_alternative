@@ -58,6 +58,7 @@ class HomeworkViewModel @Inject constructor(
             if (forceRefresh || _state.value !is UiState.Success) {
                 _state.value = UiState.Loading
             }
+            val nameCatalog = repository.getNameCatalog()
             repository.getHomework(forceRefresh).fold(
                 onSuccess = { data: Pair<List<Homework>, Map<String, String>> ->
                     val homeworks = data.first
@@ -77,9 +78,10 @@ class HomeworkViewModel @Inject constructor(
                             if (_showPast.value) -(hw.dueDate ?: 0) else (hw.dueDate ?: Int.MAX_VALUE)
                         }
                         .map { hw ->
-                            val subject = subjectMap[hw.lessonId?.toString()]
+                            val shortSubject = subjectMap[hw.lessonId?.toString()]
                                 ?: hw.subject
                                 ?: "Aufgabe"
+                            val subject = nameCatalog.subjectDisplay(shortSubject)
                             HomeworkUiItem(hw, subject, hw.id in doneIds)
                         }
                     _state.value = UiState.Success(items)

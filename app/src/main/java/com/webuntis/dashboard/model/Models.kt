@@ -398,10 +398,19 @@ data class SchoolEvent(
     val date: Int?, val startTime: Int?, val endTime: Int?,
     @SerializedName("eventType") val eventType: String?,
     @SerializedName("examType")  val examType: String?,
-    val isExam: Boolean = false
+    val isExam: Boolean = false,
+    // Long form of [subject], when known — used to show "Fach: Mathematik (M)" alongside the title.
+    val subjectLongName: String? = null
 ) {
     val displayTitle: String get() = title ?: subject ?: examType ?: "–"
     val displayText: String  get() = text ?: remark ?: ""
+    /** "Mathematik (M)" when both forms are known and differ, else whichever form is available. */
+    val subjectDisplay: String get() = when {
+        !subjectLongName.isNullOrBlank() && !subject.isNullOrBlank() && subjectLongName != subject ->
+            "$subjectLongName ($subject)"
+        !subjectLongName.isNullOrBlank() -> subjectLongName
+        else -> subject ?: ""
+    }
     val dateLabel: String get() = date?.let { d ->
         val s = d.toString()
         if (s.length == 8) "${s.substring(6)}.${s.substring(4,6)}.${s.substring(0,4)}" else s
@@ -447,6 +456,34 @@ data class TimetableFilterElement(
     val longName: String?,
     val displayName: String?
 )
+
+// Short/long name lookup built from cached timetable data, used to enrich places that only get
+// a short subject/teacher code from their own endpoint (homework, events, messages) with the
+// long form as well — matching the "Langform (Kürzel)" style used elsewhere in the app.
+data class NameCatalog(
+    val subjectLongByShort: Map<String, String> = emptyMap(),
+    val teacherLongByShort: Map<String, String> = emptyMap()
+) {
+    /** "Mathematik (M)" if [raw] (assumed short) is a known subject with a different long name, else [raw] as-is. */
+    fun subjectDisplay(raw: String?): String {
+        val short = raw?.trim().orEmpty()
+        if (short.isBlank()) return ""
+        val long = subjectLongByShort[short]
+        return if (long != null && long != short) "$long ($short)" else short
+    }
+
+    /** Same idea for a teacher name — tries [raw] as a short code first, then as a long name
+     *  (some endpoints already return the long form), falling back to [raw] unchanged. */
+    fun teacherDisplay(raw: String?): String {
+        val name = raw?.trim().orEmpty()
+        if (name.isBlank()) return ""
+        teacherLongByShort[name]?.let { long -> if (long != name) return "$long ($name)" }
+        teacherLongByShort.entries.firstOrNull { it.value == name }?.let { (short, _) ->
+            if (short != name) return "$name ($short)"
+        }
+        return name
+    }
+}
 
 data class SessionData(
     val server: String, val schoolname: String, val username: String,

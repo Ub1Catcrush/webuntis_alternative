@@ -97,6 +97,7 @@
     <string name="event_type_exam">Test / Exam</string>
     <string name="event_type_holiday">Holiday</string>
     <string name="event_type_event">Event</string>
+    <string name="event_subject_label">Subject: %s</string>
     <string name="error_events_prefix">Events: %s</string>
 
     <!-- Classbook -->

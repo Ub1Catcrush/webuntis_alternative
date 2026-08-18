@@ -97,6 +97,7 @@
     <string name="event_type_exam">Test / Schularbeit</string>
     <string name="event_type_holiday">Ferien</string>
     <string name="event_type_event">Veranstaltung</string>
+    <string name="event_subject_label">Fach: %s</string>
     <string name="error_events_prefix">Termine: %s</string>
 
     <!-- Classbook -->

@@ -23,6 +23,15 @@ class EventsAdapter : ListAdapter<SchoolEvent, EventsAdapter.VH>(Diff) {
             b.textTitle.text = event.displayTitle
             b.textDate.text = event.dateLabel
             b.textTime.text = event.timeLabel.ifBlank { "" }
+            val subjectText = event.subjectDisplay
+            // Avoid redundant duplication when the title already IS the subject (e.g. no
+            // separate lessonInfo was set, so displayTitle already fell back to the subject).
+            if (subjectText.isNotBlank() && !event.title.isNullOrBlank()) {
+                b.textSubject.text = b.root.context.getString(R.string.event_subject_label, subjectText)
+                b.textSubject.visibility = android.view.View.VISIBLE
+            } else {
+                b.textSubject.visibility = android.view.View.GONE
+            }
             if (event.displayText.isNotBlank()) {
                 b.textDescription.text = event.displayText
                 b.textDescription.visibility = android.view.View.VISIBLE

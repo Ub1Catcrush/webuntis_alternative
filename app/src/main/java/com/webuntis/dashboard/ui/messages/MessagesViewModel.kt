@@ -48,6 +48,10 @@ class MessagesViewModel @Inject constructor(
     private val _teachers = MutableStateFlow<List<RecipientPerson>>(emptyList())
     val teachers: StateFlow<List<RecipientPerson>> = _teachers
 
+    // ── Short↔long name lookup, for showing sender/recipient as "Langform (Kürzel)" ────────────
+    private val _nameCatalog = MutableStateFlow(com.webuntis.dashboard.model.NameCatalog())
+    val nameCatalog: StateFlow<com.webuntis.dashboard.model.NameCatalog> = _nameCatalog
+
     // ── Compose ────────────────────────────────────────────────────────────────
     private val _composeState = MutableStateFlow<ComposeState>(ComposeState.Closed)
     val composeState: StateFlow<ComposeState> = _composeState
@@ -90,6 +94,11 @@ class MessagesViewModel @Inject constructor(
     init {
         loadInbox()
         refreshUnreadCount()
+        loadNameCatalog()
+    }
+
+    private fun loadNameCatalog() {
+        viewModelScope.launch { _nameCatalog.value = repository.getNameCatalog() }
     }
 
     // ── Tab switching ──────────────────────────────────────────────────────────
