@@ -101,12 +101,18 @@ class TimeIndicatorView @JvmOverloads constructor(
     }
 
     /**
-     * Derives the Y pixel position for [timeMin] by interpolating over the
-     * actual rendered bounds of the visible lesson cards.
+     * Derives the Y pixel position for [timeMin] by interpolating over the rendered lesson
+     * cards.
      *
-     * Within a card: linear interpolation between card top and bottom.
-     * Between cards: linear interpolation in the gap.
-     * Before first / after last visible card: clamp to card edge.
+     * Real, measured bounds are used wherever a card is currently attached/laid out — this is
+     * what keeps the line accurate even when a card grows beyond its minimum height (long
+     * subjects, many teachers, notes, etc.). For any group that ISN'T currently rendered (e.g.
+     * scrolled just outside RecyclerView's small attached/cached window), its bounds are
+     * estimated using the same proportional per-minute scale the adapter uses to size cards
+     * (see GroupViewHolder.bind()), chained from the nearest rendered neighbour. Without this,
+     * an off-screen lesson would be silently skipped and the line would interpolate straight
+     * across it as if it were empty space between two unrelated cards — making it appear ahead
+     * of where the still-current lesson actually ends.
      */
     private fun interpolateY(timeMin: Int): Float? {
         val rv      = recyclerView ?: return null
@@ -118,23 +124,61 @@ class TimeIndicatorView @JvmOverloads constructor(
         val myLoc = IntArray(2).also { getLocationOnScreen(it) }
         val offsetY = rvLoc[1] - myLoc[1]
 
+        // Real, measured top/bottom for whatever is currently attached & laid out, by position.
         val bounds = Rect()
-        val items = (0 until rv.childCount).mapNotNull { i ->
-            val child = rv.getChildAt(i) ?: return@mapNotNull null
+        val realByPos = HashMap<Int, FloatArray>()
+        for (i in 0 until rv.childCount) {
+            val child = rv.getChildAt(i) ?: continue
             val pos   = rv.getChildAdapterPosition(child)
-            if (pos == RecyclerView.NO_POSITION) return@mapNotNull null
-            val group = groups.getOrNull(pos) ?: return@mapNotNull null
+            if (pos == RecyclerView.NO_POSITION) continue
             rv.getDecoratedBoundsWithMargins(child, bounds)
-            val sMin = (group.startTime / 100) * 60 + (group.startTime % 100)
-            val eMin = (group.endTime   / 100) * 60 + (group.endTime   % 100)
-            ItemBounds(sMin, eMin, bounds.top + offsetY, bounds.bottom + offsetY)
-        }.sortedBy { it.startMin }
+            realByPos[pos] = floatArrayOf((bounds.top + offsetY).toFloat(), (bounds.bottom + offsetY).toFloat())
+        }
+        if (realByPos.isEmpty()) return null
+
+        // Same proportional scale used to size cards — only used to ESTIMATE the position of
+        // groups that aren't currently rendered.
+        val pxPerMin = 48f * density / 45f
+        fun minutesOf(group: LessonGroup): Pair<Int, Int> {
+            val s = (group.startTime / 100) * 60 + (group.startTime % 100)
+            val e = (group.endTime   / 100) * 60 + (group.endTime   % 100)
+            return s to e
+        }
+
+        val firstRenderedPos = groups.indices.firstOrNull { realByPos.containsKey(it) } ?: return null
+
+        val items = ArrayList<ItemBounds>(groups.size)
+        var lastBottom: Float
+        run {
+            val (sMin, eMin) = minutesOf(groups[firstRenderedPos])
+            val (top, bottom) = realByPos.getValue(firstRenderedPos)
+            items.add(ItemBounds(sMin, eMin, top.toInt(), bottom.toInt()))
+            lastBottom = bottom
+        }
+        // Forward: fill in anything after the first rendered position (real bounds where
+        // available, estimated where not — chained from the previous item's bottom).
+        for (pos in (firstRenderedPos + 1) until groups.size) {
+            val (sMin, eMin) = minutesOf(groups[pos])
+            val real = realByPos[pos]
+            val top = real?.get(0) ?: lastBottom
+            val bottom = real?.get(1) ?: (top + (eMin - sMin).coerceAtLeast(1) * pxPerMin)
+            items.add(ItemBounds(sMin, eMin, top.toInt(), bottom.toInt()))
+            lastBottom = bottom
+        }
+        // Backward: fill in anything before the first rendered position, chained from its top.
+        var firstTop = items.first().topPx.toFloat()
+        for (pos in (firstRenderedPos - 1) downTo 0) {
+            val (sMin, eMin) = minutesOf(groups[pos])
+            val bottom = firstTop
+            val top = bottom - (eMin - sMin).coerceAtLeast(1) * pxPerMin
+            items.add(0, ItemBounds(sMin, eMin, top.toInt(), bottom.toInt()))
+            firstTop = top
+        }
 
         if (items.isEmpty()) return null
 
-        // Before first visible card
+        // Before first / after last item overall
         if (timeMin <= items.first().startMin) return items.first().topPx.toFloat()
-        // After last visible card
         if (timeMin >= items.last().endMin)    return items.last().bottomPx.toFloat()
 
         // Within a card

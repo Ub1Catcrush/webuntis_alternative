@@ -4,6 +4,7 @@ import com.webuntis.dashboard.R
 import android.os.Bundle
 import android.view.*
 import androidx.core.view.isVisible
+import androidx.core.view.doOnNextLayout
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
@@ -40,6 +41,12 @@ class DayFragment : Fragment() {
     private val viewModel: TimetableViewModel by viewModels({ requireParentFragment() })
     private var dayIndex = 0
 
+    // Kept so the per-minute updater (below) can refresh the LEFT-SIDE "past lesson" dimming in
+    // lockstep with the red time-indicator line — both must move forward on the same tick, or
+    // the line visually drifts ahead of what the lesson list shows as "already happened".
+    private var lessonAdapter: LessonAdapter? = null
+    private var isTodayFragment: Boolean = false
+
     companion object {
         fun newInstance(day: Int) = DayFragment().apply {
             arguments = Bundle().apply { putInt("day", day) }
@@ -61,6 +68,7 @@ class DayFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         val adapter = LessonAdapter()
+        lessonAdapter = adapter
         
         adapter.showLongSubjects = viewModel.showLongSubjects
         adapter.showLongTeachers = viewModel.showLongTeachers
@@ -114,10 +122,12 @@ class DayFragment : Fragment() {
                                 binding.emptyView.isVisible = true
                                 binding.emptyView.text = getString(R.string.label_no_lessons_today)
                                 binding.timeIndicator.isVisible = false
+                                isTodayFragment = false
                             } else {
                                 val today = LocalDate.now()
                                 val isToday  = day.day.date == today
                                 val isPastDay = day.day.date.isBefore(today)
+                                isTodayFragment = isToday
 
                                 // Mark lessons as past:
                                 // - past days: all lessons are past
@@ -190,8 +200,26 @@ class DayFragment : Fragment() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (true) {
                     if (binding.timeIndicator.isVisible) {
-                        binding.timeIndicator.currentTimeMin = TimeIndicatorView.currentTimeMinutes()
-                        // Re-sync scroll offset
+                        val nowMin = TimeIndicatorView.currentTimeMinutes()
+                        // Update the left-side "past lesson" dimming first — this rebinds visible
+                        // ViewHolders (alpha only, card heights don't change) via
+                        // notifyDataSetChanged(), which schedules a layout pass rather than
+                        // running synchronously.
+                        if (isTodayFragment) {
+                            lessonAdapter?.currentTimeMin = nowMin
+                        }
+                        // Defer the line's position update to AFTER that layout pass has settled,
+                        // via doOnNextLayout — reading child bounds / scroll offset in the same
+                        // tick as the rebind above could otherwise race a pending relayout and
+                        // draw the line against stale bounds, making it appear ahead of where the
+                        // still-current lesson visually ends.
+                        binding.recyclerView.doOnNextLayout {
+                            binding.timeIndicator.scrollY = getRecyclerScrollY(binding.recyclerView)
+                            binding.timeIndicator.currentTimeMin = nowMin
+                        }
+                        // In case no layout pass actually gets scheduled (nothing visually
+                        // changed), still update directly so the line isn't stuck.
+                        binding.timeIndicator.currentTimeMin = nowMin
                         binding.timeIndicator.scrollY = getRecyclerScrollY(binding.recyclerView)
                     }
                     // Sleep until the next full minute
