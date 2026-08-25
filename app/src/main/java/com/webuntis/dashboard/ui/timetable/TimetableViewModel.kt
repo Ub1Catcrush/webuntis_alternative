@@ -78,6 +78,11 @@ class TimetableViewModel @Inject constructor(
     val showShortRoomInParens:    Boolean get() = repository.sessionManager.showShortRoomInParens
     val useCompactWeekView: Boolean get() = repository.sessionManager.useCompactWeekView
 
+    /** Switches between the day and the week grid directly from the timetable screen. */
+    fun toggleUseWeekView() {
+        repository.sessionManager.useCompactWeekView = !repository.sessionManager.useCompactWeekView
+    }
+
     // ── Personal / Class timetable switch ───────────────────────────────────────
 
     val timetableViewMode: SessionManager.TimetableViewMode get() = repository.sessionManager.timetableViewMode

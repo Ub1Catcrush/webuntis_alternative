@@ -9,7 +9,6 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.tabs.TabLayoutMediator
 import com.webuntis.dashboard.R
@@ -61,6 +60,14 @@ class TimetableFragment : Fragment() {
         }
         binding.btnEditCombinedSubjects.setOnClickListener { showCombinedSubjectsDialog() }
 
+        // Day / Week switch — directly in the timetable, not buried in settings.
+        updateDayWeekButtonLabel()
+        binding.btnToggleDayWeek.setOnClickListener {
+            viewModel.toggleUseWeekView()
+            updateDayWeekButtonLabel()
+            renderCurrentDays()
+        }
+
         // Show/hide the entire today-row (not just the button)
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -70,31 +77,20 @@ class TimetableFragment : Fragment() {
             }
         }
 
-        // Setup Compact RecyclerView
-        val compactAdapter = CompactWeekAdapter()
-        compactAdapter.onLessonClick = { lesson -> showLessonDetail(lesson) }
-        
-        binding.compactRecyclerView.layoutManager = 
-            LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-        binding.compactRecyclerView.adapter = compactAdapter
+        binding.weekGridView.onLessonClick = { lesson -> showLessonDetail(lesson) }
 
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.days.collect { state ->
-                    val isCompact = viewModel.useCompactWeekView
-                    
-                    // Note: tabLayout/viewPager/compactRecyclerView visibility is managed
-                    // in the Success branch below (also respects holidayBanner)
-
                     when (state) {
                         is UiState.Loading -> {
                             binding.swipeRefresh.isRefreshing = true
                             binding.holidayBanner.isVisible = false
-                            // Keep tabLayout/viewPager/compact visible as-is during reload
+                            // Keep tabLayout/viewPager/weekGridView visible as-is during reload
                         }
                         is UiState.Success -> {
                             binding.swipeRefresh.isRefreshing = false
-                            val days = state.data
+                            lastDays = state.data
 
                             // Re-check on every successful load — defensive, in case the class id
                             // was only just resolved (e.g. as a fallback from lesson details).
@@ -102,24 +98,7 @@ class TimetableFragment : Fragment() {
                             binding.btnEditCombinedSubjects.isVisible = viewModel.canShowClassTimetable &&
                                 viewModel.timetableViewMode == com.webuntis.dashboard.api.SessionManager.TimetableViewMode.COMBINED
 
-                            // Show holiday banner ONLY when there are no school days at all to display
-                            val showHoliday = days.isEmpty()
-                            binding.holidayBanner.isVisible = showHoliday
-                            binding.tabLayout.isVisible = !isCompact && !showHoliday
-                            binding.viewPager.isVisible = !isCompact && !showHoliday
-                            binding.compactRecyclerView.isVisible = isCompact && !showHoliday
-
-                            if (!showHoliday) {
-                                if (isCompact) {
-                                    compactAdapter.showLongSubjects = viewModel.showLongSubjects
-                                    compactAdapter.showLongRooms = viewModel.showLongRooms
-                                    compactAdapter.showShortSubjectInParens = viewModel.showShortSubjectInParens
-                                    compactAdapter.showShortRoomInParens = viewModel.showShortRoomInParens
-                                    compactAdapter.submitList(days)
-                                } else {
-                                    setupViewPager(days)
-                                }
-                            }
+                            renderCurrentDays()
                         }
                         is UiState.Error -> {
                             binding.swipeRefresh.isRefreshing = false
@@ -129,6 +108,40 @@ class TimetableFragment : Fragment() {
                 }
             }
         }
+    }
+
+    private var lastDays: List<SchoolDay>? = null
+
+    /** Re-draws the currently loaded days using whichever mode (day/week) is active. */
+    private fun renderCurrentDays() {
+        val days = lastDays ?: return
+        val isWeek = viewModel.useCompactWeekView
+
+        // Show holiday banner ONLY when there are no school days at all to display
+        val showHoliday = days.isEmpty()
+        binding.holidayBanner.isVisible = showHoliday
+        binding.tabLayout.isVisible = !isWeek && !showHoliday
+        binding.viewPager.isVisible = !isWeek && !showHoliday
+        binding.weekGridView.isVisible = isWeek && !showHoliday
+
+        if (!showHoliday) {
+            if (isWeek) {
+                binding.weekGridView.submit(
+                    days,
+                    showLongSubjects = viewModel.showLongSubjects,
+                    showShortSubjectInParens = viewModel.showShortSubjectInParens
+                )
+            } else {
+                setupViewPager(days)
+            }
+        }
+    }
+
+    /** Shows the currently active mode; tapping switches Tag ↔ Woche. */
+    private fun updateDayWeekButtonLabel() {
+        binding.btnToggleDayWeek.text = getString(
+            if (viewModel.useCompactWeekView) R.string.timetable_view_week else R.string.timetable_view_day
+        )
     }
 
     /** Shows the currently active mode; tapping cycles Ich → Klasse → Kombiniert → Ich. */

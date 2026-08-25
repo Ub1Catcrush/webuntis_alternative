@@ -18,6 +18,22 @@
             app:title="@string/nav_timetable"
             app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge">
 
+            <!-- Day / Week switch — always visible, directly in the timetable, not buried in settings -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_toggle_day_week"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginEnd="4dp"
+                android:minWidth="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:textSize="12sp"
+                android:text="@string/timetable_view_day" />
+
             <!-- Personal / Class / Combined timetable switch — hidden when no class id is known -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_toggle_view_mode"
@@ -145,8 +161,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/compact_recycler_view"
+            <com.webuntis.dashboard.ui.timetable.WeekGridView
+                android:id="@+id/week_grid_view"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:visibility="gone" />

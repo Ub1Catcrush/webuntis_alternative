@@ -62,6 +62,10 @@
     <string name="timetable_view_mode_class">Klasse</string>
     <string name="timetable_view_mode_personal">Ich</string>
     <string name="timetable_view_mode_combined">Kombiniert</string>
+
+    <!-- Day / week switch, shown directly in the timetable toolbar -->
+    <string name="timetable_view_day">Tag</string>
+    <string name="timetable_view_week">Woche</string>
     <string name="timetable_combined_edit_subjects">Fächer für kombinierten Plan wählen</string>
     <string name="timetable_combined_dialog_title">Klassenfächer einblenden</string>
     <string name="timetable_combined_dialog_message">Ausgewählte Fächer aus dem Klassenplan werden nur in freie Stunden deines persönlichen Plans eingeblendet.</string>
