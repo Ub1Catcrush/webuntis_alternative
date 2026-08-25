@@ -59,6 +59,8 @@
     <string name="timetable_detail_close">Close</string>
     <string name="timetable_time_range">%1$s – %2$s</string>
     <string name="timetable_replaced_subject">instead of %s</string>
+    <string name="timetable_view_day">Day</string>
+    <string name="timetable_view_week">Week</string>
     <string name="timetable_view_mode_class">Class</string>
     <string name="timetable_view_mode_personal">Me</string>
     <string name="timetable_view_mode_combined">Combined</string>
