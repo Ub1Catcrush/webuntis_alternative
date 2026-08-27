@@ -184,6 +184,7 @@ interface WebUntisService {
     ): Response<ResponseBody>
 
     @GET
+    @Streaming
     suspend fun downloadFromStorage(
         @Url url: String,
         @Header("x-amz-server-side-encryption-customer-algorithm") encAlgorithm: String,

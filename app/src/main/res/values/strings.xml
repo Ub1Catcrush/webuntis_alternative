@@ -148,6 +148,7 @@
     <string name="label_attachment_name_fallback">anhang</string>
     <string name="error_download_failed">Download fehlgeschlagen: %s</string>
     <string name="error_save_failed">Speichern fehlgeschlagen: %s</string>
+    <string name="error_no_app_to_open">Datei gespeichert, aber keine passende App zum Öffnen gefunden</string>
     <string name="error_mediastore_insert">MediaStore insert fehlgeschlagen</string>
     <string name="error_outputstream_open">OutputStream konnte nicht geöffnet werden</string>
     <string name="error_attachment_load_failed">Datei konnte nicht geladen werden: %s</string>

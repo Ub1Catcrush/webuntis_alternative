@@ -1004,7 +1004,8 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun downloadHomeworkAttachment(
         homeworkId: Int,
-        attachment: HomeworkAttachment
+        attachment: HomeworkAttachment,
+        onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)? = null
     ): Result<Pair<ByteArray, String>> = withSessionRetry {
         try {
             val token = getAuthHeader()
@@ -1019,7 +1020,14 @@ class WebUntisRepository @Inject constructor(
                 return@withSessionRetry Result.failure(Exception("HTTP ${resp.code()}"))
             }
 
-            val bytes = resp.body()?.bytes() ?: return@withSessionRetry Result.failure(Exception("Keine Daten"))
+            val body = resp.body() ?: return@withSessionRetry Result.failure(Exception("Keine Daten"))
+            val expectedLength = body.contentLength()
+            val bytes = readBytesWithProgress(body, onProgress)
+            if (bytes.isEmpty() || (expectedLength > 0 && bytes.size.toLong() < expectedLength)) {
+                return@withSessionRetry Result.failure(
+                    Exception("Download unvollständig (${bytes.size} von ${if (expectedLength > 0) expectedLength else "?"} Bytes)")
+                )
+            }
             val filename = attachment.uploadedFileName ?: attachment.name ?: "Anhang"
             Result.success(Pair(bytes, filename))
         } catch (e: Exception) {
@@ -1425,7 +1433,37 @@ class WebUntisRepository @Inject constructor(
         }
     }
 
-    suspend fun downloadAttachment(attachmentId: String, msg: Message): Result<ByteArray> = withSessionRetry {
+    /**
+     * Reads [body] into a byte array, invoking [onProgress] after every chunk with
+     * (bytesReadSoFar, totalBytesOrMinusOneIfUnknown). Falls back to a plain one-shot read
+     * when no progress callback is supplied.
+     */
+    private fun readBytesWithProgress(
+        body: okhttp3.ResponseBody,
+        onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)?
+    ): ByteArray {
+        if (onProgress == null) return body.bytes()
+        val total = body.contentLength()
+        val output = java.io.ByteArrayOutputStream(if (total > 0) total.toInt() else 8 * 1024)
+        body.byteStream().use { input ->
+            val buffer = ByteArray(8 * 1024)
+            var bytesRead = 0L
+            while (true) {
+                val read = input.read(buffer)
+                if (read == -1) break
+                output.write(buffer, 0, read)
+                bytesRead += read
+                onProgress(bytesRead, total)
+            }
+        }
+        return output.toByteArray()
+    }
+
+    suspend fun downloadAttachment(
+        attachmentId: String,
+        msg: Message,
+        onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)? = null
+    ): Result<Pair<ByteArray, String?>> = withSessionRetry {
         try {
             val token = tokenForMessage(msg) ?: return@withSessionRetry Result.failure(Exception("Nicht authentifiziert"))
             val urlResp = service().getAttachmentStorageUrl(attachmentId, token)
@@ -1439,8 +1477,23 @@ class WebUntisRepository @Inject constructor(
             val encMd5 = headers.firstOrNull { it.key == "x-amz-server-side-encryption-customer-key-md5" }?.value ?: ""
             val dlResp = service().downloadFromStorage(downloadUrl, encAlg, encKey, encMd5)
             if (!dlResp.isSuccessful) return@withSessionRetry Result.failure(Exception("HTTP ${dlResp.code()}"))
-            val bytes = dlResp.body()?.bytes() ?: return@withSessionRetry Result.failure(Exception("Keine Daten"))
-            Result.success(bytes)
+            val body = dlResp.body() ?: return@withSessionRetry Result.failure(Exception("Keine Daten"))
+            // The storage backend (S3) returns the ORIGINAL upload's Content-Type here — this is
+            // far more reliable than guessing from the attachment's display name, which often has
+            // no file extension at all (e.g. images named just by an internal id).
+            val declaredMimeType = body.contentType()?.toString()
+            val expectedLength = body.contentLength()
+            val bytes = readBytesWithProgress(body, onProgress)
+            android.util.Log.d("WebUntis", "downloadAttachment: expected=$expectedLength actual=${bytes.size} bytes")
+            // Never silently "succeed" with an empty file — if the server told us how many bytes
+            // to expect and we got fewer (or none), surface that as a real error instead of
+            // letting the caller save/open a corrupt 0-byte file without any explanation.
+            if (bytes.isEmpty() || (expectedLength > 0 && bytes.size.toLong() < expectedLength)) {
+                return@withSessionRetry Result.failure(
+                    Exception("Download unvollständig (${bytes.size} von ${if (expectedLength > 0) expectedLength else "?"} Bytes)")
+                )
+            }
+            Result.success(bytes to declaredMimeType)
         } catch (e: Exception) {
             if (e is SessionExpiredException) throw e
             Result.failure(e)

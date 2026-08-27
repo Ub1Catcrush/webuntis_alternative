@@ -115,37 +115,53 @@ object NetworkModule {
     private val jsonSanitizer = Interceptor { chain ->
         val originalRequest = chain.request()
         val response = chain.proceed(originalRequest)
-        
-        val contentType = response.header("Content-Type") ?: ""
+
         val body = response.body
-        val rawBody = body?.string() ?: ""
-
-        val isJson = contentType.contains("json", ignoreCase = true)
-        val looksLikeJson = rawBody.trimStart().let { it.startsWith("{") || it.startsWith("[") }
-        
+        val contentTypeHeader = response.header("Content-Type") ?: ""
         val requestPath = originalRequest.url.encodedPath
-        val responsePath = response.request.url.encodedPath
-        
         val isApiCall = requestPath.contains("/api/") || requestPath.contains(".do")
-        val isLoginCall = requestPath.contains("jsonrpc.do", ignoreCase = true) ||
-                          requestPath.contains("j_spring_security_check", ignoreCase = true) ||
-                          requestPath.contains("/api/rest/view/v1/auth", ignoreCase = true) ||
-                          requestPath.contains("api/userdata/login", ignoreCase = true) ||
-                          requestPath.contains("api/auth/logout", ignoreCase = true)
-        val redirectedToAuth = responsePath.contains("index.do") || responsePath.contains("login.do")
-        val isHtml = rawBody.contains("<html", ignoreCase = true) || rawBody.contains("<!DOCTYPE", ignoreCase = true)
 
-        if (!isLoginCall && isApiCall && (redirectedToAuth || (isHtml && !isJson && !looksLikeJson))) {
-            val errorJson = """{"error":{"code":-32001,"message":"Session abgelaufen (Redirect)"}}"""
-            response.newBuilder()
-                .header("X-WebUntis-Session-Expired", "true")
-                .code(401)
-                .body(errorJson.toResponseBody("application/json".toMediaType()))
-                .build()
+        // This interceptor exists ONLY to detect the WebUntis API silently redirecting an
+        // expired session to an HTML login page instead of returning JSON. It must never touch
+        // anything else: reading a response body as a String (via body.string()) and rebuilding
+        // it is lossy for anything that isn't text — it corrupts binary responses (images, PDFs,
+        // Office documents, the octet-stream attachment/storage downloads, ...), which is exactly
+        // what used to turn downloaded attachments into unreadable/grey files. So we bail out
+        // immediately, untouched, unless this really looks like a textual API response.
+        val looksTextual = contentTypeHeader.contains("json", ignoreCase = true) ||
+                           contentTypeHeader.contains("html", ignoreCase = true) ||
+                           contentTypeHeader.contains("text", ignoreCase = true)
+
+        if (body == null || !isApiCall || !looksTextual) {
+            response
         } else {
-            response.newBuilder()
-                .body(rawBody.toResponseBody(body?.contentType()))
-                .build()
+            val rawBody = body.string()
+
+            val isJson = contentTypeHeader.contains("json", ignoreCase = true)
+            val looksLikeJson = rawBody.trimStart().let { it.startsWith("{") || it.startsWith("[") }
+
+            val responsePath = response.request.url.encodedPath
+
+            val isLoginCall = requestPath.contains("jsonrpc.do", ignoreCase = true) ||
+                              requestPath.contains("j_spring_security_check", ignoreCase = true) ||
+                              requestPath.contains("/api/rest/view/v1/auth", ignoreCase = true) ||
+                              requestPath.contains("api/userdata/login", ignoreCase = true) ||
+                              requestPath.contains("api/auth/logout", ignoreCase = true)
+            val redirectedToAuth = responsePath.contains("index.do") || responsePath.contains("login.do")
+            val isHtml = rawBody.contains("<html", ignoreCase = true) || rawBody.contains("<!DOCTYPE", ignoreCase = true)
+
+            if (!isLoginCall && (redirectedToAuth || (isHtml && !isJson && !looksLikeJson))) {
+                val errorJson = """{"error":{"code":-32001,"message":"Session abgelaufen (Redirect)"}}"""
+                response.newBuilder()
+                    .header("X-WebUntis-Session-Expired", "true")
+                    .code(401)
+                    .body(errorJson.toResponseBody("application/json".toMediaType()))
+                    .build()
+            } else {
+                response.newBuilder()
+                    .body(rawBody.toResponseBody(body.contentType()))
+                    .build()
+            }
         }
     }
 

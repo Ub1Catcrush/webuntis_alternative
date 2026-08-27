@@ -257,9 +257,14 @@ class MessagesViewModel @Inject constructor(
     fun download(attachmentId: String, filename: String, msg: Message) {
         viewModelScope.launch {
             _downloadState.value = DownloadState.Loading(filename)
-            repository.downloadAttachment(attachmentId, msg).fold(
-                onSuccess = { bytes -> _downloadState.value = DownloadState.Ready(filename, bytes) },
-                onFailure = { _downloadState.value = DownloadState.Error(it.message ?: "Fehler") }
+            repository.downloadAttachment(attachmentId, msg) { bytesRead, totalBytes ->
+                val percent = if (totalBytes > 0) ((bytesRead * 100) / totalBytes).toInt() else -1
+                _downloadState.value = DownloadState.Progress(attachmentId, percent)
+            }.fold(
+                onSuccess = { (bytes, declaredMimeType) ->
+                    _downloadState.value = DownloadState.Ready(attachmentId, filename, bytes, declaredMimeType)
+                },
+                onFailure = { _downloadState.value = DownloadState.Error(attachmentId, it.message ?: "Fehler") }
             )
         }
     }
@@ -282,6 +287,8 @@ sealed class ComposeState {
 sealed class DownloadState {
     object Idle : DownloadState()
     data class Loading(val filename: String) : DownloadState()
-    data class Ready(val filename: String, val bytes: ByteArray) : DownloadState()
-    data class Error(val message: String) : DownloadState()
+    /** [percent] is 0-100, or -1 while the total size isn't known yet (show indeterminate). */
+    data class Progress(val attachmentId: String, val percent: Int) : DownloadState()
+    data class Ready(val attachmentId: String, val filename: String, val bytes: ByteArray, val declaredMimeType: String?) : DownloadState()
+    data class Error(val attachmentId: String, val message: String) : DownloadState()
 }

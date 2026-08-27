@@ -109,6 +109,8 @@ class HomeworkViewModel @Inject constructor(
         context: Context
     ) {
         viewModelScope.launch(Dispatchers.IO) {
+            val filenameForType = att.uploadedFileName ?: att.name ?: "anhang"
+            val mimeType = com.webuntis.dashboard.util.FileTypeUtils.resolveMimeType(att.contentType, filenameForType)
             repository.downloadHomeworkAttachment(hw.id, att).fold(
                 onSuccess = { res: Pair<ByteArray, String> ->
                     val bytes = res.first
@@ -117,8 +119,7 @@ class HomeworkViewModel @Inject constructor(
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                             val values = ContentValues().apply {
                                 put(MediaStore.Downloads.DISPLAY_NAME, filename)
-                                put(MediaStore.Downloads.MIME_TYPE,
-                                    att.contentType ?: "application/octet-stream")
+                                put(MediaStore.Downloads.MIME_TYPE, mimeType)
                                 put(MediaStore.Downloads.RELATIVE_PATH,
                                     Environment.DIRECTORY_DOWNLOADS)
                                 put(MediaStore.Downloads.IS_PENDING, 1)
@@ -133,10 +134,17 @@ class HomeworkViewModel @Inject constructor(
 
                             withContext(Dispatchers.Main) {
                                 val intent = Intent(Intent.ACTION_VIEW).apply {
-                                    setDataAndType(uri, att.contentType ?: "*/*")
+                                    setDataAndType(uri, mimeType)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
                                 runCatching { context.startActivity(intent) }
+                                    .onFailure {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            context.getString(com.webuntis.dashboard.R.string.error_no_app_to_open),
+                                            android.widget.Toast.LENGTH_LONG
+                                        ).show()
+                                    }
                             }
                         } else {
                             @Suppress("DEPRECATION")
@@ -149,10 +157,17 @@ class HomeworkViewModel @Inject constructor(
                                 val uri = FileProvider.getUriForFile(
                                     context, context.packageName + ".fileprovider", file)
                                 val intent = Intent(Intent.ACTION_VIEW).apply {
-                                    setDataAndType(uri, att.contentType ?: "*/*")
+                                    setDataAndType(uri, mimeType)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
                                 runCatching { context.startActivity(intent) }
+                                    .onFailure {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            context.getString(com.webuntis.dashboard.R.string.error_no_app_to_open),
+                                            android.widget.Toast.LENGTH_LONG
+                                        ).show()
+                                    }
                             }
                         }
                     } catch (e: Exception) {

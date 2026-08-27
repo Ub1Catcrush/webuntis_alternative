@@ -175,8 +175,17 @@ class MessagesFragment : Fragment() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.downloadState.collect { state ->
                     when (state) {
-                        is DownloadState.Ready -> { saveFile(state.filename, state.bytes); viewModel.clearDownload() }
-                        is DownloadState.Error -> { Toast.makeText(requireContext(), getString(R.string.error_download_failed, state.message), Toast.LENGTH_LONG).show(); viewModel.clearDownload() }
+                        is DownloadState.Progress -> adapter.updateDownloadProgress(state.attachmentId, state.percent)
+                        is DownloadState.Ready -> {
+                            adapter.clearDownloadProgress(state.attachmentId)
+                            saveFile(state.filename, state.bytes, state.declaredMimeType)
+                            viewModel.clearDownload()
+                        }
+                        is DownloadState.Error -> {
+                            adapter.clearDownloadProgress(state.attachmentId)
+                            Toast.makeText(requireContext(), getString(R.string.error_download_failed, state.message), Toast.LENGTH_LONG).show()
+                            viewModel.clearDownload()
+                        }
                         else -> {}
                     }
                 }
@@ -466,13 +475,14 @@ class MessagesFragment : Fragment() {
 
     // ── File saving ────────────────────────────────────────────────────────────
 
-    private fun saveFile(filename: String, bytes: ByteArray) {
+    private fun saveFile(filename: String, bytes: ByteArray, declaredMimeType: String? = null) {
         try {
             val ctx = requireContext()
+            val mime = com.webuntis.dashboard.util.FileTypeUtils.resolveMimeType(declaredMimeType, filename)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val cv = ContentValues().apply {
                     put(MediaStore.Downloads.DISPLAY_NAME, filename)
-                    put(MediaStore.Downloads.MIME_TYPE, mimeType(filename))
+                    put(MediaStore.Downloads.MIME_TYPE, mime)
                     put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                     put(MediaStore.Downloads.IS_PENDING, 1)
                 }
@@ -484,10 +494,12 @@ class MessagesFragment : Fragment() {
                 ctx.contentResolver.update(uri, cv, null, null)
                 Toast.makeText(ctx, getString(R.string.message_saved_filename, filename), Toast.LENGTH_SHORT).show()
                 val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, mimeType(filename))
+                    setDataAndType(uri, mime)
                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                try { startActivity(intent) } catch (_: Exception) {}
+                try { startActivity(intent) } catch (_: Exception) {
+                    Toast.makeText(ctx, getString(R.string.error_no_app_to_open), Toast.LENGTH_LONG).show()
+                }
             } else {
                 @Suppress("DEPRECATION")
                 val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
@@ -500,14 +512,7 @@ class MessagesFragment : Fragment() {
         }
     }
 
-    private fun mimeType(filename: String) = when {
-        filename.endsWith(".pdf",  true) -> "application/pdf"
-        filename.endsWith(".png",  true) -> "image/png"
-        filename.endsWith(".jpg",  true) || filename.endsWith(".jpeg", true) -> "image/jpeg"
-        filename.endsWith(".docx", true) -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        filename.endsWith(".xlsx", true) -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        else -> "application/octet-stream"
-    }
+    private fun mimeType(filename: String) = com.webuntis.dashboard.util.FileTypeUtils.guessMimeType(filename)
 
     override fun onDestroyView() { super.onDestroyView(); _binding = null }
 }
@@ -526,6 +531,40 @@ class MessageAdapter(
     /** Short↔long name lookup — enriches sender/recipient names to "Langform (Kürzel)" where known. */
     var nameCatalog: com.webuntis.dashboard.model.NameCatalog = com.webuntis.dashboard.model.NameCatalog()
         set(value) { field = value; notifyDataSetChanged() }
+
+    /** attachmentId → the currently visible progress views for that row, so download progress
+     *  updates can reach the right row directly without a full rebind (avoids flicker and stays
+     *  correct even if the row hasn't been rebuilt since the click). Cleared as rows are rebuilt. */
+    private val progressViews = mutableMapOf<String, Pair<ProgressBar, TextView>>()
+
+    /** Called by the fragment as download progress comes in. [percent] is 0-100, or -1 while the
+     *  total size is still unknown (shown as an indeterminate bar). */
+    fun updateDownloadProgress(attachmentId: String, percent: Int) {
+        val (bar, text) = progressViews[attachmentId] ?: return
+        bar.isVisible = true
+        if (percent < 0) {
+            bar.isIndeterminate = true
+            text.isVisible = false
+        } else {
+            bar.isIndeterminate = false
+            bar.progress = percent
+            text.isVisible = true
+            text.text = "$percent %"
+        }
+    }
+
+    /** Hides the progress UI for [attachmentId] again once a download finished or failed. */
+    fun clearDownloadProgress(attachmentId: String) {
+        val (bar, text) = progressViews[attachmentId] ?: return
+        bar.isVisible = false
+        text.isVisible = false
+    }
+
+    /** Registers the progress views currently on screen for [attachmentId] (called while binding
+     *  a row), so a later progress update can find and update them directly. */
+    private fun registerProgressViews(attachmentId: String, bar: ProgressBar, text: TextView) {
+        progressViews[attachmentId] = bar to text
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
         VH(ItemMessageBinding.inflate(LayoutInflater.from(parent.context), parent, false))
@@ -689,11 +728,20 @@ class MessageAdapter(
                 val row = LayoutInflater.from(container.context)
                     .inflate(R.layout.item_attachment, container, false)
                 row.findViewById<TextView>(R.id.text_filename).text = att.name ?: "Anhang"
+                val progressBar = row.findViewById<ProgressBar>(R.id.download_progress)
+                val percentText = row.findViewById<TextView>(R.id.text_download_percent)
+                val id = att.id
+                if (id != null) {
+                    progressBar.isVisible = false
+                    percentText.isVisible = false
+                    this@MessageAdapter.registerProgressViews(id, progressBar, percentText)
+                }
                 row.setOnClickListener {
-                    val id   = att.id   ?: return@setOnClickListener
-                    val name = att.name ?: "anhang"
-                    row.findViewById<ProgressBar>(R.id.download_progress).isVisible = true
-                    onDownload(id, name, msg)
+                    val attId = id ?: return@setOnClickListener
+                    val name  = att.name ?: "anhang"
+                    progressBar.isVisible = true
+                    progressBar.isIndeterminate = true
+                    onDownload(attId, name, msg)
                 }
                 container.addView(row)
             }
