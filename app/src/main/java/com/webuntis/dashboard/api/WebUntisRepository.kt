@@ -1466,21 +1466,41 @@ class WebUntisRepository @Inject constructor(
         msg: Message,
         onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)? = null
     ): Result<Pair<ByteArray, String?>> = withSessionRetry {
+        val TAG = "WebUntis"
         try {
-            val token = tokenForMessage(msg) ?: return@withSessionRetry Result.failure(Exception("Nicht authentifiziert"))
+            android.util.Log.w(TAG, "downloadAttachment: start id=$attachmentId")
+
+            val token = tokenForMessage(msg)
+            android.util.Log.w(TAG, "downloadAttachment: token=${if (token != null) "present" else "NULL"}")
+            if (token == null) return@withSessionRetry Result.failure(Exception("Nicht authentifiziert"))
+
             val urlResp = service().getAttachmentStorageUrl(attachmentId, token)
-            val urlRaw = rawBody(urlResp) ?: return@withSessionRetry Result.failure(Exception("Keine Download-URL"))
-            val storageUrl: AttachmentStorageUrl = parseJson(urlRaw)
+            android.util.Log.w(TAG, "downloadAttachment: getAttachmentStorageUrl HTTP ${urlResp.code()} successful=${urlResp.isSuccessful}")
+
+            val urlRaw = rawBody(urlResp)
+            android.util.Log.w(TAG, "downloadAttachment: urlRaw length=${urlRaw?.length ?: -1}")
+            if (urlRaw == null) return@withSessionRetry Result.failure(Exception("Keine Download-URL"))
+
+            val storageUrl: AttachmentStorageUrl = try {
+                parseJson(urlRaw)
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "downloadAttachment: JSON parse FAILED for storage-url response. raw=${urlRaw.take(500)}", e)
+                return@withSessionRetry Result.failure(Exception("Antwort konnte nicht gelesen werden: ${e.javaClass.simpleName}: ${e.message}"))
+            }
+            android.util.Log.w(TAG, "downloadAttachment: parsed downloadUrl=${storageUrl.downloadUrl != null} headers=${storageUrl.additionalHeaders?.size ?: 0}")
+
             val downloadUrl = storageUrl.downloadUrl
                 ?: return@withSessionRetry Result.failure(Exception("Download-URL fehlt"))
             val headers = storageUrl.additionalHeaders ?: emptyList()
             val encAlg = headers.firstOrNull { it.key == "x-amz-server-side-encryption-customer-algorithm" }?.value ?: ""
             val encKey = headers.firstOrNull { it.key == "x-amz-server-side-encryption-customer-key" }?.value ?: ""
             val encMd5 = headers.firstOrNull { it.key == "x-amz-server-side-encryption-customer-key-md5" }?.value ?: ""
+
             val dlResp = service().downloadFromStorage(downloadUrl, encAlg, encKey, encMd5)
+            android.util.Log.w(TAG, "downloadAttachment: downloadFromStorage HTTP ${dlResp.code()} successful=${dlResp.isSuccessful}")
             if (!dlResp.isSuccessful) {
                 val errText = dlResp.errorBody()?.string()?.take(300)
-                android.util.Log.w("WebUntis", "downloadFromStorage failed — HTTP ${dlResp.code()} url=$downloadUrl body=$errText")
+                android.util.Log.w(TAG, "downloadFromStorage failed — HTTP ${dlResp.code()} url=$downloadUrl body=$errText")
                 return@withSessionRetry Result.failure(Exception("Storage-Download fehlgeschlagen (HTTP ${dlResp.code()})"))
             }
             val body = dlResp.body() ?: return@withSessionRetry Result.failure(Exception("Keine Daten"))
@@ -1489,8 +1509,9 @@ class WebUntisRepository @Inject constructor(
             // no file extension at all (e.g. images named just by an internal id).
             val declaredMimeType = body.contentType()?.toString()
             val expectedLength = body.contentLength()
+            android.util.Log.w(TAG, "downloadAttachment: body contentType=$declaredMimeType expectedLength=$expectedLength")
             val bytes = readBytesWithProgress(body, onProgress)
-            android.util.Log.d("WebUntis", "downloadAttachment: expected=$expectedLength actual=${bytes.size} bytes")
+            android.util.Log.w(TAG, "downloadAttachment: expected=$expectedLength actual=${bytes.size} bytes")
             // Never silently "succeed" with an empty file — if the server told us how many bytes
             // to expect and we got fewer (or none), surface that as a real error instead of
             // letting the caller save/open a corrupt 0-byte file without any explanation.
@@ -1500,9 +1521,15 @@ class WebUntisRepository @Inject constructor(
                 )
             }
             Result.success(bytes to declaredMimeType)
-        } catch (e: Exception) {
-            if (e is SessionExpiredException) throw e
-            Result.failure(e)
+        } catch (e: SessionExpiredException) {
+            throw e
+        } catch (t: Throwable) {
+            // Catch Throwable, not just Exception: a LinkageError/NoSuchMethodError from a
+            // release-build (R8) reflection mismatch would otherwise silently skip all the
+            // logging above without ever reaching a catch block, since those are Errors, not
+            // Exceptions. Logging here guarantees SOME "WebUntis" line no matter what breaks.
+            android.util.Log.e("WebUntis", "downloadAttachment: UNEXPECTED ${t.javaClass.name}: ${t.message}", t)
+            Result.failure(Exception("${t.javaClass.simpleName}: ${t.message}"))
         }
     }
 
