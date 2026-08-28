@@ -356,7 +356,9 @@ class WebUntisRepository @Inject constructor(
         }
 
         if (!r.isSuccessful) {
-            val msg = tryExtractMessage(bodyText) ?: "HTTP ${r.code()}"
+            val extracted = tryExtractMessage(bodyText)
+            val msg = if (extracted != null) "$extracted (HTTP ${r.code()})" else "HTTP ${r.code()}"
+            android.util.Log.w("WebUntis", "rawBody: request failed — HTTP ${r.code()} url=${r.raw().request.url} body=${bodyText.take(300)}")
             throw Exception(msg)
         }
 
@@ -1476,7 +1478,11 @@ class WebUntisRepository @Inject constructor(
             val encKey = headers.firstOrNull { it.key == "x-amz-server-side-encryption-customer-key" }?.value ?: ""
             val encMd5 = headers.firstOrNull { it.key == "x-amz-server-side-encryption-customer-key-md5" }?.value ?: ""
             val dlResp = service().downloadFromStorage(downloadUrl, encAlg, encKey, encMd5)
-            if (!dlResp.isSuccessful) return@withSessionRetry Result.failure(Exception("HTTP ${dlResp.code()}"))
+            if (!dlResp.isSuccessful) {
+                val errText = dlResp.errorBody()?.string()?.take(300)
+                android.util.Log.w("WebUntis", "downloadFromStorage failed — HTTP ${dlResp.code()} url=$downloadUrl body=$errText")
+                return@withSessionRetry Result.failure(Exception("Storage-Download fehlgeschlagen (HTTP ${dlResp.code()})"))
+            }
             val body = dlResp.body() ?: return@withSessionRetry Result.failure(Exception("Keine Daten"))
             // The storage backend (S3) returns the ORIGINAL upload's Content-Type here — this is
             // far more reliable than guessing from the attachment's display name, which often has

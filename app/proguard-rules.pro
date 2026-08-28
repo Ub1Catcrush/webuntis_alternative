@@ -22,12 +22,21 @@
 }
 
 # ── Gson / JSON models ────────────────────────────────────────────────────────
-# All data classes used for JSON (de)serialization must keep their fields
--keep,allowobfuscation class com.webuntis.dashboard.model.** { *; }
+# All data classes used for JSON (de)serialization must keep their fields.
+# IMPORTANT: field names must NOT be obfuscated, since Gson maps JSON keys to
+# fields by NAME via reflection — renaming a field silently breaks parsing
+# (fields quietly stay null instead of throwing), which is very hard to notice.
+-keep class com.webuntis.dashboard.model.** { *; }
 -keepclassmembers class com.webuntis.dashboard.model.** { *; }
 -keepclassmembers class * {
     @com.google.gson.annotations.SerializedName <fields>;
 }
+-keepclassmembers enum com.webuntis.dashboard.model.** { *; }
+# Gson's reflective TypeAdapterFactory / TypeToken machinery
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
+-keep,allowobfuscation,allowshrinking class com.google.gson.reflect.TypeToken
+-dontwarn com.google.gson.**
 
 # ── Hilt ─────────────────────────────────────────────────────────────────────
 -keep class dagger.hilt.** { *; }

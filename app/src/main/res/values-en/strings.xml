@@ -150,7 +150,7 @@
     <string name="error_outputstream_open">Could not open OutputStream</string>
     <string name="error_attachment_load_failed">Could not load file: %s</string>
     <string name="error_no_app_to_open">File saved, but no fitting App to open it found</string>
-    <string name="message_saved_filename">✓ Saved: %s</string>
+    <string name="message_saved_filename">✓ Saved: (%s</string>
     <string name="messages_compose_title_new">New message</string>
     <string name="messages_compose_title_reply">Reply</string>
     <string name="messages_compose_title_draft">Edit draft</string>
