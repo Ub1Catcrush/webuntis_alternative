@@ -85,59 +85,76 @@ class WebUntisRepository @Inject constructor(
     private suspend fun reAuthSilently(
         server: String, schoolname: String, username: String, password: String, force: Boolean = false
     ): Result<SessionData> = loginMutex.withLock {
-        // Double check: if someone else refreshed while we waited for the lock
-        if (sessionManager.isSessionFresh() && !force) {
-            android.util.Log.d("WebUntis", "Using existing fresh session.")
-            return sessionManager.session?.let { Result.success(it) }
-                ?: Result.failure(Exception("Sitzung verloren"))
-        }
-
-        android.util.Log.i("WebUntis", "Performing silent re-authentication (force=$force)...")
-        bearerToken = null // Reset token to ensure it gets refreshed
-
-        val rpc = loginViaJsonRpc(server, schoolname, username, password)
-        val result = if (rpc.isSuccess) rpc else {
-            kotlinx.coroutines.yield()
-            loginViaRest(server, schoolname, username, password)
-        }
-
-        if (result.isSuccess) {
-            val session = result.getOrNull()
-            sessionManager.storedCredentials = Pair(username, password)
-            fetchBearerToken()
-
-            // Resolve classId now — awaited — so the class-timetable toggle is already correct
-            // by the time the UI renders, instead of only appearing after a later reload.
-            val resolvedSession = session?.let { ensureClassIdResolved(it) } ?: session
-
-            // Auto-recover lost studentId for non-parent accounts only: for a student's own
-            // login, personId already IS their own timetable/absences/classbook element id.
-            // NEVER fall back to classId here — it's the class's element id (e.g. "8c"'s id),
-            // not the student's, and silently locking studentId to it broke personal/combined
-            // timetable, absences, classbook and events (HTTP 500/404), while class mode kept
-            // working since it's the only feature that doesn't depend on studentId. Parent
-            // accounts (personType=12) must go through primeCachedElementIdIfNeeded()'s proper
-            // appData/homework resolution instead — their own personId is the guardian's, not
-            // the child's.
-            if (resolvedSession != null && sessionManager.studentId == 0 && resolvedSession.personType != 12) {
-                val id = resolvedSession.personId
-                if (id > 0) sessionManager.studentId = id
+        try {
+            // Double check: if someone else refreshed while we waited for the lock
+            if (sessionManager.isSessionFresh() && !force) {
+                android.util.Log.w("WebUntis", "reAuthSilently: using existing fresh session.")
+                return@withLock sessionManager.session?.let { Result.success(it) }
+                    ?: Result.failure(Exception("Sitzung verloren"))
             }
 
-            clearAllDataCaches() // Flush stale data from old session
-            android.util.Log.i("WebUntis", "Silent re-auth successful. Session valid.")
-            return resolvedSession?.let { Result.success(it) } ?: result
-        } else {
-            android.util.Log.e("WebUntis", "Silent re-auth FAILED: ${result.exceptionOrNull()?.message}")
+            android.util.Log.w("WebUntis", "reAuthSilently: starting (force=$force) server=$server school=$schoolname")
+            bearerToken = null // Reset token to ensure it gets refreshed
+
+            val rpc = loginViaJsonRpc(server, schoolname, username, password)
+            android.util.Log.w("WebUntis", "reAuthSilently: loginViaJsonRpc success=${rpc.isSuccess} err=${rpc.exceptionOrNull()?.let { "${it.javaClass.simpleName}: ${it.message}" }}")
+            val result = if (rpc.isSuccess) rpc else {
+                kotlinx.coroutines.yield()
+                val rest = loginViaRest(server, schoolname, username, password)
+                android.util.Log.w("WebUntis", "reAuthSilently: loginViaRest success=${rest.isSuccess} err=${rest.exceptionOrNull()?.let { "${it.javaClass.simpleName}: ${it.message}" }}")
+                rest
+            }
+
+            if (result.isSuccess) {
+                val session = result.getOrNull()
+                sessionManager.storedCredentials = Pair(username, password)
+                fetchBearerToken()
+                android.util.Log.w("WebUntis", "reAuthSilently: fetchBearerToken done, token=${if (bearerToken != null) "present" else "NULL"}")
+
+                // Resolve classId now — awaited — so the class-timetable toggle is already correct
+                // by the time the UI renders, instead of only appearing after a later reload.
+                val resolvedSession = session?.let { ensureClassIdResolved(it) } ?: session
+
+                // Auto-recover lost studentId for non-parent accounts only: for a student's own
+                // login, personId already IS their own timetable/absences/classbook element id.
+                // NEVER fall back to classId here — it's the class's element id (e.g. "8c"'s id),
+                // not the student's, and silently locking studentId to it broke personal/combined
+                // timetable, absences, classbook and events (HTTP 500/404), while class mode kept
+                // working since it's the only feature that doesn't depend on studentId. Parent
+                // accounts (personType=12) must go through primeCachedElementIdIfNeeded()'s proper
+                // appData/homework resolution instead — their own personId is the guardian's, not
+                // the child's.
+                if (resolvedSession != null && sessionManager.studentId == 0 && resolvedSession.personType != 12) {
+                    val id = resolvedSession.personId
+                    if (id > 0) sessionManager.studentId = id
+                }
+
+                clearAllDataCaches() // Flush stale data from old session
+                android.util.Log.w("WebUntis", "reAuthSilently: SUCCESS, session valid.")
+                return@withLock resolvedSession?.let { Result.success(it) } ?: result
+            } else {
+                android.util.Log.e("WebUntis", "reAuthSilently: FAILED — ${result.exceptionOrNull()?.javaClass?.simpleName}: ${result.exceptionOrNull()?.message}")
+            }
+            result
+        } catch (t: Throwable) {
+            // Catch Throwable (not just Exception) so a release-build (R8) LinkageError/NoSuchMethodError
+            // here — which would otherwise silently bypass all logging above and surface only as a
+            // bare, message-less "Fehler" toast — is guaranteed to produce a diagnostic log line.
+            android.util.Log.e("WebUntis", "reAuthSilently: UNEXPECTED ${t.javaClass.name}: ${t.message}", t)
+            Result.failure(Exception("Re-Login fehlgeschlagen: ${t.javaClass.simpleName}: ${t.message}"))
         }
-        return result
     }
 
     private suspend fun reLoginIfNeeded() {
-        if (sessionManager.isSessionFresh()) return
-        val creds   = sessionManager.storedCredentials ?: return
-        val session = sessionManager.session ?: return
-        reAuthSilently(session.server, session.schoolname, creds.first, creds.second, force = false)
+        val fresh = sessionManager.isSessionFresh()
+        android.util.Log.w("WebUntis", "reLoginIfNeeded: isSessionFresh=$fresh")
+        if (fresh) return
+        val creds   = sessionManager.storedCredentials
+        val session = sessionManager.session
+        android.util.Log.w("WebUntis", "reLoginIfNeeded: creds=${creds != null} session=${session != null}")
+        if (creds == null || session == null) return
+        val result = reAuthSilently(session.server, session.schoolname, creds.first, creds.second, force = false)
+        android.util.Log.w("WebUntis", "reLoginIfNeeded: reAuthSilently success=${result.isSuccess}")
     }
 
     private suspend fun <T> withCacheOrFetch(
@@ -183,11 +200,16 @@ class WebUntisRepository @Inject constructor(
                 val retry = block()
                 if (retry.isSuccess) sessionManager.touchSession()
                 retry
-            } catch (e2: Exception) {
-                Result.failure(e2)
+            } catch (t2: Throwable) {
+                android.util.Log.e("WebUntis", "withSessionRetry: retry after re-auth FAILED — ${t2.javaClass.name}: ${t2.message}", t2)
+                Result.failure(Exception("${t2.javaClass.simpleName}: ${t2.message ?: "unbekannter Fehler beim Wiederholen"}"))
             }
-        } catch (e: Exception) {
-            Result.failure(e)
+        } catch (t: Throwable) {
+            // Catch Throwable, not just Exception: guarantees a logged, non-null-message failure
+            // for literally anything that can go wrong here (including reLoginIfNeeded/reAuthSilently
+            // internals and any release-build-only LinkageError/NoSuchMethodError from R8).
+            android.util.Log.e("WebUntis", "withSessionRetry: UNEXPECTED ${t.javaClass.name}: ${t.message}", t)
+            Result.failure(Exception("${t.javaClass.simpleName}: ${t.message ?: "unbekannter Fehler"}"))
         }
     }
 
