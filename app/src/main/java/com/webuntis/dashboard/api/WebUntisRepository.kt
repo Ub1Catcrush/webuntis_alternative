@@ -1046,7 +1046,8 @@ class WebUntisRepository @Inject constructor(
 
             val body = resp.body() ?: return@withSessionRetry Result.failure(Exception("Keine Daten"))
             val expectedLength = body.contentLength()
-            val bytes = readBytesWithProgress(body, onProgress)
+            // Real blocking network I/O — must not run on whatever thread called us.
+            val bytes = withContext(Dispatchers.IO) { readBytesWithProgress(body, onProgress) }
             if (bytes.isEmpty() || (expectedLength > 0 && bytes.size.toLong() < expectedLength)) {
                 return@withSessionRetry Result.failure(
                     Exception("Download unvollständig (${bytes.size} von ${if (expectedLength > 0) expectedLength else "?"} Bytes)")
@@ -1532,7 +1533,10 @@ class WebUntisRepository @Inject constructor(
             val declaredMimeType = body.contentType()?.toString()
             val expectedLength = body.contentLength()
             android.util.Log.w(TAG, "downloadAttachment: body contentType=$declaredMimeType expectedLength=$expectedLength")
-            val bytes = readBytesWithProgress(body, onProgress)
+            // Reading the (streaming) body performs real blocking network I/O — never do this on
+            // whatever thread called us (viewModelScope.launch defaults to the Main dispatcher),
+            // or it throws NetworkOnMainThreadException. Must run on Dispatchers.IO explicitly.
+            val bytes = withContext(Dispatchers.IO) { readBytesWithProgress(body, onProgress) }
             android.util.Log.w(TAG, "downloadAttachment: expected=$expectedLength actual=${bytes.size} bytes")
             // Never silently "succeed" with an empty file — if the server told us how many bytes
             // to expect and we got fewer (or none), surface that as a real error instead of
