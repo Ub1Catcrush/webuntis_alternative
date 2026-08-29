@@ -201,6 +201,10 @@
     <string name="settings_show_long_rooms">Raumname ausschreiben (z.B. „Klassenraum 7c\")</string>
     <string name="settings_show_short_in_parens">Kürzel in Klammern anzeigen (z.B. „Mathematik (M)\")</string>
     <string name="settings_use_compact_week_view">Wochenansicht kompakt nebeneinander</string>
+    <string name="settings_week_view_second_line_label">Wochenansicht: 2. Zeile der Kachel zeigt</string>
+    <string name="settings_week_view_second_line_subject">Fach (Klarname)</string>
+    <string name="settings_week_view_second_line_teacher">Lehrkraft (Klarname)</string>
+    <string name="settings_week_view_second_line_none">Nichts</string>
 
     <string name="label_homework_attachment_download">Anhang herunterladen</string>
     <string name="saved_file_path">✓ Gespeichert: %s</string>

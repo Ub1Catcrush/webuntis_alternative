@@ -52,7 +52,18 @@ data class Lesson(
     val replacedSubject: String? = null,
     // True when this entry was filled in from the class plan in COMBINED mode (i.e. it is not
     // part of the logged-in person's own personal timetable). UI uses this to label/style it.
-    val isFromClassPlan: Boolean = false
+    val isFromClassPlan: Boolean = false,
+    // Layout hints straight from the WebUntis v1 API (same fields the official web client uses
+    // to lay out parallel lessons in a time slot side-by-side). layoutGroup identifies which
+    // lessons at the same time belong in the same row; layoutStartPosition/layoutWidth are an
+    // arbitrary-unit coordinate system (e.g. 0/250/500/750 with width 250 each) describing each
+    // lesson's horizontal slice of that row — NOT necessarily an even split. When present, these
+    // are authoritative and should be preferred over any local heuristic for how to lay lessons
+    // out, since the server already resolved this (including tricky cases like 3 active courses
+    // plus 1 cancelled one all sharing the same time slot).
+    val layoutStartPosition: Int? = null,
+    val layoutWidth: Int? = null,
+    val layoutGroup: Int? = null
 ) {
     val isCancelled: Boolean get() = code == "cancelled" || lstype == "cancel"
     val isSubstitution: Boolean get() = code == "irregular" || lstype == "subst"
@@ -156,7 +167,11 @@ data class TimetableV1Entry(
     val lessonText: String?,
     val color: String?,
     val notesAll: String?,          // NOTES_FOR_ALL text, present when icons contains "NOTES"
-    val icons: List<String>?        // e.g. ["NOTES"], ["HOMEWORK"]
+    val icons: List<String>?,       // e.g. ["NOTES"], ["HOMEWORK"]
+    // Same row-layout hints the official web client uses — see Lesson.layoutStartPosition doc.
+    val layoutStartPosition: Int? = null,
+    val layoutWidth: Int? = null,
+    val layoutGroup: Int? = null
 ) {
     fun toLesson(dateInt: Int): Lesson {
         val startT = duration?.start?.drop(11)?.take(5)?.replace(":", "")?.toIntOrNull() ?: 0
@@ -205,7 +220,10 @@ data class TimetableV1Entry(
             substText = substitutionText?.takeIf { it.isNotBlank() },
             // notesAll from the v1 gridEntry is directly available here —
             // no detail API call required for this field.
-            notesForAll = notesAll?.takeIf { it.isNotBlank() }
+            notesForAll = notesAll?.takeIf { it.isNotBlank() },
+            layoutStartPosition = layoutStartPosition,
+            layoutWidth = layoutWidth,
+            layoutGroup = layoutGroup
         )
     }
 }

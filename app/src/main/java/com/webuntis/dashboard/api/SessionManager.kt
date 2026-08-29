@@ -274,6 +274,17 @@ class SessionManager @Inject constructor(
         get() = plainPrefs.getBoolean(KEY_USE_COMPACT_WEEK_VIEW, false)
         set(value) { plainPrefs.edit().putBoolean(KEY_USE_COMPACT_WEEK_VIEW, value).apply() }
 
+    /** What the second (small) line of a week-view tile shows, below the short subject name. */
+    enum class WeekViewSecondLine { SUBJECT_LONG_NAME, TEACHER_LONG_NAME, NONE }
+
+    var weekViewSecondLine: WeekViewSecondLine
+        get() = when (plainPrefs.getString(KEY_WEEK_VIEW_SECOND_LINE, null)) {
+            WeekViewSecondLine.TEACHER_LONG_NAME.name -> WeekViewSecondLine.TEACHER_LONG_NAME
+            WeekViewSecondLine.NONE.name              -> WeekViewSecondLine.NONE
+            else -> WeekViewSecondLine.SUBJECT_LONG_NAME
+        }
+        set(value) { plainPrefs.edit().putString(KEY_WEEK_VIEW_SECOND_LINE, value.name).apply() }
+
     /** Whether the timetable shows the logged-in person's own schedule, a whole class's
      *  schedule, or the personal schedule with selected class-plan subjects filled into gaps. */
     enum class TimetableViewMode { PERSONAL, CLASS, COMBINED }
@@ -346,6 +357,7 @@ class SessionManager @Inject constructor(
             addProperty("showShortTeacherInParens", showShortTeacherInParens)
             addProperty("showShortRoomInParens",    showShortRoomInParens)
             addProperty("useCompactWeekView", useCompactWeekView)
+            addProperty("weekViewSecondLine", weekViewSecondLine.name)
             addProperty("cacheTtlMinutes",    cacheTtlMinutes)
             addProperty("timetableViewMode",  timetableViewMode.name)
             add("combinedOverlaySubjects", com.google.gson.JsonArray().apply {
@@ -405,6 +417,9 @@ class SessionManager @Inject constructor(
             obj.get("showShortTeacherInParens")?.asBoolean?.let { showShortTeacherInParens = it }
             obj.get("showShortRoomInParens")?.asBoolean?.let    { showShortRoomInParens    = it }
             obj.get("useCompactWeekView")?.asBoolean?.let { useCompactWeekView = it }
+            obj.get("weekViewSecondLine")?.asString?.let { raw ->
+                runCatching { WeekViewSecondLine.valueOf(raw) }.getOrNull()?.let { weekViewSecondLine = it }
+            }
             obj.get("cacheTtlMinutes")?.asInt?.let    { cacheTtlMinutes    = it }
             obj.get("timetableViewMode")?.asString?.let { raw ->
                 runCatching { TimetableViewMode.valueOf(raw) }.getOrNull()?.let { timetableViewMode = it }
@@ -451,6 +466,7 @@ class SessionManager @Inject constructor(
         private const val KEY_SHOW_SHORT_TEACHER_PARENS = "show_short_teacher_parens"
         private const val KEY_SHOW_SHORT_ROOM_PARENS    = "show_short_room_parens"
         private const val KEY_USE_COMPACT_WEEK_VIEW  = "use_compact_week_view"
+        private const val KEY_WEEK_VIEW_SECOND_LINE  = "week_view_second_line"
         private const val KEY_TIMETABLE_VIEW_MODE    = "timetable_view_mode"
         private const val KEY_COMBINED_OVERLAY_SUBJECTS = "combined_overlay_subjects"
         private const val KEY_CACHE_TTL              = "cache_ttl_minutes"

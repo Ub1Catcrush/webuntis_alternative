@@ -20,6 +20,27 @@ data class LessonGroup(val lessons: List<Lesson>) {
     val id: String = lessons.joinToString("-") { it.id.toString() }
     val startTime: Int = lessons.firstOrNull()?.startTime ?: 0
     val endTime: Int = lessons.firstOrNull()?.endTime ?: 0
+
+    /**
+     * Each lesson's horizontal slice of this row as (lesson, startFraction, widthFraction),
+     * all in 0..1. Uses the API's own layoutStartPosition/layoutWidth when every lesson in the
+     * group has them — this is authoritative (it's what the official WebUntis web client uses
+     * too) and correctly handles uneven splits, not just an equal division. Falls back to an
+     * even split only when that layout data isn't available at all.
+     */
+    fun layoutSlots(): List<Triple<Lesson, Float, Float>> {
+        val hasLayout = lessons.isNotEmpty() && lessons.all { it.layoutWidth != null && it.layoutStartPosition != null }
+        if (hasLayout) {
+            val totalWidth = lessons.maxOf { (it.layoutStartPosition ?: 0) + (it.layoutWidth ?: 0) }.coerceAtLeast(1)
+            return lessons.map {
+                val start = (it.layoutStartPosition ?: 0).toFloat() / totalWidth
+                val width = (it.layoutWidth ?: totalWidth).toFloat() / totalWidth
+                Triple(it, start, width)
+            }
+        }
+        val n = lessons.size.coerceAtLeast(1)
+        return lessons.mapIndexed { i, l -> Triple(l, i.toFloat() / n, 1f / n) }
+    }
 }
 
 /** UI model for the timetable tab — wraps TimetableDay with a display label */
@@ -30,29 +51,54 @@ data class SchoolDay(val day: TimetableDay) {
 
     /**
      * Groups lessons that should be displayed side-by-side.
-     * Parallel active lessons are grouped. If a lesson is a substitution for a cancelled one,
-     * they remain separate (vertical) as per the "keine Ersatzstunden" requirement.
+     *
+     * Preferred approach: the WebUntis API already tells us exactly which lessons at the same
+     * time belong together via `layoutGroup` (same value = same row, shown side-by-side using
+     * `layoutStartPosition`/`layoutWidth`) — this is authoritative straight from the server and
+     * correctly handles cases a local heuristic can't, e.g. 3 active parallel course offerings
+     * plus a 4th, independently cancelled one, all sharing the same time slot: naively assuming
+     * "any cancelled + any active at the same time = one is a stand-in for the other" (the
+     * Ersatzstunden case) would wrongly stack all 4 vertically instead of side-by-side.
+     *
+     * Fallback (only used when the server didn't provide layoutGroup for a given time slot):
+     * a lesson that's a substitution/replacement for a specific cancelled one stays separate
+     * (vertical), while multiple simultaneous ACTIVE lessons are grouped side-by-side.
      */
     val groupedLessons: List<LessonGroup> by lazy {
         val result = mutableListOf<LessonGroup>()
-        val groups = day.lessons.groupBy { it.startTime to it.endTime }
-        val sortedTimes = groups.keys.sortedWith(compareBy({ it.first }, { it.second }))
+        val timeGroups = day.lessons.groupBy { it.startTime to it.endTime }
+        val sortedTimes = timeGroups.keys.sortedWith(compareBy({ it.first }, { it.second }))
 
         for (time in sortedTimes) {
-            val list = groups[time]!!
-            val cancelled = list.filter { it.isCancelled }
-            val active = list.filter { !it.isCancelled }
+            val list = timeGroups[time]!!
 
-            if (cancelled.isNotEmpty() && active.isNotEmpty()) {
-                // Mix of cancelled and active: show vertically (Ersatzstunden-Fall)
-                cancelled.forEach { result.add(LessonGroup(listOf(it))) }
-                active.forEach { result.add(LessonGroup(listOf(it))) }
-            } else if (active.size > 1) {
-                // Multiple active lessons without cancellations: side-by-side
-                result.add(LessonGroup(active))
+            if (list.any { it.layoutGroup != null }) {
+                // Server-provided layout — trust it. Lessons without a layoutGroup of their own
+                // (shouldn't normally happen when others in the same slot have one) each get
+                // their own singleton row so nothing is silently dropped.
+                val byLayoutGroup = list.groupBy { it.layoutGroup }
+                for ((layoutGroup, groupLessons) in byLayoutGroup) {
+                    if (layoutGroup == null) {
+                        groupLessons.forEach { result.add(LessonGroup(listOf(it))) }
+                    } else {
+                        result.add(LessonGroup(groupLessons.sortedBy { it.layoutStartPosition ?: 0 }))
+                    }
+                }
             } else {
-                // Single lesson or only cancelled ones: vertical
-                list.forEach { result.add(LessonGroup(listOf(it))) }
+                val cancelled = list.filter { it.isCancelled }
+                val active = list.filter { !it.isCancelled }
+
+                if (cancelled.isNotEmpty() && active.isNotEmpty()) {
+                    // Mix of cancelled and active: show vertically (Ersatzstunden-Fall)
+                    cancelled.forEach { result.add(LessonGroup(listOf(it))) }
+                    active.forEach { result.add(LessonGroup(listOf(it))) }
+                } else if (active.size > 1) {
+                    // Multiple active lessons without cancellations: side-by-side
+                    result.add(LessonGroup(active))
+                } else {
+                    // Single lesson or only cancelled ones: vertical
+                    list.forEach { result.add(LessonGroup(listOf(it))) }
+                }
             }
         }
         result
@@ -77,6 +123,9 @@ class TimetableViewModel @Inject constructor(
     val showShortTeacherInParens: Boolean get() = repository.sessionManager.showShortTeacherInParens
     val showShortRoomInParens:    Boolean get() = repository.sessionManager.showShortRoomInParens
     val useCompactWeekView: Boolean get() = repository.sessionManager.useCompactWeekView
+
+    val weekViewSecondLine: com.webuntis.dashboard.api.SessionManager.WeekViewSecondLine
+        get() = repository.sessionManager.weekViewSecondLine
 
     /** Switches between the day and the week grid directly from the timetable screen. */
     fun toggleUseWeekView() {

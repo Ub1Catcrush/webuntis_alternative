@@ -29,9 +29,10 @@ import kotlin.math.roundToInt
  *
  * Day columns are sized to fill the full available width when there are up to 5 days (a
  * Mon–Fri week); beyond that, columns keep that same width and the row becomes horizontally
- * scrollable/draggable instead of shrinking further. Each tile shows two lines — the short
- * subject name (large) and the long subject name (small) — both sized once per grid so every
- * tile uses the exact same, fully-fitting font size.
+ * scrollable/draggable instead of shrinking further. Each tile shows the short subject name
+ * (large) plus an optional, configurable second line (long subject name, teacher name, or
+ * nothing — see [com.webuntis.dashboard.api.SessionManager.weekViewSecondLine]); text sizes are
+ * computed once per grid so every tile uses the exact same, fully-fitting font size.
  */
 class WeekGridView @JvmOverloads constructor(
     context: Context,
@@ -73,27 +74,24 @@ class WeekGridView @JvmOverloads constructor(
 
     /** Cached args so a re-layout (e.g. orientation change) can rebuild with the same data. */
     private var pendingDays: List<SchoolDay> = emptyList()
-    private var pendingShowLongSubjects = false
-    private var pendingShowShortSubjectInParens = false
+    private var pendingSecondLineMode: com.webuntis.dashboard.api.SessionManager.WeekViewSecondLine =
+        com.webuntis.dashboard.api.SessionManager.WeekViewSecondLine.SUBJECT_LONG_NAME
 
     fun submit(
         days: List<SchoolDay>,
-        showLongSubjects: Boolean,
-        showShortSubjectInParens: Boolean
+        secondLineMode: com.webuntis.dashboard.api.SessionManager.WeekViewSecondLine
     ) {
         pendingDays = days
-        pendingShowLongSubjects = showLongSubjects
-        pendingShowShortSubjectInParens = showShortSubjectInParens
+        pendingSecondLineMode = secondLineMode
         // Defer until we actually know our width, so day columns can fill the full screen width.
         doOnLayout {
-            buildGrid(pendingDays, pendingShowLongSubjects, pendingShowShortSubjectInParens)
+            buildGrid(pendingDays, pendingSecondLineMode)
         }
     }
 
     private fun buildGrid(
         days: List<SchoolDay>,
-        showLongSubjects: Boolean,
-        showShortSubjectInParens: Boolean
+        secondLineMode: com.webuntis.dashboard.api.SessionManager.WeekViewSecondLine
     ) {
         binding.weekDayColumns.removeAllViews()
         binding.weekGutterLabels.removeAllViews()
@@ -124,14 +122,19 @@ class WeekGridView @JvmOverloads constructor(
 
         buildGutter(startMin, endMin, gridHeightPx, pxPerMin)
 
-        // ── Compute ONE uniform font size for all short names and ONE for all long names,
-        // so every tile across the whole week renders text at exactly the same size. ──
+        // ── Compute ONE uniform font size for all short names and (if the second line is shown)
+        // one for all second-line texts, so every tile across the whole week renders text at
+        // exactly the same size. ──
         val tilePaddingPx = (TILE_H_PADDING_DP * density).roundToInt()
         val textAvailableWidthPx = (dayColWidthPx - tilePaddingPx).coerceAtLeast(1).toFloat()
         val shortNames = allLessons.map { it.subjectName }.distinct()
-        val longNames = allLessons.map { it.subjectLongName }.distinct()
         val shortSizeSp = computeUniformTextSizeSp(shortNames, textAvailableWidthPx, SHORT_MAX_SP, SHORT_MIN_SP, bold = true)
-        val longSizeSp = computeUniformTextSizeSp(longNames, textAvailableWidthPx, LONG_MAX_SP, LONG_MIN_SP, bold = false)
+        val longSizeSp = if (secondLineMode == com.webuntis.dashboard.api.SessionManager.WeekViewSecondLine.NONE) {
+            LONG_MAX_SP
+        } else {
+            val longNames = allLessons.map { secondLineText(it, secondLineMode) }.distinct()
+            computeUniformTextSizeSp(longNames, textAvailableWidthPx, LONG_MAX_SP, LONG_MIN_SP, bold = false)
+        }
 
         val today = LocalDate.now()
         val nowMin = TimeIndicatorView.currentTimeMinutes()
@@ -151,8 +154,7 @@ class WeekGridView @JvmOverloads constructor(
                 minTileHeightPx = minTileHeightPx,
                 tileGapPx = tileGapPx,
                 pxPerMin = pxPerMin,
-                showLongSubjects = showLongSubjects,
-                showShortSubjectInParens = showShortSubjectInParens,
+                secondLineMode = secondLineMode,
                 shortSizeSp = shortSizeSp,
                 longSizeSp = longSizeSp
             )
@@ -161,6 +163,16 @@ class WeekGridView @JvmOverloads constructor(
                 LinearLayout.LayoutParams(dayColWidthPx, LinearLayout.LayoutParams.WRAP_CONTENT)
             )
         }
+    }
+
+    /** The text for a tile's second line, per the configured mode ("" when NONE — caller hides the view). */
+    private fun secondLineText(
+        lesson: Lesson,
+        mode: com.webuntis.dashboard.api.SessionManager.WeekViewSecondLine
+    ): String = when (mode) {
+        com.webuntis.dashboard.api.SessionManager.WeekViewSecondLine.SUBJECT_LONG_NAME -> lesson.subjectLongName
+        com.webuntis.dashboard.api.SessionManager.WeekViewSecondLine.TEACHER_LONG_NAME -> lesson.teacherLongNames
+        com.webuntis.dashboard.api.SessionManager.WeekViewSecondLine.NONE -> ""
     }
 
     /**
@@ -225,8 +237,7 @@ class WeekGridView @JvmOverloads constructor(
         minTileHeightPx: Int,
         tileGapPx: Int,
         pxPerMin: Float,
-        showLongSubjects: Boolean,
-        showShortSubjectInParens: Boolean,
+        secondLineMode: com.webuntis.dashboard.api.SessionManager.WeekViewSecondLine,
         shortSizeSp: Float,
         longSizeSp: Float
     ): View {
@@ -265,17 +276,21 @@ class WeekGridView @JvmOverloads constructor(
                 .coerceAtLeast(minTileHeightPx)
             val isGroupPast = isPastDay || (nowMin >= 0 && nowMin > groupEndMin)
 
-            val n = group.lessons.size.coerceAtLeast(1)
-            val cellWidth = ((dayColWidthPx - tileGapPx * (n - 1)) / n).coerceAtLeast(1)
+            val slots = group.layoutSlots()
 
-            group.lessons.forEachIndexed { index, lesson ->
+            slots.forEach { (lesson, startFraction, widthFraction) ->
                 val tileBinding = ItemWeekLessonBinding.inflate(LayoutInflater.from(context), lessonsContainer, false)
-                bindTile(tileBinding, lesson, isGroupPast, shortSizeSp, longSizeSp)
+                bindTile(tileBinding, lesson, isGroupPast, secondLineMode, shortSizeSp, longSizeSp)
                 tileBinding.root.setOnClickListener { onLessonClick?.invoke(lesson) }
 
-                val lp = FrameLayout.LayoutParams(cellWidth - tileGapPx, height - tileGapPx)
+                // Use the server's own proportional widths (from layoutStartPosition/layoutWidth)
+                // when available, instead of always splitting evenly by count — matches the
+                // official WebUntis layout exactly, including uneven splits.
+                val leftPx = (startFraction * dayColWidthPx).roundToInt()
+                val widthPx = (widthFraction * dayColWidthPx).roundToInt().coerceAtLeast(1)
+                val lp = FrameLayout.LayoutParams((widthPx - tileGapPx).coerceAtLeast(1), height - tileGapPx)
                 lp.topMargin = top
-                lp.leftMargin = index * (cellWidth + tileGapPx)
+                lp.leftMargin = leftPx
                 lessonsContainer.addView(tileBinding.root, lp)
             }
         }
@@ -287,6 +302,7 @@ class WeekGridView @JvmOverloads constructor(
         b: ItemWeekLessonBinding,
         lesson: Lesson,
         isPast: Boolean,
+        secondLineMode: com.webuntis.dashboard.api.SessionManager.WeekViewSecondLine,
         shortSizeSp: Float,
         longSizeSp: Float
     ) {
@@ -299,9 +315,15 @@ class WeekGridView @JvmOverloads constructor(
         )
 
         b.textSubjectShort.text = lesson.subjectName
-        b.textSubjectLong.text = lesson.subjectLongName
         b.textSubjectShort.textSize = shortSizeSp
-        b.textSubjectLong.textSize = longSizeSp
+
+        if (secondLineMode == com.webuntis.dashboard.api.SessionManager.WeekViewSecondLine.NONE) {
+            b.textSubjectLong.visibility = View.GONE
+        } else {
+            b.textSubjectLong.visibility = View.VISIBLE
+            b.textSubjectLong.text = secondLineText(lesson, secondLineMode)
+            b.textSubjectLong.textSize = longSizeSp
+        }
 
         b.textSubjectShort.paintFlags = b.textSubjectShort.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
         b.textSubjectLong.paintFlags = b.textSubjectLong.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()

@@ -122,6 +122,21 @@ class SettingsFragment : Fragment() {
             loginViewModel.refreshTimetable()
         }
 
+        // ── Week view: what the tile's second line shows ───────────────────────
+        when (loginViewModel.sessionManager.weekViewSecondLine) {
+            SessionManager.WeekViewSecondLine.SUBJECT_LONG_NAME -> binding.radioWeekSecondLineSubject.isChecked = true
+            SessionManager.WeekViewSecondLine.TEACHER_LONG_NAME -> binding.radioWeekSecondLineTeacher.isChecked = true
+            SessionManager.WeekViewSecondLine.NONE              -> binding.radioWeekSecondLineNone.isChecked = true
+        }
+        binding.radioGroupWeekViewSecondLine.setOnCheckedChangeListener { _, checkedId ->
+            loginViewModel.sessionManager.weekViewSecondLine = when (checkedId) {
+                R.id.radio_week_second_line_teacher -> SessionManager.WeekViewSecondLine.TEACHER_LONG_NAME
+                R.id.radio_week_second_line_none    -> SessionManager.WeekViewSecondLine.NONE
+                else                                 -> SessionManager.WeekViewSecondLine.SUBJECT_LONG_NAME
+            }
+            loginViewModel.refreshTimetable()
+        }
+
         // ── Long names toggles (per type) ─────────────────────────────────
         binding.switchLongSubjects.isChecked = loginViewModel.sessionManager.showLongSubjects
         binding.switchLongSubjects.setOnCheckedChangeListener { _, checked ->

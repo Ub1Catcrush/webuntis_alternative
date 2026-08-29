@@ -128,8 +128,7 @@ class TimetableFragment : Fragment() {
             if (isWeek) {
                 binding.weekGridView.submit(
                     days,
-                    showLongSubjects = viewModel.showLongSubjects,
-                    showShortSubjectInParens = viewModel.showShortSubjectInParens
+                    secondLineMode = viewModel.weekViewSecondLine
                 )
             } else {
                 setupViewPager(days)

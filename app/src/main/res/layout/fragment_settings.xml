@@ -336,6 +336,46 @@
                         android:text="@string/settings_use_compact_week_view"
                         android:textAppearance="?attr/textAppearanceBodyMedium" />
 
+                    <!-- 2. Zeile der Wochenansicht-Kachel -->
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="@string/settings_week_view_second_line_label"
+                        android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                    <RadioGroup
+                        android:id="@+id/radio_group_week_view_second_line"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <RadioButton
+                            android:id="@+id/radio_week_second_line_subject"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="40dp"
+                            android:text="@string/settings_week_view_second_line_subject"
+                            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                        <RadioButton
+                            android:id="@+id/radio_week_second_line_teacher"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="40dp"
+                            android:text="@string/settings_week_view_second_line_teacher"
+                            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                        <RadioButton
+                            android:id="@+id/radio_week_second_line_none"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="40dp"
+                            android:text="@string/settings_week_view_second_line_none"
+                            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                    </RadioGroup>
+
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

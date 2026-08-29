@@ -81,7 +81,7 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
             b.root.minimumHeight = minHeightPx
             b.lessonsContainer.removeAllViews()
 
-            group.lessons.forEachIndexed { index, lesson ->
+            group.layoutSlots().forEachIndexed { index, (lesson, _, widthFraction) ->
                 val lessonBinding = ItemLessonBinding.inflate(LayoutInflater.from(ctx), b.lessonsContainer, false)
                 lessonBinding.root.minimumHeight = minHeightPx
                 bindLesson(
@@ -89,10 +89,13 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
                     showShortSubjectInParens, showShortTeacherInParens, showShortRoomInParens,
                     onClick, isGroupPast
                 )
-                
-                val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+
+                // Use the server's own proportional widths (from layoutStartPosition/layoutWidth)
+                // when available, instead of always splitting evenly — matches the official
+                // WebUntis layout exactly, including uneven splits.
+                val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, widthFraction)
                 if (index > 0) lp.marginStart = (4 * ctx.resources.displayMetrics.density).toInt()
-                
+
                 b.lessonsContainer.addView(lessonBinding.root, lp)
             }
         }

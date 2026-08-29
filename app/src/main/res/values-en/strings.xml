@@ -202,6 +202,10 @@
 
     <string name="label_homework_attachment_download">Download attachment</string>
     <string name="saved_file_path">✓ Saved: %s</string>
+    <string name="settings_week_view_second_line_label">Weekview: 2nd line shows</string>
+    <string name="settings_week_view_second_line_subject">Subject (Fullname)</string>
+    <string name="settings_week_view_second_line_teacher">Teacher (Fullname)</string>
+    <string name="settings_week_view_second_line_none">Nothing</string>
 
     <!-- Cache settings -->
     <string name="settings_cache_label">Cache duration</string>
