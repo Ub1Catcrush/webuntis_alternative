@@ -27,9 +27,11 @@ import kotlin.math.roundToInt
  * days, and lessons automatically get a taller tile when they span more time (e.g. Doppelstunden)
  * because tile height is derived directly from (endTime - startTime), not from a fixed row count.
  *
- * Day columns always stretch to fill the full available width (split evenly across the visible
- * days). Each tile shows two lines — the short subject name (large) and the long subject name
- * (small) — both sized once per grid so every tile uses the exact same, fully-fitting font size.
+ * Day columns are sized to fill the full available width when there are up to 5 days (a
+ * Mon–Fri week); beyond that, columns keep that same width and the row becomes horizontally
+ * scrollable/draggable instead of shrinking further. Each tile shows two lines — the short
+ * subject name (large) and the long subject name (small) — both sized once per grid so every
+ * tile uses the exact same, fully-fitting font size.
  */
 class WeekGridView @JvmOverloads constructor(
     context: Context,
@@ -55,6 +57,7 @@ class WeekGridView @JvmOverloads constructor(
         private const val HEADER_HEIGHT_DP = 32f
         private const val MIN_TILE_HEIGHT_DP = 36f
         private const val MIN_COL_WIDTH_DP = 56f
+        private const val DEFAULT_VISIBLE_DAYS = 5 // Mon–Fri: columns fill the screen at this count
         private const val TILE_GAP_DP = 2f
         private const val TILE_H_PADDING_DP = 8f // horizontal padding+margins to keep clear of, per tile
         private const val DEFAULT_START_MIN = 8 * 60   // 08:00 fallback when no lessons at all
@@ -108,12 +111,16 @@ class WeekGridView @JvmOverloads constructor(
         val minTileHeightPx = (MIN_TILE_HEIGHT_DP * density).roundToInt()
         val tileGapPx = (TILE_GAP_DP * density).roundToInt()
 
-        // Use the full available width (this view's width minus the fixed time gutter),
-        // split evenly across every visible day, so the grid always fills the screen.
+        // Use the full available width (this view's width minus the fixed time gutter). Columns
+        // are sized as if for a 5-day week (Mon–Fri) so that view stays edge-to-edge without any
+        // scrolling — but if more than 5 days are shown at once, columns keep that same width
+        // instead of shrinking further, and the day-columns row becomes horizontally
+        // scrollable/draggable so the extra days are still reachable and readable.
         val gutterWidthPx = (GUTTER_WIDTH_DP * density).roundToInt()
         val availableWidthPx = (width - gutterWidthPx).coerceAtLeast(1)
         val minColWidthPx = (MIN_COL_WIDTH_DP * density).roundToInt()
-        val dayColWidthPx = (availableWidthPx / days.size).coerceAtLeast(minColWidthPx)
+        val columnBasisCount = minOf(days.size, DEFAULT_VISIBLE_DAYS).coerceAtLeast(1)
+        val dayColWidthPx = (availableWidthPx / columnBasisCount).coerceAtLeast(minColWidthPx)
 
         buildGutter(startMin, endMin, gridHeightPx, pxPerMin)
 

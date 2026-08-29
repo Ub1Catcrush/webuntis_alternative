@@ -88,28 +88,23 @@ class WebUntisRepository @Inject constructor(
         try {
             // Double check: if someone else refreshed while we waited for the lock
             if (sessionManager.isSessionFresh() && !force) {
-                android.util.Log.w("WebUntis", "reAuthSilently: using existing fresh session.")
                 return@withLock sessionManager.session?.let { Result.success(it) }
                     ?: Result.failure(Exception("Sitzung verloren"))
             }
 
-            android.util.Log.w("WebUntis", "reAuthSilently: starting (force=$force) server=$server school=$schoolname")
+            android.util.Log.i("WebUntis", "Performing silent re-authentication (force=$force)...")
             bearerToken = null // Reset token to ensure it gets refreshed
 
             val rpc = loginViaJsonRpc(server, schoolname, username, password)
-            android.util.Log.w("WebUntis", "reAuthSilently: loginViaJsonRpc success=${rpc.isSuccess} err=${rpc.exceptionOrNull()?.let { "${it.javaClass.simpleName}: ${it.message}" }}")
             val result = if (rpc.isSuccess) rpc else {
                 kotlinx.coroutines.yield()
-                val rest = loginViaRest(server, schoolname, username, password)
-                android.util.Log.w("WebUntis", "reAuthSilently: loginViaRest success=${rest.isSuccess} err=${rest.exceptionOrNull()?.let { "${it.javaClass.simpleName}: ${it.message}" }}")
-                rest
+                loginViaRest(server, schoolname, username, password)
             }
 
             if (result.isSuccess) {
                 val session = result.getOrNull()
                 sessionManager.storedCredentials = Pair(username, password)
                 fetchBearerToken()
-                android.util.Log.w("WebUntis", "reAuthSilently: fetchBearerToken done, token=${if (bearerToken != null) "present" else "NULL"}")
 
                 // Resolve classId now — awaited — so the class-timetable toggle is already correct
                 // by the time the UI renders, instead of only appearing after a later reload.
@@ -130,31 +125,26 @@ class WebUntisRepository @Inject constructor(
                 }
 
                 clearAllDataCaches() // Flush stale data from old session
-                android.util.Log.w("WebUntis", "reAuthSilently: SUCCESS, session valid.")
+                android.util.Log.i("WebUntis", "Silent re-auth successful. Session valid.")
                 return@withLock resolvedSession?.let { Result.success(it) } ?: result
             } else {
-                android.util.Log.e("WebUntis", "reAuthSilently: FAILED — ${result.exceptionOrNull()?.javaClass?.simpleName}: ${result.exceptionOrNull()?.message}")
+                android.util.Log.e("WebUntis", "Silent re-auth FAILED: ${result.exceptionOrNull()?.message}")
             }
             result
         } catch (t: Throwable) {
-            // Catch Throwable (not just Exception) so a release-build (R8) LinkageError/NoSuchMethodError
-            // here — which would otherwise silently bypass all logging above and surface only as a
-            // bare, message-less "Fehler" toast — is guaranteed to produce a diagnostic log line.
-            android.util.Log.e("WebUntis", "reAuthSilently: UNEXPECTED ${t.javaClass.name}: ${t.message}", t)
+            // Catch Throwable, not just Exception: a release-build (R8) LinkageError/NoSuchMethodError
+            // here would otherwise bypass this entirely and surface only as a bare, message-less
+            // "Fehler" toast further up — always give the caller a real message to show/log.
+            android.util.Log.e("WebUntis", "Silent re-auth threw unexpectedly: ${t.javaClass.simpleName}: ${t.message}", t)
             Result.failure(Exception("Re-Login fehlgeschlagen: ${t.javaClass.simpleName}: ${t.message}"))
         }
     }
 
     private suspend fun reLoginIfNeeded() {
-        val fresh = sessionManager.isSessionFresh()
-        android.util.Log.w("WebUntis", "reLoginIfNeeded: isSessionFresh=$fresh")
-        if (fresh) return
-        val creds   = sessionManager.storedCredentials
-        val session = sessionManager.session
-        android.util.Log.w("WebUntis", "reLoginIfNeeded: creds=${creds != null} session=${session != null}")
-        if (creds == null || session == null) return
-        val result = reAuthSilently(session.server, session.schoolname, creds.first, creds.second, force = false)
-        android.util.Log.w("WebUntis", "reLoginIfNeeded: reAuthSilently success=${result.isSuccess}")
+        if (sessionManager.isSessionFresh()) return
+        val creds   = sessionManager.storedCredentials ?: return
+        val session = sessionManager.session ?: return
+        reAuthSilently(session.server, session.schoolname, creds.first, creds.second, force = false)
     }
 
     private suspend fun <T> withCacheOrFetch(
@@ -188,7 +178,7 @@ class WebUntisRepository @Inject constructor(
             if (result.isSuccess) sessionManager.touchSession()
             result
         } catch (e: SessionExpiredException) {
-            android.util.Log.w("WebUntis", "Session expired mid-request — starting auto-recovery")
+            android.util.Log.i("WebUntis", "Session expired mid-request — attempting silent re-auth and retry")
             val creds   = sessionManager.storedCredentials
             val session = sessionManager.session
             if (creds == null || session == null) return Result.failure(e)
@@ -380,7 +370,8 @@ class WebUntisRepository @Inject constructor(
         if (!r.isSuccessful) {
             val extracted = tryExtractMessage(bodyText)
             val msg = if (extracted != null) "$extracted (HTTP ${r.code()})" else "HTTP ${r.code()}"
-            android.util.Log.w("WebUntis", "rawBody: request failed — HTTP ${r.code()} url=${r.raw().request.url} body=${bodyText.take(300)}")
+            val url = r.raw().request.url
+            android.util.Log.w("WebUntis", "Request failed — HTTP ${r.code()} ${url.encodedPath}")
             throw Exception(msg)
         }
 
@@ -1489,28 +1480,20 @@ class WebUntisRepository @Inject constructor(
         msg: Message,
         onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)? = null
     ): Result<Pair<ByteArray, String?>> = withSessionRetry {
-        val TAG = "WebUntis"
         try {
-            android.util.Log.w(TAG, "downloadAttachment: start id=$attachmentId")
-
             val token = tokenForMessage(msg)
-            android.util.Log.w(TAG, "downloadAttachment: token=${if (token != null) "present" else "NULL"}")
-            if (token == null) return@withSessionRetry Result.failure(Exception("Nicht authentifiziert"))
+                ?: return@withSessionRetry Result.failure(Exception("Nicht authentifiziert"))
 
             val urlResp = service().getAttachmentStorageUrl(attachmentId, token)
-            android.util.Log.w(TAG, "downloadAttachment: getAttachmentStorageUrl HTTP ${urlResp.code()} successful=${urlResp.isSuccessful}")
-
             val urlRaw = rawBody(urlResp)
-            android.util.Log.w(TAG, "downloadAttachment: urlRaw length=${urlRaw?.length ?: -1}")
-            if (urlRaw == null) return@withSessionRetry Result.failure(Exception("Keine Download-URL"))
+                ?: return@withSessionRetry Result.failure(Exception("Keine Download-URL"))
 
             val storageUrl: AttachmentStorageUrl = try {
                 parseJson(urlRaw)
             } catch (e: Exception) {
-                android.util.Log.e(TAG, "downloadAttachment: JSON parse FAILED for storage-url response. raw=${urlRaw.take(500)}", e)
-                return@withSessionRetry Result.failure(Exception("Antwort konnte nicht gelesen werden: ${e.javaClass.simpleName}: ${e.message}"))
+                android.util.Log.e("WebUntis", "Attachment storage-url response could not be parsed", e)
+                return@withSessionRetry Result.failure(Exception("Antwort konnte nicht gelesen werden: ${e.message}"))
             }
-            android.util.Log.w(TAG, "downloadAttachment: parsed downloadUrl=${storageUrl.downloadUrl != null} headers=${storageUrl.additionalHeaders?.size ?: 0}")
 
             val downloadUrl = storageUrl.downloadUrl
                 ?: return@withSessionRetry Result.failure(Exception("Download-URL fehlt"))
@@ -1520,10 +1503,8 @@ class WebUntisRepository @Inject constructor(
             val encMd5 = headers.firstOrNull { it.key == "x-amz-server-side-encryption-customer-key-md5" }?.value ?: ""
 
             val dlResp = service().downloadFromStorage(downloadUrl, encAlg, encKey, encMd5)
-            android.util.Log.w(TAG, "downloadAttachment: downloadFromStorage HTTP ${dlResp.code()} successful=${dlResp.isSuccessful}")
             if (!dlResp.isSuccessful) {
-                val errText = dlResp.errorBody()?.string()?.take(300)
-                android.util.Log.w(TAG, "downloadFromStorage failed — HTTP ${dlResp.code()} url=$downloadUrl body=$errText")
+                android.util.Log.w("WebUntis", "Attachment storage download failed — HTTP ${dlResp.code()}")
                 return@withSessionRetry Result.failure(Exception("Storage-Download fehlgeschlagen (HTTP ${dlResp.code()})"))
             }
             val body = dlResp.body() ?: return@withSessionRetry Result.failure(Exception("Keine Daten"))
@@ -1532,12 +1513,10 @@ class WebUntisRepository @Inject constructor(
             // no file extension at all (e.g. images named just by an internal id).
             val declaredMimeType = body.contentType()?.toString()
             val expectedLength = body.contentLength()
-            android.util.Log.w(TAG, "downloadAttachment: body contentType=$declaredMimeType expectedLength=$expectedLength")
             // Reading the (streaming) body performs real blocking network I/O — never do this on
             // whatever thread called us (viewModelScope.launch defaults to the Main dispatcher),
             // or it throws NetworkOnMainThreadException. Must run on Dispatchers.IO explicitly.
             val bytes = withContext(Dispatchers.IO) { readBytesWithProgress(body, onProgress) }
-            android.util.Log.w(TAG, "downloadAttachment: expected=$expectedLength actual=${bytes.size} bytes")
             // Never silently "succeed" with an empty file — if the server told us how many bytes
             // to expect and we got fewer (or none), surface that as a real error instead of
             // letting the caller save/open a corrupt 0-byte file without any explanation.

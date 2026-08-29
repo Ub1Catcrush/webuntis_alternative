@@ -2,6 +2,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 apply(from = rootProject.file("dependencies.gradle"))
 
+@Suppress("UNCHECKED_CAST")
 val appVersions by extra(rootProject.extra["app_versions"] as Map<String, Any>)
 
 plugins {

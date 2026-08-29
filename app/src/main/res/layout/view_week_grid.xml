@@ -14,7 +14,7 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal">
 
-            <!-- Fixed time gutter: header spacer + absolutely positioned time labels -->
+            <!-- Fixed time gutter: stays put, never scrolls horizontally with the days -->
             <LinearLayout
                 android:id="@+id/week_gutter_column"
                 android:layout_width="42dp"
@@ -33,13 +33,24 @@
 
             </LinearLayout>
 
-            <!-- Day columns fill the entire remaining screen width, split evenly -->
-            <LinearLayout
-                android:id="@+id/week_day_columns"
+            <!-- Day columns: fill the remaining width for up to 5 days; beyond that, columns
+                 keep their 5-day width and this becomes horizontally scrollable/draggable
+                 instead of shrinking columns further. -->
+            <HorizontalScrollView
+                android:id="@+id/week_h_scroll"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="horizontal" />
+                android:scrollbars="none"
+                android:overScrollMode="always">
+
+                <LinearLayout
+                    android:id="@+id/week_day_columns"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal" />
+
+            </HorizontalScrollView>
 
         </LinearLayout>
 

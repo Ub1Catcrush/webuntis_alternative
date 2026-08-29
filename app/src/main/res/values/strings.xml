@@ -92,7 +92,7 @@
     <string name="label_tab_events_upcoming">Kommende</string>
     <string name="label_tab_events_past">Vergangene</string>
     <string name="classbook_subtitle">%d Einträge</string>
-    <string name="classbook_subtitle_year">Schuljahr %d/%d</string>
+    <string name="classbook_subtitle_year">Schuljahr %1$d/%2$d</string>
     <string name="label_no_events">Keine Termine in den nächsten 90 Tagen 📅</string>
     <string name="label_no_events_including_past">Keine Termine gefunden 📅</string>
     <string name="action_show_past_events">Vergangene anzeigen</string>

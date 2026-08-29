@@ -90,7 +90,7 @@
     <string name="label_tab_events_upcoming">Upcoming</string>
     <string name="label_tab_events_past">Past</string>
     <string name="classbook_subtitle">%d entries</string>
-    <string name="classbook_subtitle_year">School year %d/%d</string>
+    <string name="classbook_subtitle_year">School year %1$d/%2$d</string>
     <string name="label_no_events">No events in the next 90 days 📅</string>
     <string name="label_no_events_including_past">No events found 📅</string>
     <string name="action_show_past_events">Show past events</string>
@@ -146,11 +146,11 @@
     <string name="label_attachment_name_fallback">attachment</string>
     <string name="error_download_failed">Download failed: %s</string>
     <string name="error_save_failed">Save failed: %s</string>
+    <string name="error_no_app_to_open">File saved, but no fitting App to open it found</string>
     <string name="error_mediastore_insert">MediaStore insert failed</string>
     <string name="error_outputstream_open">Could not open OutputStream</string>
     <string name="error_attachment_load_failed">Could not load file: %s</string>
-    <string name="error_no_app_to_open">File saved, but no fitting App to open it found</string>
-    <string name="message_saved_filename">✓ Saved: (%s</string>
+    <string name="message_saved_filename">✓ Saved: %s</string>
     <string name="messages_compose_title_new">New message</string>
     <string name="messages_compose_title_reply">Reply</string>
     <string name="messages_compose_title_draft">Edit draft</string>
