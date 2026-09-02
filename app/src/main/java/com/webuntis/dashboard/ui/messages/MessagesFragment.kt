@@ -309,7 +309,7 @@ class MessagesFragment : Fragment() {
             }
         }
         draft?.recipientPersons?.forEach { r ->
-            r.personId?.let { addChip(RecipientPerson(it, r.displayName, r.imageUrl)) }
+            r.userId?.let { addChip(RecipientPerson(it, r.displayName, r.imageUrl)) }
         }
 
         // AutoCompleteTextView in TextInputLayout

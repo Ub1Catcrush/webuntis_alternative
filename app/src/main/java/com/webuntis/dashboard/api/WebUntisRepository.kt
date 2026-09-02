@@ -1702,23 +1702,42 @@ class WebUntisRepository @Inject constructor(
                 getAuthHeader() ?: return Result.failure(Exception("Nicht authentifiziert"))
             }
 
-            val gson    = com.google.gson.Gson()
+            val schoolYearId = getCurrentSchoolYear().getOrNull()?.id ?: 0
+
+            // Field names/shape here are NOT guessed — they match exactly what the official web
+            // client sends to this same endpoint (verified via a real, successful send).
+            // NOTE: no reply-threading field is included — the confirmed-working payload doesn't
+            // have one, so [replyToMsgId] is currently unused here. If replies turn out to not
+            // thread correctly, that's the next thing to investigate (likely a different field
+            // name in v2, or replies might just be plain new messages server-side).
+            val gson = com.google.gson.Gson()
             val payload = buildString {
                 append("{")
                 append("\"subject\":${gson.toJson(subject)},")
                 append("\"content\":${gson.toJson(content)},")
-                append("\"recipientPersonIds\":${gson.toJson(recipientPersonIds)},")
-                append("\"allowReply\":$allowReply")
-                if (replyToMsgId != null) append(",\"replyToMessageId\":$replyToMsgId")
+                append("\"requestConfirmation\":false,")
+                append("\"recipientUserIds\":${gson.toJson(recipientPersonIds)},")
+                append("\"oneDriveAttachments\":[],")
+                append("\"forbidReply\":${!allowReply}")
                 append("}")
             }
-            val reqBody =
-                payload.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
-            service().sendMessage(token, reqBody)
+            val requestPart = okhttp3.MultipartBody.Part.createFormData(
+                "request", "blob",
+                payload.toRequestBody("application/json".toMediaTypeOrNull())
+            )
+
+            val resp = service().sendMessageV2(token, schoolYearId, requestPart)
+            // The old v1 endpoint never checked this at all — that's exactly how "message sent"
+            // could show up even though nothing was actually created server-side.
+            rawBody(resp) ?: return Result.failure(Exception("Nachricht wurde nicht gesendet"))
+
             // Invalidate inbox + sent caches
             cacheMessages = null; cacheSentMessages = null
             Result.success(Unit)
-        } catch (e: Exception) { Result.failure(e) }
+        } catch (e: Exception) {
+            if (e is SessionExpiredException) throw e
+            Result.failure(e)
+        }
     }
 
     // ─── SAVE / UPDATE DRAFT ─────────────────────────────────────────────────

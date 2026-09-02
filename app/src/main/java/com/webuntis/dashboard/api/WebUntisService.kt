@@ -222,7 +222,19 @@ interface WebUntisService {
         @Query("folder") folder: String = "DRAFTS"
     ): Response<ResponseBody>
 
-    // Send a new message / reply
+    // Send a new message / reply. WebUntis's real send endpoint (what the official web client
+    // actually uses) — the old "api/rest/view/v1/messages" JSON endpoint below is legacy: it can
+    // return a 2xx response without the message actually being created (silently no-ops instead
+    // of erroring), which is why "message sent" could show even though nothing arrived.
+    @Multipart
+    @POST("api/rest/view/v2/messages/users")
+    suspend fun sendMessageV2(
+        @Header("Authorization") authorization: String,
+        @Header("x-webuntis-api-school-year-id") schoolYearId: Int,
+        @Part request: okhttp3.MultipartBody.Part
+    ): Response<ResponseBody>
+
+    // Legacy — kept only for reference / in case a fallback is ever needed. Prefer sendMessageV2.
     @POST("api/rest/view/v1/messages")
     suspend fun sendMessage(
         @Header("Authorization") authorization: String,
