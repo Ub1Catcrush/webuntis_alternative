@@ -12,6 +12,17 @@ interface WebUntisService {
     @GET("api/token/new")
     suspend fun getBearerToken(): Response<ResponseBody>
 
+    // Returns the embedded HTML shell, which contains a `dojoConfig` script blob with the
+    // session's CSRF token (grupet.csrfToken / grupet.csrfHeader). This is the ONLY place the
+    // web client itself gets that token from — WebUntis does not expose it via any JSON API
+    // or cookie, only embedded in this page's inline JavaScript. Required before any
+    // state-changing write request (create/update/delete absence etc.), or the server rejects
+    // them with a bare 403, even with a perfectly valid session.
+    @GET("embedded.do")
+    suspend fun getEmbeddedPage(
+        @Query("showSidebar") showSidebar: Boolean = false
+    ): Response<ResponseBody>
+
     // Returns userData with elemId/elemType — used to resolve child element ID for parent accounts
     @GET("api/rest/view/v1/app/data")
     suspend fun getAppData(

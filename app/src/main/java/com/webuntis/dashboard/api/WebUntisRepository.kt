@@ -105,6 +105,7 @@ class WebUntisRepository @Inject constructor(
                 val session = result.getOrNull()
                 sessionManager.storedCredentials = Pair(username, password)
                 fetchBearerToken()
+                fetchCsrfToken() // needed before any write request (create/update/delete absence etc.)
 
                 // Resolve classId now — awaited — so the class-timetable toggle is already correct
                 // by the time the UI renders, instead of only appearing after a later reload.
@@ -413,6 +414,32 @@ class WebUntisRepository @Inject constructor(
             bearerToken = token
             Result.success(token)
         } catch (e: Exception) { Result.failure(e) }
+    }
+
+    /**
+     * Fetches the CSRF token the WebUntis backend requires on state-changing requests
+     * (create/update/delete absence etc.) once a session is established. Unlike the bearer
+     * token, WebUntis never exposes this via a JSON API or a cookie — the official web client
+     * only ever gets it embedded in a `dojoConfig = {...}` script blob inside the HTML of the
+     * "embedded" shell page (`grupet.csrfToken` / `grupet.csrfHeader`, currently
+     * "X-CSRF-TOKEN"). So we fetch that same page and pull the token out with a regex instead
+     * of parsing the page as HTML/JS.
+     *
+     * Deliberately non-fatal: if this fails, login itself still succeeds — only the write
+     * features (submitting an absence etc.) would then still hit the 403 this is meant to
+     * prevent, exactly as before this fix existed.
+     */
+    private suspend fun fetchCsrfToken(): Result<String?> {
+        return try {
+            val resp = service().getEmbeddedPage()
+            val html = rawBody(resp) ?: return Result.success(null)
+            val token = Regex("\"csrfToken\"\\s*:\\s*\"([^\"]+)\"").find(html)?.groupValues?.get(1)
+            sessionManager.csrfToken = token
+            Result.success(token)
+        } catch (e: Exception) {
+            android.util.Log.w("WebUntis", "fetchCsrfToken failed (write requests like creating an absence may 403 until next login): ${e.message}")
+            Result.failure(e)
+        }
     }
 
     private suspend fun callTimetableV1(
@@ -1284,8 +1311,25 @@ class WebUntisRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
+    /** Ensures a CSRF token is present before a write request, fetching one on demand if this
+     *  session was established before this mechanism existed (or the initial fetch failed). */
+    private suspend fun ensureCsrfToken() {
+        if (sessionManager.csrfToken.isNullOrBlank()) fetchCsrfToken()
+    }
+
     suspend fun createAbsence(req: CreateAbsenceRequest): Result<Absence> = withSessionRetry {
         try {
+            ensureCsrfToken()
+            // Diagnostic aid: if a write request still 403s despite a valid CSRF token, the next
+            // thing to check is whether the active session is actually the parent/guardian
+            // account (personType 12) rather than the student's own — this line makes that
+            // visible without needing a debugger attached.
+            android.util.Log.i(
+                "WebUntis",
+                "createAbsence: personType=${sessionManager.session?.personType} " +
+                    "personId=${sessionManager.session?.personId} studentId=${req.studentId} " +
+                    "csrfToken=${if (sessionManager.csrfToken.isNullOrBlank()) "MISSING" else "present"}"
+            )
             // WebUntis write endpoints require Tenant-Id header (from JWT claim) + JSESSIONID cookie.
             // The Bearer token is intentionally omitted (scope mg:r = read-only).
             val tenantId = tenantIdFromToken()
@@ -1300,6 +1344,7 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun updateAbsence(id: Int, req: CreateAbsenceRequest): Result<Absence> = withSessionRetry {
         try {
+            ensureCsrfToken()
             val tenantId = tenantIdFromToken()
             val resp = service().updateAbsence(null, tenantId, id, req)
             val raw = rawBody(resp) ?: return@withSessionRetry Result.failure(Exception("Fehler beim Aktualisieren"))
@@ -1312,6 +1357,7 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun deleteAbsence(id: Int): Result<Unit> = withSessionRetry {
         try {
+            ensureCsrfToken()
             val tenantId = tenantIdFromToken()
             val resp = service().deleteAbsence(null, tenantId, DeleteAbsenceRequest(listOf(id)))
             val raw = if (resp.isSuccessful) resp.body()?.string() else resp.errorBody()?.string()
@@ -1636,6 +1682,7 @@ class WebUntisRepository @Inject constructor(
         fromSecondAccount: Boolean = false
     ): Result<Unit> {
         return try {
+            ensureCsrfToken() // same session cookie rides along even on this Bearer-token endpoint
             val token: String = if (fromSecondAccount) {
                 val acc     = sessionManager.secondAccount ?: return Result.failure(Exception("Kein 2. Account"))
                 val session = sessionManager.session       ?: return Result.failure(Exception("Nicht eingeloggt"))
@@ -1691,6 +1738,7 @@ class WebUntisRepository @Inject constructor(
         removedAttachmentIds: List<String> = emptyList()            // existing storage IDs to delete
     ): Result<Message> {
         return try {
+            ensureCsrfToken() // same session cookie rides along even on this Bearer-token endpoint
             val token: String = if (fromSecondAccount) {
                 val acc     = sessionManager.secondAccount ?: return Result.failure(Exception("Kein 2. Account"))
                 val session = sessionManager.session       ?: return Result.failure(Exception("Nicht eingeloggt"))
@@ -1757,6 +1805,7 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun deleteMessage(msg: Message): Result<Unit> {
         return try {
+            ensureCsrfToken() // same session cookie rides along even on this Bearer-token endpoint
             val token = tokenForMessage(msg) ?: return Result.failure(Exception("Nicht authentifiziert"))
             service().deleteMessage(token, msg.id)
             when {

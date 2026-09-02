@@ -109,6 +109,17 @@ object NetworkModule {
             builder.header("X-Requested-With", "XMLHttpRequest")
         }
 
+        // State-changing requests (creating/editing/deleting absences etc.) go through the
+        // session-cookie-authenticated path, same as the official web client — and like the
+        // web client, the server requires the matching CSRF token as a header on exactly these
+        // requests, or it rejects them with a bare 403 (see SessionManager.csrfToken doc for
+        // details on where this token comes from). The header name below matches WebUntis's own
+        // "csrfHeader" config value from its embedded.do page (currently "X-CSRF-TOKEN").
+        val isStateChanging = request.method == "POST" || request.method == "PUT" || request.method == "DELETE"
+        if (isStateChanging && !isLoginEndpoint) {
+            sessionManager.csrfToken?.let { builder.header("X-CSRF-TOKEN", it) }
+        }
+
         chain.proceed(builder.build())
     }
 
@@ -142,15 +153,19 @@ object NetworkModule {
 
             val responsePath = response.request.url.encodedPath
 
-            val isLoginCall = requestPath.contains("jsonrpc.do", ignoreCase = true) ||
+            val isExemptFromRedirectCheck = requestPath.contains("jsonrpc.do", ignoreCase = true) ||
                               requestPath.contains("j_spring_security_check", ignoreCase = true) ||
                               requestPath.contains("/api/rest/view/v1/auth", ignoreCase = true) ||
                               requestPath.contains("api/userdata/login", ignoreCase = true) ||
-                              requestPath.contains("api/auth/logout", ignoreCase = true)
+                              requestPath.contains("api/auth/logout", ignoreCase = true) ||
+                              // embedded.do is the app-shell HTML page (fetched once after login
+                              // to read the CSRF token out of its inline dojoConfig script) — it
+                              // is SUPPOSED to return HTML, that's not a session-expiry redirect.
+                              requestPath.contains("embedded.do", ignoreCase = true)
             val redirectedToAuth = responsePath.contains("index.do") || responsePath.contains("login.do")
             val isHtml = rawBody.contains("<html", ignoreCase = true) || rawBody.contains("<!DOCTYPE", ignoreCase = true)
 
-            if (!isLoginCall && (redirectedToAuth || (isHtml && !isJson && !looksLikeJson))) {
+            if (!isExemptFromRedirectCheck && (redirectedToAuth || (isHtml && !isJson && !looksLikeJson))) {
                 val errorJson = """{"error":{"code":-32001,"message":"Session abgelaufen (Redirect)"}}"""
                 response.newBuilder()
                     .header("X-WebUntis-Session-Expired", "true")

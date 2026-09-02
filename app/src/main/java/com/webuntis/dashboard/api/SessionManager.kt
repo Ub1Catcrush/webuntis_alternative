@@ -127,12 +127,26 @@ class SessionManager @Inject constructor(
         prefs.edit().putLong(KEY_SESSION_TIME, System.currentTimeMillis()).apply()
     }
 
+    /**
+     * WebUntis's backend enforces CSRF protection (double-submit cookie pattern) on
+     * state-changing requests (POST/PUT/DELETE) whenever a session cookie (JSESSIONID) is
+     * present — exactly like the official web client. The server issues a CSRF cookie whose
+     * value must be echoed back as the `x-csrf-token` header on those requests, or they're
+     * rejected with a bare 403 "Access Denied" (nothing to do with an actually expired
+     * session, even though from the outside it can look just like one). The cookie jar
+     * captures this automatically from response Set-Cookie headers; see [captureCsrfCookie].
+     */
+    var csrfToken: String?
+        get() = prefs.getString(KEY_CSRF_TOKEN, null)
+        set(value) { prefs.edit().putString(KEY_CSRF_TOKEN, value).apply() }
+
     /** Clears session token only. Credentials and second account are preserved. */
     fun clearSession() {
         prefs.edit()
             .remove(KEY_SERVER).remove(KEY_SCHOOLNAME).remove(KEY_USERNAME)
             .remove(KEY_SESSION_ID).remove(KEY_PERSON_ID).remove(KEY_CLASS_ID)
             .remove(KEY_PERSON_NAME).remove(KEY_PERSON_TYPE).remove(KEY_SESSION_TIME)
+            .remove(KEY_CSRF_TOKEN)
             .apply()
         // studentId is session-derived — clear it too so it gets re-resolved after next login
         prefs.edit().remove(KEY_STUDENT_ID).remove(KEY_STUDENT_ID_HEALED_V2).apply()
@@ -444,6 +458,7 @@ class SessionManager @Inject constructor(
         private const val KEY_SCHOOLNAME   = "schoolname"
         private const val KEY_USERNAME     = "username"
         private const val KEY_SESSION_ID   = "session_id"
+        private const val KEY_CSRF_TOKEN   = "csrf_token"
         private const val KEY_PERSON_ID    = "person_id"
         private const val KEY_CLASS_ID     = "class_id"
         private const val KEY_PERSON_NAME  = "person_name"

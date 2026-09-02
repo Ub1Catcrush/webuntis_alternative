@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">WebUntis Dashboard</string>
+    <string name="app_name">A*Untis</string>
 
     <!-- Navigation -->
     <string name="nav_timetable">Stundenplan</string>
@@ -13,7 +13,7 @@
     <string name="nav_settings">Einstellungen</string>
 
     <!-- Login -->
-    <string name="login_title">WebUntis Dashboard</string>
+    <string name="login_title">A*Untis</string>
     <string name="login_subtitle">Melde dich mit deinen Schuldaten an</string>
     <string name="login_server_hint">Server (z.B. meine-schule.webuntis.com)</string>
     <string name="login_schoolname_hint">Schul-Kurzname</string>
@@ -246,7 +246,7 @@
     <string name="settings_update_check_failed">Update-Check fehlgeschlagen: %s</string>
     <string name="settings_update_permission_required">Bitte erlaube der App, Updates zu installieren.</string>
     <string name="settings_update_install_failed">Installation fehlgeschlagen: %s</string>
-    <string name="settings_update_dialog_title_main">WebUntis Dashboard Update</string>
+    <string name="settings_update_dialog_title_main">A*Untis Update</string>
     <string name="settings_update_dialog_message_main">Eine neue Version (v%1$s) ist verfügbar. Möchtest du sie jetzt installieren?\n\n%2$s</string>
 
     <!-- Timetable notes pin -->

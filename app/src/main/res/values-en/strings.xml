@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">WebUntis Dashboard</string>
+    <string name="app_name">A*Untis</string>
 
     <!-- Navigation -->
     <string name="nav_timetable">Timetable</string>
@@ -13,7 +13,7 @@
     <string name="nav_settings">Settings</string>
 
     <!-- Login -->
-    <string name="login_title">WebUntis Dashboard</string>
+    <string name="login_title">A*Untis</string>
     <string name="login_subtitle">Sign in with your school credentials</string>
     <string name="login_server_hint">Server (e.g. my-school.webuntis.com)</string>
     <string name="login_schoolname_hint">School short name</string>
@@ -244,7 +244,7 @@
     <string name="settings_update_check_failed">Update check failed: %s</string>
     <string name="settings_update_permission_required">Please allow the app to install updates.</string>
     <string name="settings_update_install_failed">Installation failed: %s</string>
-    <string name="settings_update_dialog_title_main">WebUntis Dashboard Update</string>
+    <string name="settings_update_dialog_title_main">A*Untis Update</string>
     <string name="settings_update_dialog_message_main">A new version (v%1$s) is available. Do you want to install it now?\n\n%2$s</string>
 
     <!-- Timetable notes pin -->
