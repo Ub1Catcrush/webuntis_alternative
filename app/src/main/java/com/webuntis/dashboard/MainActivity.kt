@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
 
     private val navItems = listOf(
         NavItem(R.id.timetableFragment,  R.drawable.ic_calendar, R.string.nav_timetable),
+        NavItem(R.id.lessonContentFragment, R.drawable.ic_lesson_content, R.string.nav_lesson_content),
         NavItem(R.id.homeworkFragment,   R.drawable.ic_homework,  R.string.nav_homework),
         NavItem(R.id.messagesFragment,   R.drawable.ic_message,   R.string.nav_messages),
         NavItem(R.id.absencesFragment,   R.drawable.ic_absence,   R.string.nav_absences),

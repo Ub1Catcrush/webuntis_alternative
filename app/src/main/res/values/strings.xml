@@ -8,6 +8,7 @@
     <string name="nav_messages">Nachrichten</string>
     <string name="nav_absences">Abwesenheiten</string>
     <string name="nav_classbook">Klassenbuch</string>
+    <string name="nav_lesson_content">Unterrichtsinhalte</string>
     <string name="nav_events">Termine</string>
     <string name="nav_more">Mehr</string>
     <string name="nav_settings">Einstellungen</string>
@@ -205,6 +206,19 @@
     <string name="settings_week_view_second_line_subject">Fach (Klarname)</string>
     <string name="settings_week_view_second_line_teacher">Lehrkraft (Klarname)</string>
     <string name="settings_week_view_second_line_none">Nichts</string>
+
+    <string name="lesson_content_load_more">Weitere Tage laden</string>
+    <string name="lesson_content_empty">Keine Unterrichtsinhalte im gewählten Zeitraum</string>
+    <string name="settings_lesson_content_days_label">Unterrichtsinhalte: Standard-Zeitraum</string>
+
+    <plurals name="lesson_content_subtitle_days">
+        <item quantity="one">Letzter %d Tag</item>
+        <item quantity="other">Letzte %d Tage</item>
+    </plurals>
+    <plurals name="lesson_content_entry_count">
+        <item quantity="one">%d Eintrag</item>
+        <item quantity="other">%d Einträge</item>
+    </plurals>
 
     <string name="label_homework_attachment_download">Anhang herunterladen</string>
     <string name="saved_file_path">✓ Gespeichert: %s</string>

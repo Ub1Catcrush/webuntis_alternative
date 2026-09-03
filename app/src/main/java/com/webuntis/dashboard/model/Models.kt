@@ -119,6 +119,19 @@ data class Lesson(
         val s = t.toString().padStart(4, '0')
         return "${s.substring(0, 2)}:${s.substring(2)}"
     }
+    /** "dd.MM.yyyy" formatted [date] (yyyyMMdd), for display in the Unterrichtsinhalte list. */
+    val dateFormatted: String get() {
+        val s = date.toString()
+        return if (s.length == 8) "${s.substring(6)}.${s.substring(4,6)}.${s.substring(0,4)}" else s
+    }
+    /** [date] (yyyyMMdd) parsed into a [java.time.LocalDate], or null if malformed. */
+    val localDate: java.time.LocalDate? get() {
+        val s = date.toString()
+        if (s.length != 8) return null
+        return runCatching {
+            java.time.LocalDate.of(s.substring(0,4).toInt(), s.substring(4,6).toInt(), s.substring(6,8).toInt())
+        }.getOrNull()
+    }
 }
 
 /** One subject as offered by the class plan for the COMBINED-mode overlay picker.
@@ -395,6 +408,29 @@ data class ClassbookEntry(
     val dateFormatted: String?  get() = date?.let {
         val s = it.toString()
         if (s.length == 8) "${s.substring(6)}.${s.substring(4,6)}.${s.substring(0,4)}" else s
+    }
+    /** LocalDate parsed from [date] (format yyyyMMdd), or null if missing/malformed. */
+    val localDate: java.time.LocalDate? get() = date?.let {
+        val s = it.toString()
+        if (s.length != 8) return@let null
+        runCatching { java.time.LocalDate.of(s.substring(0,4).toInt(), s.substring(4,6).toInt(), s.substring(6,8).toInt()) }.getOrNull()
+    }
+    /**
+     * True for entries that represent actual "Unterrichtsinhalt" (what was taught in the
+     * lesson) rather than an absence, lateness, homework, or free-text note record. WebUntis's
+     * classbook API doesn't expose a single reliable type flag for this across schools/setups,
+     * so this reuses the same category-keyword classification already used to badge entries in
+     * the Klassenbuch list, just inverted: anything NOT matching a known other-record category
+     * (and that actually has text) is treated as lesson content.
+     */
+    val isLessonContent: Boolean get() {
+        if (text.isNullOrBlank()) return false
+        val cat = displayCategory.lowercase()
+        val isOtherKnownType = cat.contains("absen") || cat.contains("fehlen") ||
+            cat.contains("late") || cat.contains("spät") || cat.contains("verspät") ||
+            cat.contains("homework") || cat.contains("hausauf") ||
+            cat.contains("note") || cat.contains("bemer")
+        return !isOtherKnownType
     }
 }
 

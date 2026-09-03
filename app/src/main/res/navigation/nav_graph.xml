@@ -41,6 +41,11 @@
         android:label="Klassenbuch" />
 
     <fragment
+        android:id="@+id/lessonContentFragment"
+        android:name="com.webuntis.dashboard.ui.classbook.LessonContentFragment"
+        android:label="Unterrichtsinhalte" />
+
+    <fragment
         android:id="@+id/eventsFragment"
         android:name="com.webuntis.dashboard.ui.events.EventsFragment"
         android:label="Termine" />

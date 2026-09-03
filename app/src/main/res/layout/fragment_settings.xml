@@ -380,6 +380,71 @@
             </com.google.android.material.card.MaterialCardView>
 
             <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- Unterrichtsinhalte: Standard-Zeitraum                       -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.Material3.CardView.Outlined"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_lesson_content_days_label"
+                        android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                    <RadioGroup
+                        android:id="@+id/radio_group_lesson_content_days"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginTop="4dp">
+
+                        <RadioButton
+                            android:id="@+id/radio_lesson_content_days_7"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="40dp"
+                            android:text="7"
+                            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                        <RadioButton
+                            android:id="@+id/radio_lesson_content_days_14"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="40dp"
+                            android:text="14"
+                            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                        <RadioButton
+                            android:id="@+id/radio_lesson_content_days_30"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="40dp"
+                            android:text="30"
+                            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                        <RadioButton
+                            android:id="@+id/radio_lesson_content_days_60"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="40dp"
+                            android:text="60"
+                            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                    </RadioGroup>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ═══════════════════════════════════════════════════════════ -->
             <!-- SECTION: Anzeige                                            -->
             <!-- ═══════════════════════════════════════════════════════════ -->
 

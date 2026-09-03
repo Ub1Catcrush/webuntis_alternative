@@ -137,6 +137,22 @@ class SettingsFragment : Fragment() {
             loginViewModel.refreshTimetable()
         }
 
+        // ── Unterrichtsinhalte: default day-window ──────────────────────────────
+        when (loginViewModel.sessionManager.lessonContentDefaultDays) {
+            7  -> binding.radioLessonContentDays7.isChecked = true
+            30 -> binding.radioLessonContentDays30.isChecked = true
+            60 -> binding.radioLessonContentDays60.isChecked = true
+            else -> binding.radioLessonContentDays14.isChecked = true
+        }
+        binding.radioGroupLessonContentDays.setOnCheckedChangeListener { _, checkedId ->
+            loginViewModel.sessionManager.lessonContentDefaultDays = when (checkedId) {
+                R.id.radio_lesson_content_days_7  -> 7
+                R.id.radio_lesson_content_days_30 -> 30
+                R.id.radio_lesson_content_days_60 -> 60
+                else                               -> 14
+            }
+        }
+
         // ── Long names toggles (per type) ─────────────────────────────────
         binding.switchLongSubjects.isChecked = loginViewModel.sessionManager.showLongSubjects
         binding.switchLongSubjects.setOnCheckedChangeListener { _, checked ->

@@ -8,6 +8,7 @@
     <string name="nav_messages">Messages</string>
     <string name="nav_absences">Absences</string>
     <string name="nav_classbook">Class Register</string>
+    <string name="nav_lesson_content">Lesson Content</string>
     <string name="nav_events">Events</string>
     <string name="nav_more">More</string>
     <string name="nav_settings">Settings</string>
@@ -206,6 +207,19 @@
     <string name="settings_week_view_second_line_subject">Subject (Fullname)</string>
     <string name="settings_week_view_second_line_teacher">Teacher (Fullname)</string>
     <string name="settings_week_view_second_line_none">Nothing</string>
+
+    <string name="lesson_content_load_more">Load more days</string>
+    <string name="lesson_content_empty">No lesson content in the selected period</string>
+    <string name="settings_lesson_content_days_label">Lesson content: default period</string>
+
+    <plurals name="lesson_content_subtitle_days">
+        <item quantity="one">Last %d day</item>
+        <item quantity="other">Last %d days</item>
+    </plurals>
+    <plurals name="lesson_content_entry_count">
+        <item quantity="one">%d entry</item>
+        <item quantity="other">%d entries</item>
+    </plurals>
 
     <!-- Cache settings -->
     <string name="settings_cache_label">Cache duration</string>

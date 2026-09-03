@@ -18,6 +18,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.StringReader
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Singleton
@@ -218,6 +219,13 @@ class WebUntisRepository @Inject constructor(
     private var cacheTeachers:     List<com.webuntis.dashboard.model.RecipientPerson>?   = null
     private var cacheAbsencesMeta: CacheEntry<AbsencesMetaData>?                        = null
     private var cacheTimegrid:     CacheEntry<List<com.webuntis.dashboard.model.TimegridRow>>? = null
+    // "Unterrichtsinhalte" tab: incrementally-grown cache of Lesson.teachingContent entries.
+    // Unlike the other cache* fields this isn't a single CacheEntry, because the tab's window
+    // size grows over time ("Weitere Tage laden") and each grow only needs to fetch+enrich the
+    // newly-uncovered older slice instead of re-fetching (and re-hitting the per-lesson detail
+    // endpoint for) days already covered. See getTeachingContentEntries().
+    private var cacheTeachingContentDays:    Int          = 0
+    private var cacheTeachingContentEntries: List<Lesson> = emptyList()
 
     /**
      * Full reset: clears data caches AND wipes the session/credentials/settings entirely.
@@ -237,6 +245,7 @@ class WebUntisRepository @Inject constructor(
     private fun clearAllDataCaches() {
         cacheTimetable = null; cacheHomework = null; cacheEvents = null
         cacheClassbook = null; cacheSchoolYear = null; cacheAbsences = null; cacheMessages = null; cacheSentMessages = null; cacheDraftMessages = null; cacheTeachers = null
+        cacheTeachingContentDays = 0; cacheTeachingContentEntries = emptyList()
         cacheAbsencesMeta = null; cacheTimegrid = null
     }
 
@@ -650,7 +659,8 @@ class WebUntisRepository @Inject constructor(
     // ── Timetable ─────────────────────────────────────────────────────────────
 
     private suspend fun fetchLessonsInRange(
-        startDate: String, endDate: String
+        startDate: String, endDate: String, anchorDate: LocalDate = LocalDate.now(),
+        maxEnrich: Int = 40
     ): Result<List<Lesson>> {
         val session = sessionManager.session
             ?: return Result.failure(Exception("Nicht angemeldet"))
@@ -681,10 +691,10 @@ class WebUntisRepository @Inject constructor(
             return try {
                 coroutineScope {
                     val personalDeferred = async {
-                        fetchLessonsV1(startIso, endIso, effectiveClassId, "STUDENT", "MY_TIMETABLE", 5)
+                        fetchLessonsV1(startIso, endIso, effectiveClassId, "STUDENT", "MY_TIMETABLE", 5, anchorDate, maxEnrich)
                     }
                     val classDeferred = async {
-                        fetchLessonsV1(startIso, endIso, classElementId, "CLASS", "STANDARD", 1)
+                        fetchLessonsV1(startIso, endIso, classElementId, "CLASS", "STANDARD", 1, anchorDate, maxEnrich)
                     }
                     val personalResult = personalDeferred.await()
                     val personal = personalResult.getOrNull()
@@ -714,7 +724,7 @@ class WebUntisRepository @Inject constructor(
             } else {
                 elementId = effectiveClassId; resourceType = "STUDENT"; timetableType = "MY_TIMETABLE"; elementType = 5
             }
-            return fetchLessonsV1(startIso, endIso, elementId, resourceType, timetableType, elementType)
+            return fetchLessonsV1(startIso, endIso, elementId, resourceType, timetableType, elementType, anchorDate, maxEnrich)
         }
 
         // Parent accounts have no personal timetable of their own — session.personId is the
@@ -749,7 +759,9 @@ class WebUntisRepository @Inject constructor(
     /** Fetches + enriches a single timetable/v1 view (personal or class). */
     private suspend fun fetchLessonsV1(
         startIso: String, endIso: String, elementId: Int,
-        resourceType: String, timetableType: String, elementType: Int
+        resourceType: String, timetableType: String, elementType: Int,
+        anchorDate: LocalDate = LocalDate.now(),
+        maxEnrich: Int = 40
     ): Result<List<Lesson>> {
         return try {
             val response = callTimetableV1(
@@ -759,7 +771,7 @@ class WebUntisRepository @Inject constructor(
             val raw = rawBody(response) ?: return Result.success(emptyList())
             val ttResp: TimetableV1Response = parseJson(raw)
             val lessons = ttResp.toLessons()
-            val enriched = enrichLessonsWithDetail(lessons, elementId, elementType)
+            val enriched = enrichLessonsWithDetail(lessons, elementId, elementType, anchorDate, maxEnrich)
             Result.success(enriched)
         } catch (e: Exception) {
             Result.failure(e)
@@ -819,7 +831,7 @@ class WebUntisRepository @Inject constructor(
         // Fetch a wide enough window — ±60 days covers holidays and long breaks
         val windowStart = anchorDate.minusDays(if (anchorDate.isBefore(LocalDate.now())) 60 else 0)
         val windowEnd   = anchorDate.plusDays(60)
-        val rangeResult = fetchLessonsInRange(windowStart.toUntis(), windowEnd.toUntis())
+        val rangeResult = fetchLessonsInRange(windowStart.toUntis(), windowEnd.toUntis(), anchorDate)
         if (rangeResult.isFailure) return Result.failure(rangeResult.exceptionOrNull()!!)
 
         val allSchoolDays = rangeResult.getOrThrow()
@@ -902,10 +914,24 @@ class WebUntisRepository @Inject constructor(
     private suspend fun enrichLessonsWithDetail(
         lessons: List<Lesson>,
         elementId: Int,
-        elementType: Int
+        elementType: Int,
+        anchorDate: LocalDate = LocalDate.now(),
+        maxEnrich: Int = 40
     ): List<Lesson> {
         val token = getAuthHeader() ?: return lessons
-        val needsDetail = lessons.take(40)
+        // fetchLessonsInRange can cover a wide prefetch window (getSchoolDaysFrom uses up to
+        // ±60 days for smooth pagination), but detail-enriching every lesson in it would mean
+        // hundreds of extra per-lesson network calls. So only a bounded number are enriched —
+        // but crucially, prioritized by closeness to the day actually being viewed (anchorDate),
+        // NOT just "however they happen to be ordered in the array". Previously this used a
+        // plain lessons.take(40), which silently favoured whichever end of the range came first
+        // — fine when viewing today (the window starts at today), but when navigating to a PAST
+        // day, the window extends up to 60 days further back, pushing the actually-requested day
+        // itself past the cutoff. That's why homework/Unterrichtsstoff only ever showed up for
+        // "current" days: past-day lessons were simply never enriched at all.
+        val needsDetail = lessons
+            .sortedBy { kotlin.math.abs(ChronoUnit.DAYS.between(anchorDate, untisIntToDate(it.date))) }
+            .take(maxEnrich)
         val detailMap = mutableMapOf<Int, CalendarEntryDetail>()
         val semaphore = Semaphore(12)
 
@@ -1176,6 +1202,66 @@ class WebUntisRepository @Inject constructor(
             } catch (_: Exception) { emptyList() }
             Result.success(entries.sortedByDescending { it.date ?: 0 })
         } catch (e: Exception) { Result.failure(e) }
+    }
+
+    /**
+     * Returns lessons from the last [days] days (including today) whose "Content" field
+     * (Lesson.teachingContent — the same per-lesson text shown in the timetable/Stundenplan)
+     * is filled in. This is what the "Unterrichtsinhalte" tab shows — it is a per-lesson
+     * enrichment field from CalendarEntryDetail, NOT the Klassenbuch/classbook register (see
+     * getClassbookEntries), which is a separate, unrelated WebUntis feature.
+     *
+     * Unlike getClassbookEntries (one cheap API call for the whole school year), populating
+     * teachingContent needs one detail call PER lesson, so fetching a whole year up front isn't
+     * viable. Instead this grows an internal cache incrementally: each call only fetches+enriches
+     * the slice of days not already covered by a previous call, and merges it in — so repeatedly
+     * widening the window (the "Weitere Tage laden" button) doesn't re-fetch days already loaded.
+     *
+     * anchorDate is always "today" (not the oldest day in the window) so that when a window is
+     * wide enough to exceed the per-request enrichment cap, the days actually most relevant to
+     * this tab — today and the most recent past days, e.g. "yesterday" — are prioritized and
+     * always end up enriched, rather than being pushed out by the far end of the range.
+     */
+    suspend fun getTeachingContentEntries(days: Int, forceRefresh: Boolean = false): Result<List<Lesson>> {
+        if (forceRefresh) {
+            cacheTeachingContentDays = 0
+            cacheTeachingContentEntries = emptyList()
+        }
+        val today = LocalDate.now()
+        if (days > cacheTeachingContentDays) {
+            val rangeStart = today.minusDays((days - 1).toLong())
+            val rangeEnd = if (cacheTeachingContentDays > 0)
+                today.minusDays(cacheTeachingContentDays.toLong())
+            else
+                today
+            // Scale the enrichment cap with how many *new* days are being requested (roughly
+            // 8 lessons/day) so a big first load or a big "Weitere Tage laden" jump doesn't get
+            // silently truncated the way the fixed 40-lesson default (tuned for single-day
+            // Stundenplan views) would.
+            val newDays = days - cacheTeachingContentDays
+            val cap = (newDays * 8).coerceIn(40, 400)
+            val rangeResult = fetchLessonsInRange(
+                rangeStart.toUntis(), rangeEnd.toUntis(), anchorDate = today, maxEnrich = cap
+            )
+            val newLessons = rangeResult.getOrElse {
+                return if (cacheTeachingContentEntries.isNotEmpty()) {
+                    // Already have something cached (e.g. from a smaller previous window) —
+                    // prefer showing that over failing the whole tab outright.
+                    Result.success(cacheTeachingContentEntries.filter {
+                        val d = it.localDate ?: return@filter false
+                        !d.isBefore(today.minusDays((cacheTeachingContentDays - 1).toLong()))
+                    })
+                } else Result.failure(it)
+            }
+            cacheTeachingContentEntries = (cacheTeachingContentEntries + newLessons).distinctBy { it.id }
+            cacheTeachingContentDays = days
+        }
+        val cutoff = today.minusDays((days - 1).toLong())
+        val filtered = cacheTeachingContentEntries.filter { lesson ->
+            !lesson.teachingContent.isNullOrBlank() &&
+                lesson.localDate?.let { !it.isBefore(cutoff) && !it.isAfter(today) } == true
+        }
+        return Result.success(filtered)
     }
 
     suspend fun getEvents(forceRefresh: Boolean = false, includePast: Boolean = false): Result<List<SchoolEvent>> = withCacheOrFetch(

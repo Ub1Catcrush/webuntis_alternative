@@ -299,6 +299,11 @@ class SessionManager @Inject constructor(
         }
         set(value) { plainPrefs.edit().putString(KEY_WEEK_VIEW_SECOND_LINE, value.name).apply() }
 
+    /** Default number of days (incl. today) shown in the "Unterrichtsinhalte" tab. */
+    var lessonContentDefaultDays: Int
+        get() = plainPrefs.getInt(KEY_LESSON_CONTENT_DAYS, 14)
+        set(value) { plainPrefs.edit().putInt(KEY_LESSON_CONTENT_DAYS, value).apply() }
+
     /** Whether the timetable shows the logged-in person's own schedule, a whole class's
      *  schedule, or the personal schedule with selected class-plan subjects filled into gaps. */
     enum class TimetableViewMode { PERSONAL, CLASS, COMBINED }
@@ -372,6 +377,7 @@ class SessionManager @Inject constructor(
             addProperty("showShortRoomInParens",    showShortRoomInParens)
             addProperty("useCompactWeekView", useCompactWeekView)
             addProperty("weekViewSecondLine", weekViewSecondLine.name)
+            addProperty("lessonContentDefaultDays", lessonContentDefaultDays)
             addProperty("cacheTtlMinutes",    cacheTtlMinutes)
             addProperty("timetableViewMode",  timetableViewMode.name)
             add("combinedOverlaySubjects", com.google.gson.JsonArray().apply {
@@ -434,6 +440,7 @@ class SessionManager @Inject constructor(
             obj.get("weekViewSecondLine")?.asString?.let { raw ->
                 runCatching { WeekViewSecondLine.valueOf(raw) }.getOrNull()?.let { weekViewSecondLine = it }
             }
+            obj.get("lessonContentDefaultDays")?.asInt?.let { lessonContentDefaultDays = it }
             obj.get("cacheTtlMinutes")?.asInt?.let    { cacheTtlMinutes    = it }
             obj.get("timetableViewMode")?.asString?.let { raw ->
                 runCatching { TimetableViewMode.valueOf(raw) }.getOrNull()?.let { timetableViewMode = it }
@@ -482,6 +489,7 @@ class SessionManager @Inject constructor(
         private const val KEY_SHOW_SHORT_ROOM_PARENS    = "show_short_room_parens"
         private const val KEY_USE_COMPACT_WEEK_VIEW  = "use_compact_week_view"
         private const val KEY_WEEK_VIEW_SECOND_LINE  = "week_view_second_line"
+        private const val KEY_LESSON_CONTENT_DAYS    = "lesson_content_default_days"
         private const val KEY_TIMETABLE_VIEW_MODE    = "timetable_view_mode"
         private const val KEY_COMBINED_OVERLAY_SUBJECTS = "combined_overlay_subjects"
         private const val KEY_CACHE_TTL              = "cache_ttl_minutes"
