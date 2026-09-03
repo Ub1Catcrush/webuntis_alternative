@@ -253,8 +253,12 @@ class TimetableViewModel @Inject constructor(
         // Load a wide window backwards and pick the right position
         val steps = -offset  // positive count
         val windowStart = from.minusDays((steps * 3).toLong().coerceAtLeast(30))
+        // maxEnrich = 0: this call only needs to know *which dates* have lessons to find the
+        // right offset — not their content — so skip the per-lesson detail calls entirely. This
+        // also avoids needlessly burning through the enrichment budget on a throwaway date
+        // lookup right before the real getSchoolDaysFrom() call below does the actual enrichment.
         val rangeResult = repository.getSchoolDaysFrom(windowStart,
-            (steps * 3).coerceAtLeast(60))
+            (steps * 3).coerceAtLeast(60), maxEnrich = 0)
         val allDays = (rangeResult.getOrNull() ?: emptyList())
             .filter { !it.date.isAfter(from) }
             .sortedByDescending { it.date }

@@ -660,7 +660,7 @@ class WebUntisRepository @Inject constructor(
 
     private suspend fun fetchLessonsInRange(
         startDate: String, endDate: String, anchorDate: LocalDate = LocalDate.now(),
-        maxEnrich: Int = 40
+        maxEnrich: Int = 40, anchorRangeEnd: LocalDate = anchorDate
     ): Result<List<Lesson>> {
         val session = sessionManager.session
             ?: return Result.failure(Exception("Nicht angemeldet"))
@@ -691,10 +691,10 @@ class WebUntisRepository @Inject constructor(
             return try {
                 coroutineScope {
                     val personalDeferred = async {
-                        fetchLessonsV1(startIso, endIso, effectiveClassId, "STUDENT", "MY_TIMETABLE", 5, anchorDate, maxEnrich)
+                        fetchLessonsV1(startIso, endIso, effectiveClassId, "STUDENT", "MY_TIMETABLE", 5, anchorDate, maxEnrich, anchorRangeEnd)
                     }
                     val classDeferred = async {
-                        fetchLessonsV1(startIso, endIso, classElementId, "CLASS", "STANDARD", 1, anchorDate, maxEnrich)
+                        fetchLessonsV1(startIso, endIso, classElementId, "CLASS", "STANDARD", 1, anchorDate, maxEnrich, anchorRangeEnd)
                     }
                     val personalResult = personalDeferred.await()
                     val personal = personalResult.getOrNull()
@@ -724,7 +724,7 @@ class WebUntisRepository @Inject constructor(
             } else {
                 elementId = effectiveClassId; resourceType = "STUDENT"; timetableType = "MY_TIMETABLE"; elementType = 5
             }
-            return fetchLessonsV1(startIso, endIso, elementId, resourceType, timetableType, elementType, anchorDate, maxEnrich)
+            return fetchLessonsV1(startIso, endIso, elementId, resourceType, timetableType, elementType, anchorDate, maxEnrich, anchorRangeEnd)
         }
 
         // Parent accounts have no personal timetable of their own — session.personId is the
@@ -761,7 +761,8 @@ class WebUntisRepository @Inject constructor(
         startIso: String, endIso: String, elementId: Int,
         resourceType: String, timetableType: String, elementType: Int,
         anchorDate: LocalDate = LocalDate.now(),
-        maxEnrich: Int = 40
+        maxEnrich: Int = 40,
+        anchorRangeEnd: LocalDate = anchorDate
     ): Result<List<Lesson>> {
         return try {
             val response = callTimetableV1(
@@ -771,7 +772,7 @@ class WebUntisRepository @Inject constructor(
             val raw = rawBody(response) ?: return Result.success(emptyList())
             val ttResp: TimetableV1Response = parseJson(raw)
             val lessons = ttResp.toLessons()
-            val enriched = enrichLessonsWithDetail(lessons, elementId, elementType, anchorDate, maxEnrich)
+            val enriched = enrichLessonsWithDetail(lessons, elementId, elementType, anchorDate, anchorRangeEnd, maxEnrich)
             Result.success(enriched)
         } catch (e: Exception) {
             Result.failure(e)
@@ -822,16 +823,31 @@ class WebUntisRepository @Inject constructor(
      * Loads [numDays] school days starting from [anchorDate].
      * Only days that actually have lessons are counted (no empty days, no weekends).
      * Searches up to 60 calendar days in both directions to find real school days.
+     *
+     * [maxEnrich] is exposed (rather than always defaulting) so callers that only need to know
+     * *which dates* have lessons — not their content — can pass 0 and skip the per-lesson
+     * CalendarEntryDetail calls entirely. See findSchoolDayOffset() in TimetableViewModel.
      */
     suspend fun getSchoolDaysFrom(
         anchorDate: LocalDate,
         numDays: Int,
-        forceRefresh: Boolean = false
+        forceRefresh: Boolean = false,
+        maxEnrich: Int = 40
     ): Result<List<TimetableDay>> {
         // Fetch a wide enough window — ±60 days covers holidays and long breaks
         val windowStart = anchorDate.minusDays(if (anchorDate.isBefore(LocalDate.now())) 60 else 0)
         val windowEnd   = anchorDate.plusDays(60)
-        val rangeResult = fetchLessonsInRange(windowStart.toUntis(), windowEnd.toUntis(), anchorDate)
+        // The enrichment budget (see enrichLessonsWithDetail) is prioritized by distance to a
+        // date *range*, not a single point: anchorDate alone is only the OLDEST edge of the
+        // numDays window actually being requested here, so a single-point anchor would starve
+        // out the NEWEST day in that window (e.g. "yesterday" when loading the last few past
+        // days) in favour of unrelated lessons that happen to sit just as far on the other side
+        // of anchorDate but aren't even part of what's being shown. Since real school days can
+        // skip weekends/holidays, numDays school days can span more than numDays calendar days —
+        // *2 plus a two-week buffer comfortably covers normal breaks without widening the range
+        // so much it stops being a meaningful priority signal.
+        val rangeEnd = anchorDate.plusDays((numDays.toLong() * 2) + 14)
+        val rangeResult = fetchLessonsInRange(windowStart.toUntis(), windowEnd.toUntis(), anchorDate, maxEnrich, rangeEnd)
         if (rangeResult.isFailure) return Result.failure(rangeResult.exceptionOrNull()!!)
 
         val allSchoolDays = rangeResult.getOrThrow()
@@ -916,21 +932,41 @@ class WebUntisRepository @Inject constructor(
         elementId: Int,
         elementType: Int,
         anchorDate: LocalDate = LocalDate.now(),
+        anchorRangeEnd: LocalDate = anchorDate,
         maxEnrich: Int = 40
     ): List<Lesson> {
         val token = getAuthHeader() ?: return lessons
         // fetchLessonsInRange can cover a wide prefetch window (getSchoolDaysFrom uses up to
         // ±60 days for smooth pagination), but detail-enriching every lesson in it would mean
         // hundreds of extra per-lesson network calls. So only a bounded number are enriched —
-        // but crucially, prioritized by closeness to the day actually being viewed (anchorDate),
-        // NOT just "however they happen to be ordered in the array". Previously this used a
-        // plain lessons.take(40), which silently favoured whichever end of the range came first
-        // — fine when viewing today (the window starts at today), but when navigating to a PAST
-        // day, the window extends up to 60 days further back, pushing the actually-requested day
-        // itself past the cutoff. That's why homework/Unterrichtsstoff only ever showed up for
-        // "current" days: past-day lessons were simply never enriched at all.
+        // but crucially, prioritized by closeness to the days actually being viewed
+        // ([anchorDate, anchorRangeEnd]), NOT just "however they happen to be ordered in the
+        // array". Previously this used a plain lessons.take(40), which silently favoured
+        // whichever end of the range came first — fine when viewing today (the window starts at
+        // today), but when navigating to a PAST day, the window extends up to 60 days further
+        // back, pushing the actually-requested day itself past the cutoff. That's why
+        // homework/Unterrichtsstoff only ever showed up for "current" days: past-day lessons
+        // were simply never enriched at all.
+        //
+        // Using a single anchorDate *point* (distance-to-anchorDate) fixed that but introduced a
+        // subtler version of the same bug: when loading e.g. "the last 5 days", the anchor is the
+        // OLDEST day of that 5-day window (so the ±60-day search range can be positioned), which
+        // means the NEWEST day in that same window — typically "yesterday", the one closest to
+        // today — sits furthest from the anchor point. Days on the *other* side of the anchor
+        // (i.e. even further into the past, outside the window and never shown) are equally far
+        // and compete for the same 40-lesson budget, so "yesterday" can lose out to lessons that
+        // aren't even displayed. Scoring by distance to the [anchorDate, anchorRangeEnd] *range*
+        // instead of a single point gives every day actually being displayed a distance of 0,
+        // so they're never out-competed by padding lessons outside the requested window.
         val needsDetail = lessons
-            .sortedBy { kotlin.math.abs(ChronoUnit.DAYS.between(anchorDate, untisIntToDate(it.date))) }
+            .sortedBy { lesson ->
+                val d = untisIntToDate(lesson.date)
+                when {
+                    !d.isBefore(anchorDate) && !d.isAfter(anchorRangeEnd) -> 0L
+                    d.isBefore(anchorDate) -> ChronoUnit.DAYS.between(d, anchorDate)
+                    else -> ChronoUnit.DAYS.between(anchorRangeEnd, d)
+                }
+            }
             .take(maxEnrich)
         val detailMap = mutableMapOf<Int, CalendarEntryDetail>()
         val semaphore = Semaphore(12)
