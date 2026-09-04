@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.webuntis.dashboard.R
+import com.webuntis.dashboard.api.SessionManager
 import com.webuntis.dashboard.databinding.FragmentLessonContentBinding
 import com.webuntis.dashboard.databinding.ItemLessonContentEntryBinding
 import com.webuntis.dashboard.databinding.ItemLessonContentHeaderBinding
@@ -38,6 +39,7 @@ class LessonContentFragment : Fragment() {
         binding.recyclerView.adapter = adapter
         binding.swipeRefresh.setOnRefreshListener { viewModel.load(forceRefresh = true) }
         binding.btnLoadMore.setOnClickListener { viewModel.loadMoreDays() }
+        binding.btnToggleGroupMode.setOnClickListener { viewModel.toggleGroupMode() }
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->
@@ -59,7 +61,7 @@ class LessonContentFragment : Fragment() {
                         } else {
                             binding.recyclerView.isVisible = true
                             binding.emptyView.isVisible = false
-                            adapter.submitGroups(state.data)
+                            adapter.submitGroups(state.data, viewModel.groupMode.value)
                             binding.btnLoadMore.isVisible = viewModel.canLoadMore.value
                         }
                     }
@@ -83,6 +85,22 @@ class LessonContentFragment : Fragment() {
                     (viewModel.state.value is UiState.Success)
             }
         }
+
+        // Button always shows the CURRENTLY active mode; tapping switches to the other one —
+        // same convention as the Day/Week toggle on the timetable tab.
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.groupMode.collect { mode ->
+                binding.btnToggleGroupMode.text = getString(
+                    if (mode == SessionManager.LessonContentGroupMode.BY_DAY)
+                        R.string.lesson_content_group_by_day
+                    else
+                        R.string.lesson_content_group_by_subject
+                )
+                // Re-render immediately when the mode changes so the per-entry label
+                // (date vs. subject) updates too, not just the section headers.
+                (viewModel.state.value as? UiState.Success)?.let { adapter.submitGroups(it.data, mode) }
+            }
+        }
     }
 
     override fun onDestroyView() {
@@ -94,19 +112,19 @@ class LessonContentFragment : Fragment() {
 // ─── Adapter ─────────────────────────────────────────────────────────────────
 
 sealed class ContentRow {
-    data class Header(val subject: String, val count: Int) : ContentRow()
-    data class Entry(val entry: Lesson) : ContentRow()
+    data class Header(val label: String, val count: Int) : ContentRow()
+    data class Entry(val entry: Lesson, val groupMode: SessionManager.LessonContentGroupMode) : ContentRow()
 }
 
 class LessonContentAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private val rows = mutableListOf<ContentRow>()
 
-    fun submitGroups(groups: List<SubjectContentGroup>) {
+    fun submitGroups(groups: List<ContentGroup>, groupMode: SessionManager.LessonContentGroupMode) {
         rows.clear()
         groups.forEach { group ->
-            rows.add(ContentRow.Header(group.subject, group.entries.size))
-            group.entries.forEach { rows.add(ContentRow.Entry(it)) }
+            rows.add(ContentRow.Header(group.header, group.entries.size))
+            group.entries.forEach { rows.add(ContentRow.Entry(it, groupMode)) }
         }
         notifyDataSetChanged()
     }
@@ -130,13 +148,13 @@ class LessonContentAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val row = rows[position]) {
             is ContentRow.Header -> (holder as HeaderVH).bind(row)
-            is ContentRow.Entry  -> (holder as EntryVH).bind(row.entry)
+            is ContentRow.Entry  -> (holder as EntryVH).bind(row.entry, row.groupMode)
         }
     }
 
     class HeaderVH(private val b: ItemLessonContentHeaderBinding) : RecyclerView.ViewHolder(b.root) {
         fun bind(header: ContentRow.Header) {
-            b.textSubject.text = header.subject
+            b.textSubject.text = header.label
             b.textCount.text = b.root.resources.getQuantityString(
                 R.plurals.lesson_content_entry_count, header.count, header.count
             )
@@ -144,8 +162,14 @@ class LessonContentAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
     }
 
     class EntryVH(private val b: ItemLessonContentEntryBinding) : RecyclerView.ViewHolder(b.root) {
-        fun bind(entry: Lesson) {
-            b.textDate.text = entry.dateFormatted
+        fun bind(entry: Lesson, groupMode: SessionManager.LessonContentGroupMode) {
+            // Whichever of "date" / "subject" is ALREADY the section header is redundant here —
+            // show the other one as the per-entry leading label instead.
+            b.textLeadingLabel.text = if (groupMode == SessionManager.LessonContentGroupMode.BY_DAY) {
+                entry.subjectLongName.takeIf { it != "–" } ?: entry.subjectName
+            } else {
+                entry.dateFormatted
+            }
             b.textContent.text = entry.teachingContent ?: ""
             val teacher = entry.teacherNames
             b.textTeacher.text = teacher

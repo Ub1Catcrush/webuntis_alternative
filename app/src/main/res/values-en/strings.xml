@@ -209,6 +209,8 @@
     <string name="settings_week_view_second_line_none">Nothing</string>
 
     <string name="lesson_content_load_more">Load more days</string>
+    <string name="lesson_content_group_by_day">Day</string>
+    <string name="lesson_content_group_by_subject">Subject</string>
     <string name="lesson_content_empty">No lesson content in the selected period</string>
     <string name="settings_lesson_content_days_label">Lesson content: default period</string>
 

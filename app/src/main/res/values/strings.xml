@@ -208,6 +208,8 @@
     <string name="settings_week_view_second_line_none">Nichts</string>
 
     <string name="lesson_content_load_more">Weitere Tage laden</string>
+    <string name="lesson_content_group_by_day">Tag</string>
+    <string name="lesson_content_group_by_subject">Fach</string>
     <string name="lesson_content_empty">Keine Unterrichtsinhalte im gewählten Zeitraum</string>
     <string name="settings_lesson_content_days_label">Unterrichtsinhalte: Standard-Zeitraum</string>
 
