@@ -52,6 +52,8 @@
                 android:layout_height="16dp"
                 android:layout_marginEnd="6dp"
                 android:src="@drawable/ic_homework"
+                android:contentDescription="@null"
+                android:importantForAccessibility="no"
                 android:visibility="gone"
                 app:tint="?attr/colorOnSurfaceVariant" />
 

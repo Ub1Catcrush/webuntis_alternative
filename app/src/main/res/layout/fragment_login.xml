@@ -21,6 +21,8 @@
             android:background="@drawable/bg_logo"
             android:padding="0dp"
             android:src="@mipmap/ic_launcher"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />

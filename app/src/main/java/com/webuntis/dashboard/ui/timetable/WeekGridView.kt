@@ -19,6 +19,7 @@ import com.webuntis.dashboard.databinding.ItemWeekLessonBinding
 import com.webuntis.dashboard.databinding.ViewWeekGridBinding
 import com.webuntis.dashboard.model.Lesson
 import java.time.LocalDate
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -210,7 +211,7 @@ class WeekGridView @JvmOverloads constructor(
             if (h >= startMin) {
                 val top = ((h - startMin) * pxPerMin).roundToInt()
                 val label = TextView(context).apply {
-                    text = String.format("%02d:00", (h / 60) % 24)
+                    text = String.format(Locale.getDefault(), "%02d:00", (h / 60) % 24)
                     textSize = 10f
                     setTextColor(ContextCompat.getColor(context, R.color.on_surface_variant))
                 }

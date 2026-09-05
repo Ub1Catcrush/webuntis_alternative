@@ -80,19 +80,18 @@ class UpdateManager @Inject constructor(
      * Prüft, ob die Berechtigung zur Installation von APKs vorliegt (ab Android O).
      */
     fun checkInstallPermission(): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            if (!context.packageManager.canRequestPackageInstalls()) {
-                try {
-                    val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(intent)
-                } catch (e: Exception) {
-                    Log.e(tag, "Konnte Einstellungs-Seite nicht öffnen", e)
+        // minSdk is 26 (Android O), so canRequestPackageInstalls() is always available here.
+        if (!context.packageManager.canRequestPackageInstalls()) {
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                    data = "package:${context.packageName}".toUri()
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-                return false
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                Log.e(tag, "Konnte Einstellungs-Seite nicht öffnen", e)
             }
+            return false
         }
         return true
     }

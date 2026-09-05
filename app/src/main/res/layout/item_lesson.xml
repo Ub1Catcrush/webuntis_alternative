@@ -31,7 +31,9 @@
                 android:layout_height="4dp"
                 android:layout_marginTop="5dp"
                 android:src="@drawable/ic_circle"
-                android:scaleType="fitCenter" />
+                android:scaleType="fitCenter"
+                android:contentDescription="@null"
+                android:importantForAccessibility="no" />
 
             <LinearLayout
                 android:layout_width="0dp"
