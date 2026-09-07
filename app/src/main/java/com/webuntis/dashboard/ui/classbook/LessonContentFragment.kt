@@ -174,6 +174,10 @@ class LessonContentAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
             val teacher = entry.teacherNames
             b.textTeacher.text = teacher
             b.textTeacher.isVisible = teacher.isNotBlank()
+            b.colorStripe.setBackgroundColor(
+                entry.resolvedColor()
+                    ?: com.webuntis.dashboard.ui.timetable.subjectColor(entry.subjectName, b.root.context)
+            )
         }
     }
 }

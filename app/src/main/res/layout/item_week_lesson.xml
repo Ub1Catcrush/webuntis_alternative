@@ -12,10 +12,23 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:paddingHorizontal="3dp"
-        android:paddingVertical="2dp">
+        android:orientation="horizontal">
+
+        <!-- Subject color accent stripe, flush with the tile's left edge -->
+        <View
+            android:id="@+id/color_stripe"
+            android:layout_width="3dp"
+            android:layout_height="match_parent"
+            android:background="@color/subject_default" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingHorizontal="3dp"
+            android:paddingVertical="2dp">
 
         <!-- Line 1: short subject name — large, same size in every tile -->
         <TextView
@@ -39,6 +52,8 @@
             android:maxLines="1"
             android:ellipsize="end"
             android:includeFontPadding="false" />
+
+    </LinearLayout>
 
     </LinearLayout>
 

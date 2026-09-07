@@ -158,8 +158,10 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
             }
 
             // Status Colors
+            val resolvedColor = lesson.resolvedColor() ?: subjectColor(lesson.subjectName, ctx)
             b.colorDot.isVisible = !lesson.isCancelled
-            b.colorDot.setColorFilter(subjectColor(lesson.subjectName, ctx))
+            b.colorDot.setColorFilter(resolvedColor)
+            b.colorStripe.setBackgroundColor(resolvedColor)
             b.textSubject.paintFlags = b.textSubject.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
             b.root.alpha = 1f
             b.badgeChip.isVisible = false
@@ -219,23 +221,6 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
                 )
                 b.cardRoot.strokeWidth = (1 * ctx.resources.displayMetrics.density).toInt()
             }
-        }
-
-        private fun subjectColor(name: String, ctx: android.content.Context): Int {
-            val n = name.lowercase()
-            val res = when {
-                n.startsWith("m_") || n.contains("math") -> R.color.subject_math
-                (n == "d" || n.contains("deu") || n.contains("deutsch")) -> R.color.subject_german
-                n.contains("eng") || n.startsWith("e_") -> R.color.subject_english
-                n.contains("phy") -> R.color.subject_physics
-                n.contains("che") -> R.color.subject_chemistry
-                n.contains("geo") || n.contains("gesch") || n == "gl" || n.startsWith("gl") -> R.color.subject_history
-                n.contains("bio") -> R.color.subject_bio
-                n.contains("sport") || n == "sp" || n.startsWith("sp") -> R.color.subject_sport
-                n.contains("kunst") || n.contains("musik") || n == "mu" || n == "ku" -> R.color.subject_art
-                else -> R.color.subject_default
-            }
-            return ContextCompat.getColor(ctx, res)
         }
     }
 

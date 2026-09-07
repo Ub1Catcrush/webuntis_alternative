@@ -30,6 +30,19 @@ data class JsonRpcError(val code: Int, val message: String)
 
 // ─── TIMETABLE JSON-RPC ───────────────────────────────────────────────────────
 
+// Shared hex-color parsing used wherever the WebUntis API supplies a per-subject color
+// (timetable, homework, events...). Accepts both "#RRGGBB" and "RRGGBB"; returns null if
+// missing/unparseable so callers can fall back to a local heuristic.
+fun String?.toColorIntOrNull(): Int? {
+    val raw = this?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val hex = if (raw.startsWith("#")) raw else "#$raw"
+    return try {
+        android.graphics.Color.parseColor(hex)
+    } catch (e: IllegalArgumentException) {
+        null
+    }
+}
+
 data class Lesson(
     val id: Int,
     val date: Int,
@@ -63,7 +76,11 @@ data class Lesson(
     // plus 1 cancelled one all sharing the same time slot).
     val layoutStartPosition: Int? = null,
     val layoutWidth: Int? = null,
-    val layoutGroup: Int? = null
+    val layoutGroup: Int? = null,
+    // Subject/lesson color as delivered by the WebUntis API (hex string, e.g. "#4287F5").
+    // Used to draw a small color accent in the timetable; falls back to a local
+    // heuristic (see LessonAdapter/WeekGridView) when the API doesn't provide one.
+    val color: String? = null
 ) {
     val isCancelled: Boolean get() = code == "cancelled" || lstype == "cancel"
     val isSubstitution: Boolean get() = code == "irregular" || lstype == "subst"
@@ -71,6 +88,12 @@ data class Lesson(
     val isExtra: Boolean get() = lstype == "add"
     val subjectName: String get() = su?.firstOrNull()?.name ?: su?.firstOrNull()?.longname ?: "–"
     val teacherNames: String get() = te?.mapNotNull { it.name }?.joinToString(", ") ?: ""
+
+    /**
+     * Parses [color] into an ARGB int, or null if missing/unparseable.
+     * Accepts both "#RRGGBB" and "RRGGBB".
+     */
+    fun resolvedColor(): Int? = color.toColorIntOrNull()
     val roomNames: String get() = ro?.mapNotNull { it.name }?.joinToString(", ") ?: ""
 
     /** Long name when available, falls back to short name — used with showLongNames setting. */
@@ -236,7 +259,8 @@ data class TimetableV1Entry(
             notesForAll = notesAll?.takeIf { it.isNotBlank() },
             layoutStartPosition = layoutStartPosition,
             layoutWidth = layoutWidth,
-            layoutGroup = layoutGroup
+            layoutGroup = layoutGroup,
+            color = color?.takeIf { it.isNotBlank() }
         )
     }
 }
@@ -454,10 +478,15 @@ data class SchoolEvent(
     @SerializedName("examType")  val examType: String?,
     val isExam: Boolean = false,
     // Long form of [subject], when known — used to show "Fach: Mathematik (M)" alongside the title.
-    val subjectLongName: String? = null
+    val subjectLongName: String? = null,
+    // Subject color as delivered by the WebUntis API (hex string), when this event is tied
+    // to a subject/lesson. See [resolvedColor].
+    val color: String? = null
 ) {
     val displayTitle: String get() = title ?: subject ?: examType ?: "–"
     val displayText: String  get() = text ?: remark ?: ""
+    /** Parses [color] into an ARGB int, or null if missing/unparseable/no subject. */
+    fun resolvedColor(): Int? = color.toColorIntOrNull()
     /** "Mathematik (M)" when both forms are known and differ, else whichever form is available. */
     val subjectDisplay: String get() = when {
         !subjectLongName.isNullOrBlank() && !subject.isNullOrBlank() && subjectLongName != subject ->
@@ -516,7 +545,10 @@ data class TimetableFilterElement(
 // long form as well — matching the "Langform (Kürzel)" style used elsewhere in the app.
 data class NameCatalog(
     val subjectLongByShort: Map<String, String> = emptyMap(),
-    val teacherLongByShort: Map<String, String> = emptyMap()
+    val teacherLongByShort: Map<String, String> = emptyMap(),
+    // Subject short-code -> hex color, sourced from cached timetable lesson colors.
+    // Lets non-timetable screens (homework) show the same subject color accent.
+    val subjectColorByShort: Map<String, String> = emptyMap()
 ) {
     /** "Mathematik (M)" if [raw] (assumed short) is a known subject with a different long name, else [raw] as-is. */
     fun subjectDisplay(raw: String?): String {
@@ -524,6 +556,13 @@ data class NameCatalog(
         if (short.isBlank()) return ""
         val long = subjectLongByShort[short]
         return if (long != null && long != short) "$long ($short)" else short
+    }
+
+    /** Hex color for a subject short code, or null if none is known (see [String.toColorIntOrNull]). */
+    fun subjectColorHex(raw: String?): String? {
+        val short = raw?.trim().orEmpty()
+        if (short.isBlank()) return null
+        return subjectColorByShort[short]
     }
 
     /** Same idea for a teacher name — tries [raw] as a short code first, then as a long name

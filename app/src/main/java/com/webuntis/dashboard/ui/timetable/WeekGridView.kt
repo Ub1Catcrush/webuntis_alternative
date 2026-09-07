@@ -331,6 +331,8 @@ class WeekGridView @JvmOverloads constructor(
         b.textSubjectShort.setTextColor(normalTextColor)
         b.textSubjectLong.setTextColor(mutedTextColor)
 
+        b.colorStripe.setBackgroundColor(lesson.resolvedColor() ?: subjectColor(lesson.subjectName, ctx))
+
         b.root.alpha = 1f
         b.root.strokeColor = com.google.android.material.color.MaterialColors.getColor(
             b.root, com.google.android.material.R.attr.colorOutlineVariant

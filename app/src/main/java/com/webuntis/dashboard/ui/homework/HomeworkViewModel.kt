@@ -29,7 +29,9 @@ import javax.inject.Inject
 data class HomeworkUiItem(
     val homework: Homework,
     val subjectName: String,
-    var isDone: Boolean = false
+    var isDone: Boolean = false,
+    // Subject color from the timetable API (via NameCatalog), when known.
+    val colorHex: String? = null
 )
 
 @HiltViewModel
@@ -82,7 +84,8 @@ class HomeworkViewModel @Inject constructor(
                                 ?: hw.subject
                                 ?: "Aufgabe"
                             val subject = nameCatalog.subjectDisplay(shortSubject)
-                            HomeworkUiItem(hw, subject, hw.id in doneIds)
+                            val colorHex = nameCatalog.subjectColorHex(shortSubject)
+                            HomeworkUiItem(hw, subject, hw.id in doneIds, colorHex)
                         }
                     _state.value = UiState.Success(items)
                 },

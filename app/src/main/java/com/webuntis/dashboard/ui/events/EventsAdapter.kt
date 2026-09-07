@@ -39,8 +39,15 @@ class EventsAdapter : ListAdapter<SchoolEvent, EventsAdapter.VH>(Diff) {
                 b.textDescription.visibility = android.view.View.GONE
             }
 
-            // Color the left accent bar by event type
-            val accentColor = when {
+            // Color the left accent bar: prefer the subject's own color (real API color,
+            // falling back to the same name-based heuristic used in the timetable) when
+            // this event is tied to a subject — otherwise keep the type-based color
+            // (exam/holiday/other).
+            val subjectAccent = if (!event.subject.isNullOrBlank()) {
+                event.resolvedColor()
+                    ?: com.webuntis.dashboard.ui.timetable.subjectColor(event.subjectDisplay, b.root.context)
+            } else null
+            val accentColor = subjectAccent ?: when {
                 event.isExam -> ContextCompat.getColor(b.root.context, R.color.red)
                 event.eventType == "HOLIDAYS" ->
                     ContextCompat.getColor(b.root.context, R.color.green)

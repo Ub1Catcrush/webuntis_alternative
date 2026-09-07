@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.webuntis.dashboard.R
 import com.webuntis.dashboard.databinding.ItemHomeworkBinding
+import com.webuntis.dashboard.model.toColorIntOrNull
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -87,6 +88,13 @@ class HomeworkAdapter(
                 android.content.res.ColorStateList.valueOf(
                     androidx.core.content.ContextCompat.getColor(b.root.context, colorRes)
                 )
+
+            // Left accent stripe — real subject color from the API when known, else the
+            // same name-based heuristic used in the timetable (Tag/Woche).
+            b.colorStripe.setBackgroundColor(
+                item.colorHex.toColorIntOrNull()
+                    ?: com.webuntis.dashboard.ui.timetable.subjectColor(item.subjectName, b.root.context)
+            )
         }
 
         private fun subjectColorRes(name: String): Int {

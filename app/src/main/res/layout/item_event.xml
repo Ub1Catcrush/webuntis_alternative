@@ -18,7 +18,7 @@
         <!-- Colored accent bar on the left -->
         <View
             android:id="@+id/accent_bar"
-            android:layout_width="4dp"
+            android:layout_width="3dp"
             android:layout_height="match_parent"
             android:background="#6750A4" />
 

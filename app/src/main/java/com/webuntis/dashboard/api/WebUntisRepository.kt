@@ -305,11 +305,16 @@ class WebUntisRepository @Inject constructor(
         }
         val subjectMap = linkedMapOf<String, String>()
         val teacherMap = linkedMapOf<String, String>()
+        val colorMap = linkedMapOf<String, String>()
         lessons.forEach { l ->
             val subjShort = l.subjectName.takeIf { it.isNotBlank() && it != "–" }
             val subjLong  = l.subjectLongName.takeIf { it.isNotBlank() && it != "–" }
             if (subjShort != null && subjLong != null && subjectMap[subjShort].isNullOrBlank()) {
                 subjectMap[subjShort] = subjLong
+            }
+            val subjColor = l.color?.takeIf { it.isNotBlank() }
+            if (subjShort != null && subjColor != null && colorMap[subjShort].isNullOrBlank()) {
+                colorMap[subjShort] = subjColor
             }
             l.te?.forEach { t ->
                 val short = t.name?.takeIf { it.isNotBlank() }
@@ -319,7 +324,7 @@ class WebUntisRepository @Inject constructor(
                 }
             }
         }
-        return NameCatalog(subjectMap, teacherMap)
+        return NameCatalog(subjectMap, teacherMap, colorMap)
     }
     fun isEventsCacheFresh():    Boolean { val e = cacheEvents    ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
     fun isClassbookCacheFresh(): Boolean { val e = cacheClassbook ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
@@ -1035,7 +1040,9 @@ class WebUntisRepository @Inject constructor(
             }
 
             val mergedRemoved = ((lesson.removedTeachers ?: emptyList<String>()) + (removed ?: emptyList<String>())).distinct().ifEmpty { null }
-            
+            val newColor = lesson.color?.takeIf { it.isNotBlank() }
+                ?: detail.color?.takeIf { it.isNotBlank() }
+
             lesson.copy(
                 substText           = newSubst,
                 info                = newInfo,
@@ -1043,7 +1050,8 @@ class WebUntisRepository @Inject constructor(
                 removedTeachers     = mergedRemoved,
                 substitutedTeachers = substituted,
                 code                = newCode,
-                lstype              = newLstype
+                lstype              = newLstype,
+                color               = newColor
             )
         }
     }
@@ -1351,7 +1359,8 @@ class WebUntisRepository @Inject constructor(
                             date = dateInt, startTime = startT, endTime = endT,
                             eventType = if (isExam) "EXAM" else "TEST",
                             examType  = if (isExam) "EXAM" else "TEST",
-                            isExam = true
+                            isExam = true,
+                            color = entry.color?.takeIf { it.isNotBlank() }
                         ))
                     }
                 }
