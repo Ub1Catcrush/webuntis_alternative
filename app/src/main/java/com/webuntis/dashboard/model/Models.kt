@@ -186,19 +186,38 @@ data class TimetableV1Response(
      * [SessionManager]'s `className`. Used to tell "MY class was pulled from this lesson"
      * (treat as cancelled) apart from "some OTHER class's roster changed" (irrelevant to me),
      * which can both appear as a removed-only CLASS position on the very same personal
-     * timetable — see [TimetableV1Entry.toLesson].
+     * timetable — see [TimetableV1Entry.toLesson]. Ignored per-day when that day's response
+     * is itself a CLASS-resource response (`resourceType == "CLASS"`): in that case the
+     * response's own `resource.shortName` is used instead, since it definitively identifies
+     * the class actually being viewed (which is what "our own class" means when browsing a
+     * class plan, regardless of the logged-in student's personal homeroom).
      */
     fun toLessons(ownClassName: String? = null): List<Lesson> = days?.flatMap { day ->
         val dateStr = day.date ?: return@flatMap emptyList()
         val dateInt = dateStr.replace("-", "").toIntOrNull() ?: return@flatMap emptyList()
-        (day.gridEntries ?: emptyList()).map { entry -> entry.toLesson(dateInt, ownClassName) }
+        val effectiveOwnClassName =
+            if (day.resourceType == "CLASS") day.resource?.shortName else ownClassName
+        (day.gridEntries ?: emptyList()).map { entry -> entry.toLesson(dateInt, effectiveOwnClassName) }
     } ?: emptyList()
 }
 
 data class TimetableV1Day(
     val date: String?,
     val gridEntries: List<TimetableV1Entry>?,
-    val dayEntries: List<Any>?
+    val dayEntries: List<Any>?,
+    // Present on CLASS-resource responses — tells us definitively which class's plan this
+    // is (e.g. shortName "8c"). More reliable than the login-derived class name for
+    // resolving Lesson.toLesson()'s `ownClassName`, since it's the class actually being
+    // viewed, not just the logged-in student's own homeroom.
+    val resourceType: String? = null,
+    val resource: TimetableV1Resource? = null
+)
+
+data class TimetableV1Resource(
+    val id: Int? = null,
+    val shortName: String? = null,
+    val longName: String? = null,
+    val displayName: String? = null
 )
 
 data class TimetableV1Entry(

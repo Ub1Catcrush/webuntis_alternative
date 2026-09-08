@@ -880,18 +880,16 @@ class WebUntisRepository @Inject constructor(
     }
 
     /**
-     * Merges cancelled+active lesson pairs into a single "statt [Old Subject]" entry — but only
-     * for the PERSONAL timetable, where an overlap reliably means "this replaces that". A CLASS
-     * timetable can have several unrelated parallel courses (differentiated groups, religion vs.
-     * ethics, electives) at the same time slot, so pairing by time overlap alone would risk
-     * attaching the wrong "statt" label to an unrelated course. In CLASS mode, cancelled and
-     * active lessons are therefore kept separate; [TimetableViewModel]'s grouping already displays
-     * that mix vertically instead of merging it.
+     * Merges cancelled+active lesson pairs into a single "statt [Old Subject]" entry, using
+     * [mergeOverlappingLessons]'s layoutGroup-based grouping — which only folds a shared time
+     * slot together when there's a genuine sign of replacement (an EVENT entry, or at least
+     * one entry the API itself marked CANCELLED), so unrelated parallel courses sharing a
+     * slot (differentiated groups, religion vs. ethics, electives) are correctly left
+     * separate. This is now safe for both PERSONAL and CLASS mode — CLASS mode used to skip
+     * merging entirely (relying purely on time-overlap here risked attaching a "statt" label
+     * to an unrelated parallel course), but layoutGroup removes that ambiguity.
      */
     private fun mergeLessonsForCurrentView(lessons: List<Lesson>): List<Lesson> {
-        if (sessionManager.timetableViewMode == SessionManager.TimetableViewMode.CLASS) {
-            return lessons
-        }
         // In COMBINED mode, only merge cancelled/active pairs among the personal-plan lessons —
         // overlay entries filled in from the class plan can include several unrelated parallel
         // class-plan subjects and must never be paired into a false "statt" substitution.
