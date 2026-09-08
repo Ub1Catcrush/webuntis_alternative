@@ -11,6 +11,10 @@ import com.webuntis.dashboard.model.Absence
  * RecyclerView ItemDecoration that draws a semi-transparent grey overlay
  * over lesson groups that are covered by an absence.
  *
+ * A lesson is only overlaid when the student was absent for at least half of its actual
+ * duration — a short overlap (e.g. a few minutes late, or leaving just before the bell)
+ * doesn't grey out the whole hour. See the overlap-duration check in [onDrawOver].
+ *
  * Consecutive lesson rows covered by the same absence are merged into a single overlay block
  * (one border, one centered label, one diagonal line) spanning all of them, rather than each
  * row getting its own separate overlay — visually this reads as "these hours together are one
@@ -69,8 +73,15 @@ class AbsenceDecoration : RecyclerView.ItemDecoration() {
                 val absEnd   = abs.endTime   ?: 2359
                 val absStartMin = (absStart / 100) * 60 + (absStart % 100)
                 val absEndMin   = (absEnd   / 100) * 60 + (absEnd   % 100)
-                // Overlap: absence starts before lesson ends AND ends after lesson starts
-                absStartMin < lessonEndMin && absEndMin > lessonStartMin
+                // Only overlay a lesson the student was PREDOMINANTLY absent for — a few
+                // minutes' overlap (e.g. arriving/leaving right at the bell) shouldn't grey
+                // out the whole hour. Requires the absence to cover at least half of the
+                // lesson's actual duration, not just any overlap at all.
+                val overlapStart = maxOf(absStartMin, lessonStartMin)
+                val overlapEnd   = minOf(absEndMin, lessonEndMin)
+                val overlapMin = (overlapEnd - overlapStart).coerceAtLeast(0)
+                val lessonDurationMin = (lessonEndMin - lessonStartMin).coerceAtLeast(1)
+                overlapMin * 2 >= lessonDurationMin
             }
             if (matching.isEmpty()) continue
 

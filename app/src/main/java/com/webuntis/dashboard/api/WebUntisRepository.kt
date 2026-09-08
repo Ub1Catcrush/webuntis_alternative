@@ -901,7 +901,72 @@ class WebUntisRepository @Inject constructor(
         return mergeOverlappingLessons(personalOnly) + overlay
     }
 
+    /**
+     * Groups lessons that share the same [Lesson.layoutGroup] on the same day — the exact
+     * row-layout hint WebUntis's own web client uses to say "these entries occupy the same
+     * displayed time slot" — into a single displayed entry with "statt ..." substitute info,
+     * picking whichever one actually happens as the primary.
+     *
+     * This used to be inferred purely from time overlap + each lesson's OWN cancelled flag,
+     * which broke for a lesson pulled from a shared/differentiated course: its own top-level
+     * `status` stays "CHANGED" (the course still runs for the other classes), so it doesn't
+     * individually look cancelled — the merge would then leave it stranded outside the group,
+     * competing with the real replacement entry (e.g. a workshop EVENT) for the same slot
+     * instead of being folded into it. layoutGroup sidesteps that: WebUntis already decided
+     * which entries share this slot, so if a group also contains a genuine sign of
+     * replacement (an `EVENT` entry, or at least one entry the API itself marked
+     * `CANCELLED`), every OTHER entry in that group gets folded in regardless of its own
+     * individual status — it doesn't need to be individually recognized as cancelled.
+     *
+     * Groups with no such sign (e.g. two unrelated parallel elective courses sharing a slot,
+     * both genuinely happening) are left untouched — they're meant to be shown side by side,
+     * not merged. Lessons without layoutGroup info fall back to the previous time-overlap
+     * pairing (defensive — should be rare).
+     */
     private fun mergeOverlappingLessons(lessons: List<Lesson>): List<Lesson> {
+        if (lessons.size < 2) return lessons
+
+        val (withGroup, withoutGroup) = lessons.partition { it.layoutGroup != null }
+        val result = mutableListOf<Lesson>()
+
+        withGroup.groupBy { it.date to it.layoutGroup }.values.forEach { group ->
+            if (group.size < 2) {
+                result.addAll(group)
+                return@forEach
+            }
+            val hasEvent = group.any { it.isEventType }
+            val hasExplicitlyCancelled = group.any { it.isCancelled }
+            if (!hasEvent && !hasExplicitlyCancelled) {
+                // No sign anything here was actually replaced — genuinely-parallel active
+                // offerings (e.g. religion vs. ethics), keep them all separate.
+                result.addAll(group)
+                return@forEach
+            }
+            val primary = group.firstOrNull { it.isEventType }
+                ?: group.firstOrNull { !it.isCancelled }
+                ?: run { result.addAll(group); return@forEach } // all cancelled, nothing to attach "statt" to
+            val others = group.filterNot { it === primary }
+            val insteadOf = others.map { it.subjectName }.filter { it.isNotBlank() && it != "–" }.distinct().joinToString(", ")
+            val replacedTeachers = others.flatMap { o ->
+                o.te?.mapNotNull { it.longname ?: it.name } ?: emptyList<String>()
+            }.distinct()
+            val combinedRemoved = ((primary.removedTeachers ?: emptyList<String>()) + replacedTeachers).distinct()
+            val newLstype = if (primary.lstype == null || primary.lstype == "ls") "subst" else primary.lstype
+            result.add(primary.copy(
+                replacedSubject = insteadOf.ifBlank { null },
+                lstype = newLstype,
+                removedTeachers = combinedRemoved.ifEmpty { null }
+            ))
+        }
+
+        result.addAll(mergeOverlappingLessonsByTimeOverlap(withoutGroup))
+        return result.sortedBy { it.startTime }
+    }
+
+    /** Fallback pairing for lessons without [Lesson.layoutGroup] info — pairs each active
+     *  lesson with any cancelled lesson overlapping its time range. See
+     *  [mergeOverlappingLessons] for the preferred, more reliable layoutGroup-based path. */
+    private fun mergeOverlappingLessonsByTimeOverlap(lessons: List<Lesson>): List<Lesson> {
         if (lessons.size < 2) return lessons
         val result = mutableListOf<Lesson>()
         val cancelledPool = lessons.filter { it.isCancelled }.toMutableList()

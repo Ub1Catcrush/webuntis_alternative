@@ -80,7 +80,12 @@ data class Lesson(
     // Subject/lesson color as delivered by the WebUntis API (hex string, e.g. "#4287F5").
     // Used to draw a small color accent in the timetable; falls back to a local
     // heuristic (see LessonAdapter/WeekGridView) when the API doesn't provide one.
-    val color: String? = null
+    val color: String? = null,
+    // True for a v1 gridEntry with type == "EVENT" (a school-wide/class-wide event such as a
+    // workshop day that overrides several regular periods). Used together with [layoutGroup]
+    // to reliably pick which entry in a shared time slot is "what actually happens" when
+    // merging — see WebUntisRepository.mergeOverlappingLessons.
+    val isEventType: Boolean = false
 ) {
     val isCancelled: Boolean get() = code == "cancelled" || lstype == "cancel"
     val isSubstitution: Boolean get() = code == "irregular" || lstype == "subst"
@@ -260,10 +265,31 @@ data class TimetableV1Entry(
         }
 
         val isCancelled = status == "CANCELLED" || ownClassRemoved
-        val isChanged   = status == "CHANGED" && !ownClassRemoved
-        val isExam      = type == "EXAM"
-        val code   = if (isCancelled) "cancelled" else if (isChanged) "irregular" else null
-        val lstype = if (isExam) "exam" else if (isCancelled) "cancel" else if (isChanged) "subst" else "ls"
+        // A pure room swap (teacher unchanged) shouldn't read as a "Vertretung"/substitution —
+        // that label implies someone is covering the lesson, which isn't the case when it's
+        // simply happening in a different room. Only counts as "room-only" when there's no
+        // teacher change, no class-removal, and no accompanying info/substitution text that
+        // might indicate something more than a room swap actually happened.
+        val teacherChanged = (position1 ?: emptyList()).any { it.removed != null }
+        val roomChanged = (position3 ?: emptyList())
+            .any { it.removed?.type == "ROOM" || it.current?.status == "ADDED" }
+        val isRoomOnlyChange = status == "CHANGED" && !ownClassRemoved && !teacherChanged &&
+            roomChanged && lessonInfo.isNullOrBlank() && substitutionText.isNullOrBlank()
+        val isChanged = status == "CHANGED" && !ownClassRemoved && !isRoomOnlyChange
+        val isExam    = type == "EXAM"
+        val code = when {
+            isCancelled      -> "cancelled"
+            isChanged        -> "irregular"
+            isRoomOnlyChange -> "roomchange"
+            else             -> null
+        }
+        val lstype = when {
+            isExam           -> "exam"
+            isCancelled      -> "cancel"
+            isChanged        -> "subst"
+            isRoomOnlyChange -> "roomchange"
+            else             -> "ls"
+        }
 
         return Lesson(
             id        = ids?.firstOrNull() ?: 0,
@@ -284,7 +310,8 @@ data class TimetableV1Entry(
             layoutStartPosition = layoutStartPosition,
             layoutWidth = layoutWidth,
             layoutGroup = layoutGroup,
-            color = color?.takeIf { it.isNotBlank() }
+            color = color?.takeIf { it.isNotBlank() },
+            isEventType = type == "EVENT"
         )
     }
 }
