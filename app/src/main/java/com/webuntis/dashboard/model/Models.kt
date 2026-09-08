@@ -235,8 +235,22 @@ data class TimetableV1Entry(
         val classes = allPos.filter { it.type == "CLASS" }
             .map { NamedItem(null, it.shortName, it.longName) }
 
-        val isCancelled = status == "CANCELLED"
-        val isChanged   = status == "CHANGED"
+        // A CLASS position that only has `removed` (no matching `current`) means our own
+        // class was pulled out of this specific occurrence — e.g. a joint course still runs
+        // for the other classes, so the API's top-level `status` stays "CHANGED" rather than
+        // "CANCELLED". This v1 endpoint is only ever queried for the logged-in student's own
+        // class (see fetchLessonsInRange: elementId is always session.classId or the
+        // student's own element), so any removed-only CLASS position here can only refer to
+        // *our* class — there's no other class this data could be about.
+        // Without this, such a lesson is treated as still "active", which breaks
+        // mergeOverlappingLessons(): it can out-compete the real substitute/workshop entry
+        // for the shared time slot and end up displayed separately instead of folded into
+        // the merged "statt ..." block alongside the other, properly CANCELLED periods.
+        val ownClassRemoved = (position4 ?: emptyList())
+            .any { it.current == null && it.removed?.type == "CLASS" }
+
+        val isCancelled = status == "CANCELLED" || ownClassRemoved
+        val isChanged   = status == "CHANGED" && !ownClassRemoved
         val isExam      = type == "EXAM"
         val code   = if (isCancelled) "cancelled" else if (isChanged) "irregular" else null
         val lstype = if (isExam) "exam" else if (isCancelled) "cancel" else if (isChanged) "subst" else "ls"
