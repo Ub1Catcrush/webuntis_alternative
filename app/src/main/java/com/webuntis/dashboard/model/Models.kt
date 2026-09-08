@@ -176,10 +176,17 @@ data class TimetableV1Response(
     val days: List<TimetableV1Day>?,
     val errors: List<Any>?
 ) {
-    fun toLessons(): List<Lesson> = days?.flatMap { day ->
+    /**
+     * @param ownClassName The viewer's own homeroom short name (e.g. "8c"), when known — see
+     * [SessionManager]'s `className`. Used to tell "MY class was pulled from this lesson"
+     * (treat as cancelled) apart from "some OTHER class's roster changed" (irrelevant to me),
+     * which can both appear as a removed-only CLASS position on the very same personal
+     * timetable — see [TimetableV1Entry.toLesson].
+     */
+    fun toLessons(ownClassName: String? = null): List<Lesson> = days?.flatMap { day ->
         val dateStr = day.date ?: return@flatMap emptyList()
         val dateInt = dateStr.replace("-", "").toIntOrNull() ?: return@flatMap emptyList()
-        (day.gridEntries ?: emptyList()).map { entry -> entry.toLesson(dateInt) }
+        (day.gridEntries ?: emptyList()).map { entry -> entry.toLesson(dateInt, ownClassName) }
     } ?: emptyList()
 }
 
@@ -209,7 +216,7 @@ data class TimetableV1Entry(
     val layoutWidth: Int? = null,
     val layoutGroup: Int? = null
 ) {
-    fun toLesson(dateInt: Int): Lesson {
+    fun toLesson(dateInt: Int, ownClassName: String? = null): Lesson {
         val startT = duration?.start?.drop(11)?.take(5)?.replace(":", "")?.toIntOrNull() ?: 0
         val endT   = duration?.end?.drop(11)?.take(5)?.replace(":", "")?.toIntOrNull() ?: 0
 
@@ -235,19 +242,22 @@ data class TimetableV1Entry(
         val classes = allPos.filter { it.type == "CLASS" }
             .map { NamedItem(null, it.shortName, it.longName) }
 
-        // A CLASS position that only has `removed` (no matching `current`) means our own
-        // class was pulled out of this specific occurrence — e.g. a joint course still runs
-        // for the other classes, so the API's top-level `status` stays "CHANGED" rather than
-        // "CANCELLED". This v1 endpoint is only ever queried for the logged-in student's own
-        // class (see fetchLessonsInRange: elementId is always session.classId or the
-        // student's own element), so any removed-only CLASS position here can only refer to
-        // *our* class — there's no other class this data could be about.
-        // Without this, such a lesson is treated as still "active", which breaks
-        // mergeOverlappingLessons(): it can out-compete the real substitute/workshop entry
-        // for the shared time slot and end up displayed separately instead of folded into
-        // the merged "statt ..." block alongside the other, properly CANCELLED periods.
-        val ownClassRemoved = (position4 ?: emptyList())
-            .any { it.current == null && it.removed?.type == "CLASS" }
+        // A CLASS position that only has `removed` (no matching `current`) means SOME class
+        // was pulled from this specific occurrence — but that class isn't necessarily ours!
+        // A shared/differentiated course (e.g. an E-Kurs pooling students from 8a/8b/8c) can
+        // report a roster change for a DIFFERENT class than the viewer's own (e.g. only 8b
+        // dropped out of a room this time, alongside an unrelated room swap) — that's simply
+        // not relevant to us and must NOT be treated as "cancelled for me". Only when the
+        // removed class's own name matches our known homeroom ([ownClassName], from login)
+        // do we know for certain that WE were pulled, even though the API's top-level
+        // `status` stays "CHANGED" (the course still runs for the remaining classes).
+        // If [ownClassName] isn't known (e.g. legacy JSON-RPC login, which never returns a
+        // class name), this intentionally stays false — better to under-detect than to
+        // wrongly mark an unrelated room/roster change as a personal cancellation.
+        val ownClassRemoved = ownClassName != null && (position4 ?: emptyList()).any {
+            it.current == null && it.removed?.type == "CLASS" &&
+                (it.removed.shortName == ownClassName || it.removed.longName == ownClassName)
+        }
 
         val isCancelled = status == "CANCELLED" || ownClassRemoved
         val isChanged   = status == "CHANGED" && !ownClassRemoved
@@ -595,7 +605,9 @@ data class NameCatalog(
 data class SessionData(
     val server: String, val schoolname: String, val username: String,
     val sessionId: String, val personId: Int, val classId: Int,
-    val personName: String, val personType: Int = 0
+    val personName: String, val personType: Int = 0,
+    // Own homeroom short name (e.g. "8c"), when known — see SessionManager.KEY_CLASS_NAME.
+    val className: String? = null
 ) {
     /** Human-readable account type derived from personType */
     val accountTypeLabel: String get() = when (personType) {

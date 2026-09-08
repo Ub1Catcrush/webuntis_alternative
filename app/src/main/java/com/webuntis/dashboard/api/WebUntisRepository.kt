@@ -647,7 +647,8 @@ class WebUntisRepository @Inject constructor(
                 sessionId = sessionId, personId = data.person?.id ?: 0,
                 classId = data.schoolyearData?.klasse?.id ?: 0,
                 personName = data.person?.name ?: username,
-                personType = data.person?.type ?: 0
+                personType = data.person?.type ?: 0,
+                className = data.schoolyearData?.klasse?.name?.takeIf { it.isNotBlank() }
             )
             sessionManager.session = session
             Result.success(session)
@@ -776,7 +777,7 @@ class WebUntisRepository @Inject constructor(
             )
             val raw = rawBody(response) ?: return Result.success(emptyList())
             val ttResp: TimetableV1Response = parseJson(raw)
-            val lessons = ttResp.toLessons()
+            val lessons = ttResp.toLessons(sessionManager.session?.className)
             val enriched = enrichLessonsWithDetail(lessons, elementId, elementType, anchorDate, anchorRangeEnd, maxEnrich)
             Result.success(enriched)
         } catch (e: Exception) {

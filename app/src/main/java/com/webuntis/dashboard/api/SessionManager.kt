@@ -90,7 +90,8 @@ class SessionManager @Inject constructor(
                 personId   = prefs.getInt(KEY_PERSON_ID, 0),
                 classId    = prefs.getInt(KEY_CLASS_ID,  0),
                 personName = prefs.getString(KEY_PERSON_NAME, "") ?: "",
-                personType = prefs.getInt(KEY_PERSON_TYPE, 0)
+                personType = prefs.getInt(KEY_PERSON_TYPE, 0),
+                className  = prefs.getString(KEY_CLASS_NAME, null)
             )
         }
         set(value) {
@@ -100,6 +101,7 @@ class SessionManager @Inject constructor(
                     .remove(KEY_SERVER).remove(KEY_SCHOOLNAME).remove(KEY_USERNAME)
                     .remove(KEY_SESSION_ID).remove(KEY_PERSON_ID).remove(KEY_CLASS_ID)
                     .remove(KEY_PERSON_NAME).remove(KEY_PERSON_TYPE).remove(KEY_SESSION_TIME)
+                    .remove(KEY_CLASS_NAME)
                     .apply()
             } else {
                 prefs.edit()
@@ -113,6 +115,13 @@ class SessionManager @Inject constructor(
                     .putInt(KEY_PERSON_TYPE,    value.personType)
                     .putLong(KEY_SESSION_TIME,  System.currentTimeMillis())
                     .apply()
+                // className is optional/nullable — write or clear it separately so a null
+                // value here doesn't accidentally wipe an already-known name from an earlier
+                // login (e.g. a session refresh via the legacy JSON-RPC path, which never
+                // returns a class name).
+                if (value.className != null) {
+                    prefs.edit().putString(KEY_CLASS_NAME, value.className).apply()
+                }
             }
         }
 
@@ -482,6 +491,13 @@ class SessionManager @Inject constructor(
         private const val KEY_CSRF_TOKEN   = "csrf_token"
         private const val KEY_PERSON_ID    = "person_id"
         private const val KEY_CLASS_ID     = "class_id"
+        // Own homeroom short name (e.g. "8c"), from login's schoolyearData.klasse.name.
+        // Used to tell "MY class was pulled from a shared/differentiated lesson" (real
+        // cancellation for me) apart from "some OTHER class's roster changed" (irrelevant to
+        // me) when the timetable API reports a CLASS position as removed without a current
+        // counterpart — see TimetableV1Entry.toLesson(). Null on the legacy JSON-RPC login
+        // path, which doesn't return a class name (only classId).
+        private const val KEY_CLASS_NAME   = "class_name"
         private const val KEY_PERSON_NAME  = "person_name"
         private const val KEY_PERSON_TYPE  = "person_type"
         private const val KEY_SESSION_TIME = "session_time"
