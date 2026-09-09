@@ -145,10 +145,19 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
                 b.textInfo.text = infoText
             }
 
-            // Room
+            // Room — highlighted in a distinct color when it changed (but nothing more
+            // substantial did, e.g. teacher unchanged — see isRoomChange), so a room swap
+            // is visible at a glance without implying a "Substitution".
             val roomText = lesson.displayRooms(showLongRooms, showShortRoomInParens)
             b.textRoom.text = roomText
             b.textRoom.isVisible = roomText.isNotEmpty()
+            b.textRoom.setTextColor(
+                if (lesson.isRoomChange) ContextCompat.getColor(ctx, R.color.blue)
+                else com.google.android.material.color.MaterialColors.getColor(
+                    b.textRoom, com.google.android.material.R.attr.colorOnSurfaceVariant
+                )
+            )
+            b.textRoom.setTypeface(b.textRoom.typeface, if (lesson.isRoomChange) Typeface.BOLD else Typeface.NORMAL)
 
             // Notes (pinned)
             val notes = lesson.notesForAll?.takeIf { it.isNotBlank() }

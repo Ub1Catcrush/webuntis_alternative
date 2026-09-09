@@ -267,6 +267,32 @@ class TimetableFragment : Fragment() {
             }
 
             textRoom.text = lesson.displayRooms(viewModel.showLongRooms, viewModel.showShortRoomInParens).ifEmpty { "–" }
+            val originalRoom = lesson.displayRoomsOriginal()
+            if (originalRoom.isNotEmpty()) {
+                textRoomOriginal.isVisible = true
+                textRoomOriginal.text = originalRoom
+                textRoomOriginal.paintFlags = textRoomOriginal.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
+            } else {
+                textRoomOriginal.isVisible = false
+            }
+
+            // Classes: shown whenever the lesson involves more than one class, or a class
+            // was pulled from this occurrence — a single-class lesson doesn't need this row.
+            val currentClasses = lesson.displayClasses()
+            val removedClasses = lesson.removedClasses.orEmpty()
+            if ((lesson.kl?.size ?: 0) > 1 || removedClasses.isNotEmpty()) {
+                rowClasses.isVisible = true
+                textClasses.text = currentClasses.ifEmpty { "–" }
+                if (removedClasses.isNotEmpty()) {
+                    textClassesRemoved.isVisible = true
+                    textClassesRemoved.text = removedClasses.joinToString(", ")
+                    textClassesRemoved.paintFlags = textClassesRemoved.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
+                } else {
+                    textClassesRemoved.isVisible = false
+                }
+            } else {
+                rowClasses.isVisible = false
+            }
             
             val info = listOfNotNull(
                 lesson.replacedSubject?.let { getString(R.string.timetable_replaced_subject, it) },

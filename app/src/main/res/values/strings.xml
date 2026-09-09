@@ -54,6 +54,7 @@
     <string name="timetable_detail_time">Zeit:</string>
     <string name="timetable_detail_teacher">Lehrer:</string>
     <string name="timetable_detail_room">Raum:</string>
+    <string name="timetable_detail_classes">Klasse(n):</string>
     <string name="timetable_detail_info">Info:</string>
     <string name="timetable_detail_content">Lehrstoff:</string>
     <string name="timetable_detail_notes">Notizen:</string>

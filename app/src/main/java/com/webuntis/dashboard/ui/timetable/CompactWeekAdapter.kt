@@ -110,6 +110,15 @@ class CompactLessonAdapter : ListAdapter<Lesson, CompactLessonAdapter.LessonView
             val room = lesson.displayRooms(longRooms, shortRoomInParens)
             b.textRoom.text = room
             b.textRoom.visibility = if (room.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
+            // Highlight a pure room change (teacher unchanged) in a distinct color instead of
+            // treating it as a "Substitution" — see Lesson.isRoomChange.
+            b.textRoom.setTextColor(
+                if (lesson.isRoomChange) androidx.core.content.ContextCompat.getColor(ctx, R.color.blue)
+                else com.google.android.material.color.MaterialColors.getColor(
+                    b.textRoom, com.google.android.material.R.attr.colorOnSurfaceVariant
+                )
+            )
+            b.textRoom.setTypeface(b.textRoom.typeface, if (lesson.isRoomChange) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
             
             b.root.setOnClickListener { onClick?.invoke(lesson) }
 

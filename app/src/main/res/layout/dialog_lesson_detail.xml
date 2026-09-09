@@ -88,12 +88,59 @@
                 android:text="@string/timetable_detail_room"
                 android:textStyle="bold"
                 android:textColor="?attr/colorOnSurfaceVariant" />
-            <TextView
-                android:id="@+id/text_room"
+            <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:textColor="?attr/colorOnSurface" />
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/text_room"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="?attr/colorOnSurface" />
+                <TextView
+                    android:id="@+id/text_room_original"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="12sp"
+                    android:textColor="?attr/colorOutline"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Classes (shown when the lesson involves more than one class, or a class was
+             pulled from this occurrence) -->
+        <LinearLayout
+            android:id="@+id/row_classes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone">
+            <TextView
+                android:layout_width="100dp"
+                android:layout_height="wrap_content"
+                android:text="@string/timetable_detail_classes"
+                android:textStyle="bold"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/text_classes"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="?attr/colorOnSurface" />
+                <TextView
+                    android:id="@+id/text_classes_removed"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="12sp"
+                    android:textColor="?attr/colorOutline"
+                    android:visibility="gone" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- Info / Substitution -->

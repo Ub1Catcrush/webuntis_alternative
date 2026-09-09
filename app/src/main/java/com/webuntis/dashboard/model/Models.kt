@@ -85,12 +85,20 @@ data class Lesson(
     // workshop day that overrides several regular periods). Used together with [layoutGroup]
     // to reliably pick which entry in a shared time slot is "what actually happens" when
     // merging — see WebUntisRepository.mergeOverlappingLessons.
-    val isEventType: Boolean = false
+    val isEventType: Boolean = false,
+    // Classes fully removed from this occurrence (short names, e.g. ["8c"]) — a joint course
+    // still running for other classes with just some pulled out. Shown struck-through next to
+    // [kl] in the lesson detail view. See TimetableV1Entry.toLesson.
+    val removedClasses: List<String>? = null
 ) {
     val isCancelled: Boolean get() = code == "cancelled" || lstype == "cancel"
     val isSubstitution: Boolean get() = code == "irregular" || lstype == "subst"
     val isExam: Boolean get() = lstype == "exam"
     val isExtra: Boolean get() = lstype == "add"
+    // A pure room swap (teacher unchanged) — see the isRoomOnlyChange derivation in
+    // TimetableV1Entry.toLesson(). Shown as a colored room highlight instead of the
+    // "Substitution" badge (that badge implies someone is covering the lesson).
+    val isRoomChange: Boolean get() = code == "roomchange" || lstype == "roomchange"
     val subjectName: String get() = su?.firstOrNull()?.name ?: su?.firstOrNull()?.longname ?: "–"
     val teacherNames: String get() = te?.mapNotNull { it.name }?.joinToString(", ") ?: ""
 
@@ -141,6 +149,12 @@ data class Lesson(
             else if (withShortInParens && short != longN) "$longN ($short)" else longN
         }.joinToString(", ")
     }
+    /** Room name(s) before a swap (see [NamedItem.orgname]), or "" if the room didn't change. */
+    fun displayRoomsOriginal(): String =
+        ro?.mapNotNull { it.orgname?.takeIf(String::isNotBlank) }?.distinct()?.joinToString(", ") ?: ""
+    /** Current class short names (e.g. "8a, 8b"), or "" if none. */
+    fun displayClasses(): String =
+        kl?.mapNotNull { it.name?.takeIf(String::isNotBlank) }?.distinct()?.joinToString(", ") ?: ""
     val startTimeFormatted: String get() = formatTime(startTime)
     val endTimeFormatted: String get() = formatTime(endTime)
     private fun formatTime(t: Int): String {
@@ -171,7 +185,13 @@ data class ClassSubjectOption(val shortName: String, val longName: String) {
         get() = if (longName.isNotBlank() && longName != shortName) "$longName ($shortName)" else shortName
 }
 
-data class NamedItem(val id: Int?, val name: String?, val longname: String?)
+data class NamedItem(
+    val id: Int?, val name: String?, val longname: String?,
+    // Original value before a swap (e.g. the previous room on a room change), when known.
+    // Mirrors TeacherItem.orgname. Null for classes — see Lesson.removedClasses instead,
+    // since a class position is a roster (add/remove), not a single before/after swap.
+    val orgname: String? = null
+)
 data class TeacherItem(val id: Int?, val name: String?, val orgname: String?, val longname: String?)
 data class SubjectItem(val id: Int?, val name: String?, val longname: String?)
 
@@ -261,10 +281,24 @@ data class TimetableV1Entry(
         val allPos = listOfNotNull(position1, position2, position3, position4)
             .flatten().mapNotNull { it.current }
 
-        val rooms   = allPos.filter { it.type == "ROOM" }
-            .map { NamedItem(null, it.shortName, it.longName) }
+        val rooms = (position3 ?: emptyList()).filter { it.current?.type == "ROOM" }.map { pos ->
+            NamedItem(
+                id       = null,
+                name     = pos.current?.shortName,
+                longname = pos.current?.longName,
+                orgname  = pos.removed?.longName?.takeIf(String::isNotBlank) ?: pos.removed?.shortName
+            )
+        }
         val classes = allPos.filter { it.type == "CLASS" }
             .map { NamedItem(null, it.shortName, it.longName) }
+        // Classes fully removed from this occurrence (no matching `current` counterpart) —
+        // e.g. a joint course still running for other classes with just ours pulled out.
+        // Shown struck-through in the lesson detail view alongside the still-current classes.
+        val removedClasses = (position4 ?: emptyList())
+            .mapNotNull { it.removed?.takeIf { r -> r.type == "CLASS" } }
+            .filter { removed -> (position4 ?: emptyList()).none { it.current?.type == "CLASS" && it.current.shortName == removed.shortName } }
+            .mapNotNull { it.shortName }
+            .distinct()
 
         // A CLASS position that only has `removed` (no matching `current`) means SOME class
         // was pulled from this specific occurrence — but that class isn't necessarily ours!
@@ -330,7 +364,8 @@ data class TimetableV1Entry(
             layoutWidth = layoutWidth,
             layoutGroup = layoutGroup,
             color = color?.takeIf { it.isNotBlank() },
-            isEventType = type == "EVENT"
+            isEventType = type == "EVENT",
+            removedClasses = removedClasses.ifEmpty { null }
         )
     }
 }
