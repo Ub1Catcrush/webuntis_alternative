@@ -262,8 +262,12 @@ class DayFragment : Fragment() {
                 textTeacherOriginal.isVisible = false
             }
 
-            textRoom.text = lesson.displayRooms(viewModel.showLongRooms, viewModel.showShortRoomInParens).ifEmpty { "–" }
-            val originalRoom = lesson.displayRoomsOriginal()
+            // Detail view always shows short + long name together for both the current and
+            // the previous room, regardless of the list views' long/short display setting —
+            // there's room for full clarity here, and it avoids the old/new rows showing
+            // mismatched formats (e.g. old long name vs. new short name).
+            textRoom.text = lesson.displayRoomsDetailed().ifEmpty { "–" }
+            val originalRoom = lesson.displayRoomsOriginalDetailed()
             if (originalRoom.isNotEmpty()) {
                 textRoomOriginal.isVisible = true
                 textRoomOriginal.text = originalRoom

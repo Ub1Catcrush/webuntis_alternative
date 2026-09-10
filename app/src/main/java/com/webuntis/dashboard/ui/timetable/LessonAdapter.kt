@@ -152,7 +152,7 @@ class LessonAdapter : ListAdapter<LessonGroup, LessonAdapter.GroupViewHolder>(Gr
             b.textRoom.text = roomText
             b.textRoom.isVisible = roomText.isNotEmpty()
             b.textRoom.setTextColor(
-                if (lesson.isRoomChange) ContextCompat.getColor(ctx, R.color.blue)
+                if (lesson.isRoomChange) ContextCompat.getColor(ctx, R.color.red)
                 else com.google.android.material.color.MaterialColors.getColor(
                     b.textRoom, com.google.android.material.R.attr.colorOnSurfaceVariant
                 )

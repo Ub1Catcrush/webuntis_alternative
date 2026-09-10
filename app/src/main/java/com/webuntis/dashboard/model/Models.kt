@@ -149,9 +149,19 @@ data class Lesson(
             else if (withShortInParens && short != longN) "$longN ($short)" else longN
         }.joinToString(", ")
     }
-    /** Room name(s) before a swap (see [NamedItem.orgname]), or "" if the room didn't change. */
-    fun displayRoomsOriginal(): String =
-        ro?.mapNotNull { it.orgname?.takeIf(String::isNotBlank) }?.distinct()?.joinToString(", ") ?: ""
+    /** "shortName (longName)" for the current room(s) — always both, regardless of the
+     *  long/short display preference, for full clarity in the lesson detail view. */
+    fun displayRoomsDetailed(): String = ro?.mapNotNull { r ->
+        val short = r.name?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+        val long  = r.longname?.takeIf { it.isNotBlank() && it != short }
+        if (long != null) "$short ($long)" else short
+    }?.joinToString(", ") ?: ""
+    /** Same as [displayRoomsDetailed] but for the room(s) before a swap, or "" if unchanged. */
+    fun displayRoomsOriginalDetailed(): String = ro?.mapNotNull { r ->
+        val short = r.origName?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+        val long  = r.origLongname?.takeIf { it.isNotBlank() && it != short }
+        if (long != null) "$short ($long)" else short
+    }?.joinToString(", ") ?: ""
     /** Current class short names (e.g. "8a, 8b"), or "" if none. */
     fun displayClasses(): String =
         kl?.mapNotNull { it.name?.takeIf(String::isNotBlank) }?.distinct()?.joinToString(", ") ?: ""
@@ -187,10 +197,11 @@ data class ClassSubjectOption(val shortName: String, val longName: String) {
 
 data class NamedItem(
     val id: Int?, val name: String?, val longname: String?,
-    // Original value before a swap (e.g. the previous room on a room change), when known.
-    // Mirrors TeacherItem.orgname. Null for classes — see Lesson.removedClasses instead,
-    // since a class position is a roster (add/remove), not a single before/after swap.
-    val orgname: String? = null
+    // Original short/long name before a swap (e.g. the previous room on a room change),
+    // when known. Null for classes — see Lesson.removedClasses instead, since a class
+    // position is a roster (add/remove), not a single before/after swap.
+    val origName: String? = null,
+    val origLongname: String? = null
 )
 data class TeacherItem(val id: Int?, val name: String?, val orgname: String?, val longname: String?)
 data class SubjectItem(val id: Int?, val name: String?, val longname: String?)
@@ -283,10 +294,11 @@ data class TimetableV1Entry(
 
         val rooms = (position3 ?: emptyList()).filter { it.current?.type == "ROOM" }.map { pos ->
             NamedItem(
-                id       = null,
-                name     = pos.current?.shortName,
-                longname = pos.current?.longName,
-                orgname  = pos.removed?.longName?.takeIf(String::isNotBlank) ?: pos.removed?.shortName
+                id           = null,
+                name         = pos.current?.shortName,
+                longname     = pos.current?.longName,
+                origName     = pos.removed?.shortName,
+                origLongname = pos.removed?.longName
             )
         }
         val classes = allPos.filter { it.type == "CLASS" }
@@ -299,6 +311,20 @@ data class TimetableV1Entry(
             .filter { removed -> (position4 ?: emptyList()).none { it.current?.type == "CLASS" && it.current.shortName == removed.shortName } }
             .mapNotNull { it.shortName }
             .distinct()
+        // The API's position4 CLASS list only names the OTHER classes sharing a joint/
+        // differentiated course — it never lists the viewer's/viewed class itself, since
+        // that's implied by whose plan this is. Without adding it back in, a class-plan
+        // entry for e.g. 8c showing a joint course with 8a/8b would list only "8a, 8b",
+        // making it look like 8c isn't even part of it. Add it explicitly, unless it was
+        // specifically pulled from this occurrence (already captured in [removedClasses]).
+        val classesWithOwn = if (ownClassName != null &&
+            removedClasses.none { it == ownClassName } &&
+            classes.none { it.name == ownClassName }
+        ) {
+            classes + NamedItem(null, ownClassName, ownClassName)
+        } else {
+            classes
+        }
 
         // A CLASS position that only has `removed` (no matching `current`) means SOME class
         // was pulled from this specific occurrence — but that class isn't necessarily ours!
@@ -349,7 +375,7 @@ data class TimetableV1Entry(
             date      = dateInt,
             startTime = startT,
             endTime   = endT,
-            kl        = classes.ifEmpty { null },
+            kl        = classesWithOwn.ifEmpty { null },
             te        = teachers.ifEmpty { null },
             su        = subjects.ifEmpty { null },
             ro        = rooms.ifEmpty { null },
