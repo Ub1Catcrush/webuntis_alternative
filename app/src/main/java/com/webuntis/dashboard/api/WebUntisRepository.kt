@@ -763,6 +763,26 @@ class WebUntisRepository @Inject constructor(
     }
 
     /** Fetches + enriches a single timetable/v1 view (personal or class). */
+    /**
+     * Opportunistically caches the school's own resolved class short name (e.g. "8c") into
+     * the session whenever a CLASS-resource response comes back — from an explicit Klassenplan
+     * fetch, or the COMBINED-mode class-plan overlay fetch. This self-heals sessions that
+     * predate `SessionData.className` being captured at login (it's only set on a fresh REST
+     * login), so "add my own class back" in [TimetableV1Entry.toLesson] starts working for the
+     * PERSONAL/STUDENT view too as soon as any class-mode fetch has happened once — no
+     * re-login required. No-op once the cached name already matches.
+     */
+    private fun cacheOwnClassNameIfNeeded(ttResp: TimetableV1Response) {
+        val resolvedClassName = ttResp.days
+            ?.firstOrNull { it.resourceType == "CLASS" }
+            ?.resource?.shortName?.takeIf { it.isNotBlank() }
+            ?: return
+        val current = sessionManager.session ?: return
+        if (current.className != resolvedClassName) {
+            sessionManager.session = current.copy(className = resolvedClassName)
+        }
+    }
+
     private suspend fun fetchLessonsV1(
         startIso: String, endIso: String, elementId: Int,
         resourceType: String, timetableType: String, elementType: Int,
@@ -777,6 +797,7 @@ class WebUntisRepository @Inject constructor(
             )
             val raw = rawBody(response) ?: return Result.success(emptyList())
             val ttResp: TimetableV1Response = parseJson(raw)
+            cacheOwnClassNameIfNeeded(ttResp)
             val lessons = ttResp.toLessons(sessionManager.session?.className)
             val enriched = enrichLessonsWithDetail(lessons, elementId, elementType, anchorDate, anchorRangeEnd, maxEnrich)
             Result.success(enriched)

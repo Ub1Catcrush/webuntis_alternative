@@ -92,4 +92,7 @@ dependencies {
     implementation(libs.viewpager2)
     implementation(libs.fragment.ktx)
     implementation(libs.activity.ktx)
+    implementation(libs.work.runtime)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.work.compiler)
 }

@@ -35,6 +35,22 @@ class SettingsFragment : Fragment() {
     lateinit var updateManager: UpdateManager
 
     // ── Export / Import launchers ─────────────────────────────────────────────
+    private val notificationPermissionLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            loginViewModel.sessionManager.notificationsEnabled = true
+            com.webuntis.dashboard.api.NotificationScheduler.start(requireContext())
+        } else {
+            // Permission denied — leave the feature off and reflect that in the switch so
+            // it doesn't silently claim to be enabled while no notification can ever show.
+            binding.switchNotificationsEnabled.isChecked = false
+            android.widget.Toast.makeText(
+                requireContext(), getString(R.string.settings_notifications_permission_denied), android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
     private val exportLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -120,6 +136,30 @@ class SettingsFragment : Fragment() {
             loginViewModel.sessionManager.useCompactWeekView = checked
             // No need to clear cache, just refresh UI
             loginViewModel.refreshTimetable()
+        }
+
+        // ── Background change-check notifications ───────────────────────────────
+        binding.switchNotificationsEnabled.isChecked = loginViewModel.sessionManager.notificationsEnabled
+        binding.switchNotificationsEnabled.setOnCheckedChangeListener { _, checked ->
+            if (!checked) {
+                loginViewModel.sessionManager.notificationsEnabled = false
+                com.webuntis.dashboard.api.NotificationScheduler.stop(requireContext())
+                return@setOnCheckedChangeListener
+            }
+            // Android 13+ requires the runtime POST_NOTIFICATIONS permission before any
+            // notification (including the ones PlanChangeCheckWorker posts) can show at all.
+            val needsPermission = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    requireContext(), android.Manifest.permission.POST_NOTIFICATIONS
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (needsPermission) {
+                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                // Launcher's callback flips this back on success/off on denial — don't
+                // flip sessionManager's flag until we actually know the outcome.
+            } else {
+                loginViewModel.sessionManager.notificationsEnabled = true
+                com.webuntis.dashboard.api.NotificationScheduler.start(requireContext())
+            }
         }
 
         // ── Week view: what the tile's second line shows ───────────────────────

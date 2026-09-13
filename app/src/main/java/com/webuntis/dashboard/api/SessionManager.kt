@@ -297,6 +297,22 @@ class SessionManager @Inject constructor(
         get() = plainPrefs.getBoolean(KEY_USE_COMPACT_WEEK_VIEW, false)
         set(value) { plainPrefs.edit().putBoolean(KEY_USE_COMPACT_WEEK_VIEW, value).apply() }
 
+    /** Master switch for background checks (schedule changes, new messages/homework/classbook
+     *  entries) that post a local notification. Off by default — opt-in, since it needs
+     *  periodic background network access. See PlanChangeCheckWorker / NotificationScheduler. */
+    var notificationsEnabled: Boolean
+        get() = plainPrefs.getBoolean(KEY_NOTIFICATIONS_ENABLED, false)
+        set(value) { plainPrefs.edit().putBoolean(KEY_NOTIFICATIONS_ENABLED, value).apply() }
+
+    /**
+     * Opaque JSON blob (see PlanChangeCheckWorker) capturing what was already seen/notified
+     * about, so the next background check only reports genuinely NEW changes. Stored in the
+     * plain (non-encrypted) prefs since it's just IDs/status strings, nothing sensitive.
+     */
+    var lastNotifiedSnapshot: String?
+        get() = plainPrefs.getString(KEY_LAST_NOTIFIED_SNAPSHOT, null)
+        set(value) { plainPrefs.edit().putString(KEY_LAST_NOTIFIED_SNAPSHOT, value).apply() }
+
     /** What the second (small) line of a week-view tile shows, below the short subject name. */
     enum class WeekViewSecondLine { SUBJECT_LONG_NAME, TEACHER_LONG_NAME, NONE }
 
@@ -400,6 +416,7 @@ class SessionManager @Inject constructor(
             addProperty("lessonContentGroupMode", lessonContentGroupMode.name)
             addProperty("cacheTtlMinutes",    cacheTtlMinutes)
             addProperty("timetableViewMode",  timetableViewMode.name)
+            addProperty("notificationsEnabled", notificationsEnabled)
             add("combinedOverlaySubjects", com.google.gson.JsonArray().apply {
                 combinedOverlaySubjects.forEach { add(it) }
             })
@@ -457,6 +474,10 @@ class SessionManager @Inject constructor(
             obj.get("showShortTeacherInParens")?.asBoolean?.let { showShortTeacherInParens = it }
             obj.get("showShortRoomInParens")?.asBoolean?.let    { showShortRoomInParens    = it }
             obj.get("useCompactWeekView")?.asBoolean?.let { useCompactWeekView = it }
+            obj.get("notificationsEnabled")?.asBoolean?.let { enabled ->
+                notificationsEnabled = enabled
+                if (enabled) NotificationScheduler.start(context) else NotificationScheduler.stop(context)
+            }
             obj.get("weekViewSecondLine")?.asString?.let { raw ->
                 runCatching { WeekViewSecondLine.valueOf(raw) }.getOrNull()?.let { weekViewSecondLine = it }
             }
@@ -523,6 +544,8 @@ class SessionManager @Inject constructor(
         private const val KEY_LESSON_CONTENT_GROUP_MODE = "lesson_content_group_mode"
         private const val KEY_TIMETABLE_VIEW_MODE    = "timetable_view_mode"
         private const val KEY_COMBINED_OVERLAY_SUBJECTS = "combined_overlay_subjects"
+        private const val KEY_NOTIFICATIONS_ENABLED  = "notifications_enabled"
+        private const val KEY_LAST_NOTIFIED_SNAPSHOT = "last_notified_snapshot"
         private const val KEY_CACHE_TTL              = "cache_ttl_minutes"
         const val DEFAULT_TIMETABLE_DAYS = 5
         const val MIN_TIMETABLE_DAYS     = 1

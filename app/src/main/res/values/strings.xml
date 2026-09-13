@@ -275,6 +275,43 @@
     <string name="settings_section_second_account">Zweiter Account</string>
     <string name="settings_section_timetable">Stundenplan</string>
     <string name="settings_section_display">Anzeige</string>
+    <string name="settings_section_notifications">Benachrichtigungen</string>
+    <string name="settings_notifications_enabled">Bei Planänderungen benachrichtigen</string>
+    <string name="settings_notifications_enabled_desc">Prüft regelmäßig im Hintergrund auf Ausfälle, Vertretungen, Raumänderungen, neue Nachrichten, Hausaufgaben und Klassenbucheinträge.</string>
+    <string name="settings_notifications_permission_denied">Ohne Benachrichtigungs-Berechtigung kann diese Funktion keine Hinweise anzeigen.</string>
+
+    <!-- Background change-check notifications (see PlanChangeCheckWorker) -->
+    <string name="notif_channel_timetable">Stundenplanänderungen</string>
+    <string name="notif_channel_timetable_desc">Ausfälle, Vertretungen und Raumänderungen</string>
+    <string name="notif_channel_messages">Neue Nachrichten</string>
+    <string name="notif_channel_messages_desc">Neue Nachrichten im Postfach</string>
+    <string name="notif_channel_homework">Neue Hausaufgaben</string>
+    <string name="notif_channel_homework_desc">Neu eingetragene Hausaufgaben</string>
+    <string name="notif_channel_classbook">Neue Klassenbucheinträge</string>
+    <string name="notif_channel_classbook_desc">Neue Einträge im Klassenbuch</string>
+
+    <string name="notif_timetable_summary_title">Stundenplan geändert</string>
+    <string name="notif_messages_title">Neue Nachricht</string>
+    <string name="notif_homework_title">Neue Hausaufgabe</string>
+    <string name="notif_classbook_title">Neuer Klassenbucheintrag</string>
+
+    <plurals name="notif_timetable_summary">
+        <item quantity="one">%d Stunde geändert – im Stundenplan ansehen</item>
+        <item quantity="other">%d Stunden geändert – im Stundenplan ansehen</item>
+    </plurals>
+    <plurals name="notif_messages_summary">
+        <item quantity="one">%d neue Nachricht</item>
+        <item quantity="other">%d neue Nachrichten</item>
+    </plurals>
+    <plurals name="notif_homework_summary">
+        <item quantity="one">%d neue Hausaufgabe</item>
+        <item quantity="other">%d neue Hausaufgaben</item>
+    </plurals>
+    <plurals name="notif_classbook_summary">
+        <item quantity="one">%d neuer Eintrag</item>
+        <item quantity="other">%d neue Einträge</item>
+    </plurals>
+
     <string name="settings_section_data">Daten &amp; Synchronisation</string>
     <string name="settings_section_app">App</string>
 

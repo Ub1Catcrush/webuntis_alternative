@@ -272,6 +272,43 @@
     <string name="settings_section_second_account">Second Account</string>
     <string name="settings_section_timetable">Timetable</string>
     <string name="settings_section_display">Display</string>
+    <string name="settings_section_notifications">Notifications</string>
+    <string name="settings_notifications_enabled">Notify me about schedule changes</string>
+    <string name="settings_notifications_enabled_desc">Periodically checks in the background for cancellations, substitutions, room changes, new messages, homework, and classbook entries.</string>
+    <string name="settings_notifications_permission_denied">Without notification permission, this feature can\'t show any alerts.</string>
+
+    <!-- Background change-check notifications (see PlanChangeCheckWorker) -->
+    <string name="notif_channel_timetable">Schedule changes</string>
+    <string name="notif_channel_timetable_desc">Cancellations, substitutions, and room changes</string>
+    <string name="notif_channel_messages">New messages</string>
+    <string name="notif_channel_messages_desc">New messages in your inbox</string>
+    <string name="notif_channel_homework">New homework</string>
+    <string name="notif_channel_homework_desc">Newly assigned homework</string>
+    <string name="notif_channel_classbook">New classbook entries</string>
+    <string name="notif_channel_classbook_desc">New entries in the classbook</string>
+
+    <string name="notif_timetable_summary_title">Schedule changed</string>
+    <string name="notif_messages_title">New message</string>
+    <string name="notif_homework_title">New homework</string>
+    <string name="notif_classbook_title">New classbook entry</string>
+
+    <plurals name="notif_timetable_summary">
+        <item quantity="one">%d lesson changed – view timetable</item>
+        <item quantity="other">%d lessons changed – view timetable</item>
+    </plurals>
+    <plurals name="notif_messages_summary">
+        <item quantity="one">%d new message</item>
+        <item quantity="other">%d new messages</item>
+    </plurals>
+    <plurals name="notif_homework_summary">
+        <item quantity="one">%d new homework item</item>
+        <item quantity="other">%d new homework items</item>
+    </plurals>
+    <plurals name="notif_classbook_summary">
+        <item quantity="one">%d new entry</item>
+        <item quantity="other">%d new entries</item>
+    </plurals>
+
     <string name="settings_section_data">Data &amp; Sync</string>
     <string name="settings_section_app">App</string>
 
