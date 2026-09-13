@@ -15,7 +15,7 @@ Native Kotlin Android-App für WebUntis-Schüler und Eltern mit Stundenplan, Hau
 |---|---|
 | Android Studio | Ladybug+ |
 | JDK | 17+ |
-| Android SDK | API 26+ (minSdk) / API 35 (compileSdk) |
+| Android SDK | API 26+ (minSdk) / API 36 (compileSdk / targetSdk) |
 | Kotlin | 2.1.20 |
 | Gradle | 8.9+ |
 
@@ -54,6 +54,17 @@ In den Einstellungen kann ein zweiter Account (z. B. für ein zweites Kind oder 
 | **Klassenbuch** | Einträge der letzten 30 Tage (Lob, Tadel, Hausaufgaben-Vergessen etc.) inkl. Typ-Kategorisierung. |
 | **Termine** | Prüfungen und Schulereignisse – standardmäßig nächste 90 Tage, optional **inkl. vergangene Termine**. |
 
+### Benachrichtigungen
+
+Optionale Funktion (in den Einstellungen aktivierbar), die per periodischem **WorkManager**-Job (alle 30 Minuten, nur bei bestehender Netzwerkverbindung) im Hintergrund auf Änderungen prüft und lokal benachrichtigt bei:
+
+- Ausfällen, Vertretungen und Raumänderungen im Stundenplan der nächsten Tage
+- neuen Nachrichten im Posteingang
+- neuen Hausaufgaben
+- neuen Klassenbucheinträgen
+
+Jede Kategorie hat einen eigenen Benachrichtigungskanal (individuell stumm-/einstellbar über die Systemeinstellungen). Der erste Lauf nach dem Aktivieren legt nur einen Ausgangszustand an, ohne Benachrichtigungsflut für bereits bestehende Einträge; ab Android 13 wird zusätzlich die Laufzeit-Berechtigung `POST_NOTIFICATIONS` benötigt.
+
 ### Features
 
 - ✅ **Material 3 Design:** Volle Unterstützung für Light + Dark Mode.
@@ -68,9 +79,10 @@ In den Einstellungen kann ein zweiter Account (z. B. für ein zweites Kind oder 
 - ✅ **Abwesenheiten:** Filter nach Entschuldigungs-Status (alle / einzelne Stati).
 - ✅ **Termine:** Toggle zum Einblenden vergangener Termine (bis 365 Tage zurück).
 - ✅ **Eltern-Support:** Automatische Ermittlung der Schüler-ID bei Eltern-Accounts.
-- ✅ **Performance:** In-Memory-Caching mit konfigurierbareMTTL (0–60 Minuten).
+- ✅ **Performance:** In-Memory-Caching mit konfigurierbarer TTL (0–60 Minuten).
 - ✅ **Robustheit:** Automatischer Silent-Re-Login bei abgelaufenen Sessions.
 - ✅ **Auto-Update:** In-App Update-Check und Installation per GitHub Releases.
+- ✅ **Hintergrund-Benachrichtigungen:** Periodischer Änderungs-Check (Stundenplan, Nachrichten, Hausaufgaben, Klassenbuch) via WorkManager mit eigenen Kanälen pro Kategorie.
 
 ### Architektur
 
@@ -81,7 +93,11 @@ app/
 │   ├── WebUntisRepository.kt    # Zentrale Datenlogik, Caching & Multi-Account-Merging
 │   ├── SessionManager.kt        # Verschlüsselte Session & Präferenzen
 │   ├── RetrofitFactory.kt       # Dynamische Base-URL & Interceptor-Setup
-│   └── NetworkModule.kt         # Hilt DI, Cookie-Handling (Android 15 Fix)
+│   ├── NetworkModule.kt         # Hilt DI, Cookie-Handling (Android 15 Fix)
+│   ├── NotificationScheduler.kt # Verwaltet den periodischen WorkManager-Job
+│   ├── PlanChangeCheckWorker.kt # Hilt-Worker: prüft im Hintergrund auf Änderungen
+│   ├── ChangeSnapshot.kt        # Zustand des letzten Benachrichtigungs-Checks
+│   └── NotificationHelper.kt    # Erstellt Kanäle & postet lokale Benachrichtigungen
 ├── model/
 │   └── Models.kt                # GSON-kompatible Datenklassen für alle API-Versionen
 └── ui/
@@ -95,16 +111,17 @@ app/
     └── settings/                # Account-Verwaltung & App-Konfiguration
 ```
 
-**Stack:** MVVM · Hilt DI · Retrofit2 · OkHttp3 · Coroutines/Flow · Navigation Component · Material 3 · ViewBinding · DataStore
+**Stack:** MVVM · Hilt DI · Retrofit2 · OkHttp3 · Coroutines/Flow · Navigation Component · Material 3 · ViewBinding · DataStore · WorkManager (Hilt-Work)
 
 ### Bekannte Einschränkungen
 
 - Hausaufgaben-Abhakstatus ist nicht persistent (wird bei App-Neustart zurückgesetzt).
 - Die WebUntis-API ist inoffiziell; serverseitige Änderungen können Funktionen beeinträchtigen.
+- Der Hintergrund-Check läuft periodisch alle 30 Minuten; das Betriebssystem (Doze/Akku-Optimierung) kann die tatsächliche Ausführung verzögern.
 
 ### Kompatibilität
 
-Optimiert für moderne Android-Versionen (getestet bis Android 15/API 35). Enthält spezifische Fixes für das Cookie-Handling unter Android 15 (`Secure`-Flag Problem).
+Optimiert für moderne Android-Versionen (Ziel-SDK 36). Enthält spezifische Fixes für das Cookie-Handling unter Android 15 (`Secure`-Flag Problem).
 
 ### Build
 
@@ -125,7 +142,7 @@ Native Kotlin Android app for WebUntis students and parents with timetable, home
 |---|---|
 | Android Studio | Ladybug+ |
 | JDK | 17+ |
-| Android SDK | API 26+ (minSdk) / API 35 (compileSdk) |
+| Android SDK | API 26+ (minSdk) / API 36 (compileSdk / targetSdk) |
 | Kotlin | 2.1.20 |
 | Gradle | 8.9+ |
 
@@ -164,6 +181,17 @@ A second account (e.g. for a second child, or a parent account alongside a stude
 | **Class register** | Entries from the last 30 days (praise, reprimands, forgotten homework, etc.) incl. type categorisation. |
 | **Events** | Exams and school events – default next 90 days, optionally **including past events**. |
 
+### Notifications
+
+Optional feature (enabled in Settings) that runs a periodic **WorkManager** job (every 30 minutes, network required) in the background to check for changes and post local notifications for:
+
+- cancellations, substitutions and room changes in the upcoming timetable
+- new messages in the inbox
+- new homework
+- new class register entries
+
+Each category has its own notification channel (individually mutable/configurable via system settings). The first run after enabling only establishes a baseline, so it won't flood you with notifications for things that already existed; on Android 13+ the runtime `POST_NOTIFICATIONS` permission is also required.
+
 ### Features
 
 - ✅ **Material 3 Design:** Full Light + Dark mode support.
@@ -181,6 +209,7 @@ A second account (e.g. for a second child, or a parent account alongside a stude
 - ✅ **Performance:** In-memory caching with configurable TTL (0–60 minutes).
 - ✅ **Resilience:** Automatic silent re-login on expired sessions.
 - ✅ **Auto-update:** In-app update check and installation via GitHub Releases.
+- ✅ **Background notifications:** Periodic change check (timetable, messages, homework, class register) via WorkManager, with its own channel per category.
 
 ### Architecture
 
@@ -191,7 +220,11 @@ app/
 │   ├── WebUntisRepository.kt    # Central data logic, caching & multi-account merging
 │   ├── SessionManager.kt        # Encrypted session & preferences
 │   ├── RetrofitFactory.kt       # Dynamic base URL & interceptor setup
-│   └── NetworkModule.kt         # Hilt DI, cookie handling (Android 15 fix)
+│   ├── NetworkModule.kt         # Hilt DI, cookie handling (Android 15 fix)
+│   ├── NotificationScheduler.kt # Manages the periodic WorkManager job
+│   ├── PlanChangeCheckWorker.kt # Hilt worker: checks for changes in the background
+│   ├── ChangeSnapshot.kt        # State of the last notification check
+│   └── NotificationHelper.kt    # Creates channels & posts local notifications
 ├── model/
 │   └── Models.kt                # GSON-compatible data classes for all API versions
 └── ui/
@@ -205,16 +238,17 @@ app/
     └── settings/                # Account management & app configuration
 ```
 
-**Stack:** MVVM · Hilt DI · Retrofit2 · OkHttp3 · Coroutines/Flow · Navigation Component · Material 3 · ViewBinding · DataStore
+**Stack:** MVVM · Hilt DI · Retrofit2 · OkHttp3 · Coroutines/Flow · Navigation Component · Material 3 · ViewBinding · DataStore · WorkManager (Hilt-Work)
 
 ### Known limitations
 
 - Homework check-off state is not persistent (resets on app restart).
 - The WebUntis API is unofficial; server-side changes may affect functionality.
+- The background check runs periodically every 30 minutes; the OS (Doze/battery optimisation) may delay actual execution.
 
 ### Compatibility
 
-Optimised for modern Android versions (tested up to Android 15 / API 35). Includes specific fixes for cookie handling on Android 15 (`Secure` flag issue).
+Optimised for modern Android versions (target SDK 36). Includes specific fixes for cookie handling on Android 15 (`Secure` flag issue).
 
 ### Build
 
