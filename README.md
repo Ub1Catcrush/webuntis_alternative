@@ -1,4 +1,6 @@
-# WebUntis Dashboard – Android (Kotlin)
+# A*Untis – Android (Kotlin)
+
+> Formerly "WebUntis Dashboard".
 
 > **[Deutsch](#deutsch)** | **[English](#english)**
 
@@ -43,16 +45,21 @@ Zugangsdaten werden mit **EncryptedSharedPreferences** (AES-256) lokal gespeiche
 
 In den Einstellungen kann ein zweiter Account (z. B. für ein zweites Kind oder als Elternteil zusätzlich zum Schüler-Account) hinterlegt werden. Die Nachrichten beider Accounts werden in einem gemeinsamen Posteingang zusammengeführt.
 
+### Navigation
+
+Untere Navigationsleiste mit 5 Einträgen: **Stundenplan**, **Hausaufgaben**, **Nachrichten**, **Abwesenheiten** und **Mehr**. Der Eintrag "Mehr" öffnet ein Bottom Sheet mit den weiteren Bereichen **Termine**, **Klassenbuch** und **Einstellungen**.
+
 ### Screens & Funktionen
 
-| Screen | Beschreibung |
-|---|---|
-| **Stundenplan** | Konfigurierbare Anzahl Schultage (1–20) mit Vertretungs-Info, Unterrichtsinhalt, Lehrer-Notizen und farbigen Status-Badges. Umschaltbar zwischen **eigenem Plan**, **Klassenstundenplan** (kompletter Plan der eigenen Klasse) und **kombiniertem Stundenplan** (eigener Plan, in dem freie Stunden mit frei wählbaren Klassenfächern aufgefüllt werden). |
-| **Hausaufgaben** | Liste mit Abhak-Funktion, Fälligkeits-Ampel, Fachfarben und Anhang-Download. |
-| **Nachrichten** | Posteingang inkl. Anhang-Download, Anzeige des Nachrichtenverlaufs und Account-Labeling. |
-| **Abwesenheiten** | Übersicht aller Fehlzeiten des aktuellen Schuljahres mit Entschuldigungs-Status und **Filter nach Status**. |
-| **Klassenbuch** | Einträge der letzten 30 Tage (Lob, Tadel, Hausaufgaben-Vergessen etc.) inkl. Typ-Kategorisierung. |
-| **Termine** | Prüfungen und Schulereignisse – standardmäßig nächste 90 Tage, optional **inkl. vergangene Termine**. |
+| Screen                             | Beschreibung                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+|------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Stundenplan**                    | Konfigurierbare Anzahl Schultage (1–20) mit Vertretungs-Info, Unterrichtsinhalt, Lehrer-Notizen und farbigen Status-Badges. Umschaltbar zwischen **eigenem Plan**, **Klassenstundenplan** (kompletter Plan der eigenen Klasse) und **kombiniertem Stundenplan** (eigener Plan, in dem freie Stunden mit frei wählbaren Klassenfächern aufgefüllt werden). Zusätzlich wählbar zwischen **klassischer Ansicht** (ein Tag pro Seite, ViewPager2) und **kompakter Wochenansicht** (Tage nebeneinander als Spalten in einem Grid). |
+| **Hausaufgaben**                   | Liste mit Abhak-Funktion, Fälligkeits-Ampel, Fachfarben und Anhang-Download.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Nachrichten**                    | Posteingang inkl. Anhang-Download, Anzeige des Nachrichtenverlaufs und Account-Labeling.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Abwesenheiten**                  | Übersicht aller Fehlzeiten des aktuellen Schuljahres mit Entschuldigungs-Status und **Filter nach Status**.                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **Termine** *(unter „Mehr“)*       | Prüfungen und Schulereignisse – standardmäßig nächste 90 Tage, optional **inkl. vergangene Termine**.                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Klassenbuch** *(unter „Mehr“)*   | Einträge der letzten 30 Tage (Lob, Tadel, Hausaufgaben-Vergessen etc.) inkl. Typ-Kategorisierung und Detailansicht der Unterrichtsinhalte.                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Einstellungen** *(unter „Mehr“)* | Account-Verwaltung (inkl. Multi-Account), Anzeigeoptionen (z. B. Lang-/Kurznamen, Ansicht), Cache-TTL, Benachrichtigungen und App-Updates.                                                                                                                                                                                                                                                                                                                                                                                    |
 
 ### Benachrichtigungen
 
@@ -71,7 +78,7 @@ Jede Kategorie hat einen eigenen Benachrichtigungskanal (individuell stumm-/eins
 - ✅ **Zweisprachig:** Vollständige Lokalisierung auf Deutsch und Englisch.
 - ✅ **Sicherheit:** AES-256 verschlüsselte Speicherung der Zugangsdaten.
 - ✅ **Multi-Account:** Nachrichten-Aggregation von zwei verschiedenen WebUntis-Profilen.
-- ✅ **Intelligenter Stundenplan:** Einstellbare Tagesanzahl, Vertretungsvisualisierung, Status-Badges (Ausfall, Vertretung, Zusatz, Prüfung).
+- ✅ **Intelligenter Stundenplan:** Einstellbare Tagesanzahl, Vertretungsvisualisierung, Status-Badges (Ausfall, Vertretung, Zusatz, Prüfung), umschaltbar zwischen klassischer Tagesansicht und kompakter Wochenansicht (Grid).
 - ✅ **Klassenstundenplan:** Umschalten auf den vollständigen Plan der eigenen Klasse statt nur der eigenen Fächer.
 - ✅ **Kombinierter Stundenplan:** Frei wählbare Klassenfächer (mit ausgeschriebenem Namen + Kürzel zur besseren Unterscheidung) werden nur in freie Stunden des persönlichen Plans eingeblendet.
 - ✅ **Hausaufgaben:** Lokaler Abhak-Status, Anhang-Download.
@@ -102,12 +109,12 @@ app/
 │   └── Models.kt                # GSON-kompatible Datenklassen für alle API-Versionen
 └── ui/
     ├── login/                   # Login-Flow & Validierung
-    ├── timetable/               # Stundenplan (ViewPager2 + Detail-Enrichment)
+    ├── timetable/               # Stundenplan (klassisch: ViewPager2 · kompakt: Grid) + Detail-Enrichment
     ├── homework/                # Hausaufgaben inkl. Datei-Handling
     ├── messages/                # Nachrichten, Anhänge & History
     ├── absences/                # Abwesenheiten mit Status-Filter
     ├── events/                  # Termine & Prüfungen (inkl. vergangene)
-    ├── classbook/               # Klassenbuch-Einträge
+    ├── classbook/               # Klassenbuch-Einträge + Unterrichtsinhalte-Detailansicht
     └── settings/                # Account-Verwaltung & App-Konfiguration
 ```
 
@@ -170,16 +177,21 @@ Credentials are stored locally with **EncryptedSharedPreferences** (AES-256) and
 
 A second account (e.g. for a second child, or a parent account alongside a student account) can be configured in Settings. Messages from both accounts are merged into a single inbox.
 
+### Navigation
+
+Bottom navigation bar with 5 entries: **Timetable**, **Homework**, **Messages**, **Absences** and **More**. The "More" entry opens a bottom sheet with the remaining sections **Events**, **Class register** and **Settings**.
+
 ### Screens & Features
 
-| Screen | Description |
-|---|---|
-| **Timetable** | Configurable number of school days (1–20) with substitution info, lesson content, teacher notes and colour-coded status badges. Switchable between **personal plan**, **class timetable** (the full plan of your own class) and **combined timetable** (your personal plan with freely selectable class subjects filled into free periods). |
-| **Homework** | List with check-off function, due-date traffic light, subject colours and attachment download. |
-| **Messages** | Inbox incl. attachment download, message history display and account labelling. |
-| **Absences** | Overview of all absences for the current school year with excuse status and **filter by status**. |
-| **Class register** | Entries from the last 30 days (praise, reprimands, forgotten homework, etc.) incl. type categorisation. |
-| **Events** | Exams and school events – default next 90 days, optionally **including past events**. |
+| Screen                              | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+|-------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Timetable**                       | Configurable number of school days (1–20) with substitution info, lesson content, teacher notes and colour-coded status badges. Switchable between **personal plan**, **class timetable** (the full plan of your own class) and **combined timetable** (your personal plan with freely selectable class subjects filled into free periods). Also switchable between a **classic view** (one day per page, ViewPager2) and a **compact week view** (days side by side as columns in a grid). |
+| **Homework**                        | List with check-off function, due-date traffic light, subject colours and attachment download.                                                                                                                                                                                                                                                                                                                                                                                              |
+| **Messages**                        | Inbox incl. attachment download, message history display and account labelling.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Absences**                        | Overview of all absences for the current school year with excuse status and **filter by status**.                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Events** *(under "More")*         | Exams and school events – default next 90 days, optionally **including past events**.                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Class register** *(under "More")* | Entries from the last 30 days (praise, reprimands, forgotten homework, etc.) incl. type categorisation and a detail view of lesson content.                                                                                                                                                                                                                                                                                                                                                 |
+| **Settings** *(under "More")*       | Account management (incl. multi-account), display options (e.g. long/short names, view mode), cache TTL, notifications and app updates.                                                                                                                                                                                                                                                                                                                                                     |
 
 ### Notifications
 
@@ -198,7 +210,7 @@ Each category has its own notification channel (individually mutable/configurabl
 - ✅ **Bilingual:** Full localisation in German and English.
 - ✅ **Security:** AES-256 encrypted storage of credentials.
 - ✅ **Multi-account:** Message aggregation from two WebUntis profiles.
-- ✅ **Smart timetable:** Configurable day count, substitution visualisation, status badges (cancelled, substitution, extra, exam).
+- ✅ **Smart timetable:** Configurable day count, substitution visualisation, status badges (cancelled, substitution, extra, exam), switchable between a classic per-day view and a compact grid week view.
 - ✅ **Class timetable:** Switch to the whole class's schedule instead of just your own subjects.
 - ✅ **Combined timetable:** Freely selectable class subjects (shown with their full name + abbreviation to avoid ambiguity) are filled into free periods of your personal plan.
 - ✅ **Homework:** Local check-off state, attachment download.
@@ -229,12 +241,12 @@ app/
 │   └── Models.kt                # GSON-compatible data classes for all API versions
 └── ui/
     ├── login/                   # Login flow & validation
-    ├── timetable/               # Timetable (ViewPager2 + detail enrichment)
+    ├── timetable/               # Timetable (classic: ViewPager2 · compact: grid) + detail enrichment
     ├── homework/                # Homework incl. file handling
     ├── messages/                # Messages, attachments & history
     ├── absences/                # Absences with status filter
     ├── events/                  # Events & exams (incl. past)
-    ├── classbook/               # Class register entries
+    ├── classbook/               # Class register entries + lesson content detail view
     └── settings/                # Account management & app configuration
 ```
 
