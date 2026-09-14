@@ -4,6 +4,8 @@
 
 > **[Deutsch](#deutsch)** | **[English](#english)**
 
+![A*Untis Screenshot](screenshot.jpg)
+
 ---
 
 <a name="deutsch"></a>
