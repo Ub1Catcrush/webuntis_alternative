@@ -74,11 +74,14 @@ class NotificationHelper @Inject constructor(
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
-    /** Opens the app straight at [destinationId] in nav_graph when the notification is tapped. */
-    private fun contentIntent(destinationId: Int): PendingIntent =
+    /** Opens the "Neuigkeiten" dialog (see RecentChangesDialogFragment) showing exactly what
+     *  changed, rather than dropping the user on a fragment that only shows current state
+     *  (e.g. the summary "45 Stunden geändert" notification didn't say which 45). Used as the
+     *  tap target for all four change-check notification categories. */
+    private fun recentChangesIntent(): PendingIntent =
         NavDeepLinkBuilder(context)
             .setGraph(R.navigation.nav_graph)
-            .setDestination(destinationId)
+            .setDestination(R.id.recentChangesDialogFragment)
             .setComponentName(MainActivity::class.java)
             .createPendingIntent()
 
@@ -99,7 +102,7 @@ class NotificationHelper @Inject constructor(
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setAutoCancel(true)
-            .setContentIntent(contentIntent(R.id.timetableFragment))
+            .setContentIntent(recentChangesIntent())
             .build()
         notify(ID_TIMETABLE_BASE + offset, notification)
     }
@@ -113,7 +116,7 @@ class NotificationHelper @Inject constructor(
             .setContentTitle(context.getString(R.string.notif_timetable_summary_title))
             .setContentText(text)
             .setAutoCancel(true)
-            .setContentIntent(contentIntent(R.id.timetableFragment))
+            .setContentIntent(recentChangesIntent())
             .build()
         notify(ID_TIMETABLE_BASE, notification)
     }
@@ -126,7 +129,7 @@ class NotificationHelper @Inject constructor(
             .setContentTitle(context.getString(R.string.notif_messages_title))
             .setContentText(text)
             .setAutoCancel(true)
-            .setContentIntent(contentIntent(R.id.messagesFragment))
+            .setContentIntent(recentChangesIntent())
             .build()
         notify(ID_MESSAGES, notification)
     }
@@ -139,7 +142,7 @@ class NotificationHelper @Inject constructor(
             .setContentTitle(context.getString(R.string.notif_homework_title))
             .setContentText(text)
             .setAutoCancel(true)
-            .setContentIntent(contentIntent(R.id.homeworkFragment))
+            .setContentIntent(recentChangesIntent())
             .build()
         notify(ID_HOMEWORK, notification)
     }
@@ -152,7 +155,7 @@ class NotificationHelper @Inject constructor(
             .setContentTitle(context.getString(R.string.notif_classbook_title))
             .setContentText(text)
             .setAutoCancel(true)
-            .setContentIntent(contentIntent(R.id.classbookFragment))
+            .setContentIntent(recentChangesIntent())
             .build()
         notify(ID_CLASSBOOK, notification)
     }

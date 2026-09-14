@@ -55,4 +55,9 @@
         android:name="com.webuntis.dashboard.ui.settings.SettingsFragment"
         android:label="Einstellungen" />
 
+    <dialog
+        android:id="@+id/recentChangesDialogFragment"
+        android:name="com.webuntis.dashboard.ui.changes.RecentChangesDialogFragment"
+        android:label="Neuigkeiten" />
+
 </navigation>

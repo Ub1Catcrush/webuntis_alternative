@@ -312,6 +312,11 @@
         <item quantity="other">%d neue Einträge</item>
     </plurals>
 
+    <!-- "Neuigkeiten" dialog (RecentChangesDialogFragment) -->
+    <string name="changes_dialog_title">Neuigkeiten</string>
+    <string name="changes_dialog_close">Schließen</string>
+    <string name="changes_empty">Keine Änderungen in den letzten 7 Tagen.</string>
+
     <string name="settings_section_data">Daten &amp; Synchronisation</string>
     <string name="settings_section_app">App</string>
 
