@@ -81,6 +81,8 @@ class MessagesFragment : Fragment() {
             onReply          = { msg -> viewModel.openCompose(replyTo = msg) },
             onEditDraft      = { msg -> viewModel.openCompose(draft = msg) },
             onDelete         = { msg -> confirmDelete(msg) },
+            onMarkUnread     = { msg -> viewModel.markAsUnread(msg) },
+            isUnread         = { msg -> viewModel.isEffectivelyUnread(msg) },
             expandedProvider = { viewModel.expanded.value }
         )
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
@@ -525,6 +527,8 @@ class MessageAdapter(
     private val onReply:          (Message) -> Unit,
     private val onEditDraft:      (Message) -> Unit,
     private val onDelete:         (Message) -> Unit,
+    private val onMarkUnread:     (Message) -> Unit,
+    private val isUnread:         (Message) -> Boolean,
     private val expandedProvider: () -> Map<Int, Message>
 ) : ListAdapter<Message, MessageAdapter.VH>(Diff) {
 
@@ -588,7 +592,7 @@ class MessageAdapter(
             b.textSubject.text = msg.subject ?: ctx.getString(R.string.messages_no_subject)
             b.textPreview.text = msg.content?.takeIf { it.isNotBlank() } ?: msg.contentPreview ?: ""
             b.textDate.text    = msg.sentDateFormatted
-            b.iconUnread.isVisible     = msg.isMessageRead == false && !msg.isSent && !msg.isDraft
+            b.iconUnread.isVisible     = isUnread(msg) && !msg.isSent && !msg.isDraft
             b.iconAttachment.isVisible = msg.hasAttachments == true
 
             b.chipAccount.isVisible = !msg.label.isNullOrBlank()
@@ -673,6 +677,28 @@ class MessageAdapter(
                 replyBtn.isVisible = true
             } else {
                 replyBtn?.isVisible = false
+            }
+
+            // "Als ungelesen markieren" — only makes sense for inbox messages, and lets the
+            // user undo the automatic "read" that happens as soon as they open a message.
+            val showMarkUnreadBtn = !original.isSent && !original.isDraft
+            var markUnreadBtn = b.layoutExpanded.findViewWithTag<com.google.android.material.button.MaterialButton>("mark_unread_btn")
+            if (showMarkUnreadBtn) {
+                if (markUnreadBtn == null) {
+                    markUnreadBtn = com.google.android.material.button.MaterialButton(
+                        b.root.context,
+                        null,
+                        com.google.android.material.R.attr.borderlessButtonStyle
+                    ).apply {
+                        tag  = "mark_unread_btn"
+                        text = b.root.context.getString(R.string.messages_mark_unread)
+                        setOnClickListener { onMarkUnread(original) }
+                    }
+                    b.layoutExpanded.addView(markUnreadBtn)
+                }
+                markUnreadBtn.isVisible = true
+            } else {
+                markUnreadBtn?.isVisible = false
             }
         }
 

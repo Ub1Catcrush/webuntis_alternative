@@ -325,4 +325,5 @@
     <string name="messages_delete_draft_title">Delete draft?</string>
     <string name="messages_delete_message_title">Delete message?</string>
     <string name="messages_no_subject">(No subject)</string>
+    <string name="messages_mark_unread">Mark as unread</string>
 </resources>

@@ -320,6 +320,17 @@ class SessionManager @Inject constructor(
         get() = plainPrefs.getLong(KEY_CHANGES_LAST_VIEWED_AT, 0L)
         set(value) { plainPrefs.edit().putLong(KEY_CHANGES_LAST_VIEWED_AT, value).apply() }
 
+    /**
+     * Message keys ("accountLabel|id") the user has manually reset back to "unread" as a
+     * personal reminder. Purely local/client-side — WebUntis's API doesn't expose a way to
+     * un-read a message server-side, so this only affects how the inbox list looks in this
+     * app, not the server's own unread flag/count. Cleared automatically for a message once
+     * it's opened again (see MessagesViewModel.toggleExpand).
+     */
+    var manuallyUnreadMessageKeys: Set<String>
+        get() = plainPrefs.getStringSet(KEY_MANUALLY_UNREAD_MESSAGES, emptySet()) ?: emptySet()
+        set(value) { plainPrefs.edit().putStringSet(KEY_MANUALLY_UNREAD_MESSAGES, value).apply() }
+
     /** What the second (small) line of a week-view tile shows, below the short subject name. */
     enum class WeekViewSecondLine { SUBJECT_LONG_NAME, TEACHER_LONG_NAME, NONE }
 
@@ -554,6 +565,7 @@ class SessionManager @Inject constructor(
         private const val KEY_NOTIFICATIONS_ENABLED  = "notifications_enabled"
         private const val KEY_LAST_NOTIFIED_SNAPSHOT = "last_notified_snapshot"
         private const val KEY_CHANGES_LAST_VIEWED_AT = "changes_last_viewed_at"
+        private const val KEY_MANUALLY_UNREAD_MESSAGES = "manually_unread_messages"
         private const val KEY_CACHE_TTL              = "cache_ttl_minutes"
         const val DEFAULT_TIMETABLE_DAYS = 5
         const val MIN_TIMETABLE_DAYS     = 1

@@ -159,6 +159,15 @@ class MessagesViewModel @Inject constructor(
 
     // ── Expand / Thread ────────────────────────────────────────────────────────
 
+    /** "accountLabel|id" — matches the composite key used for de-duplication in
+     *  WebUntisRepository.getMessages, since plain IDs are only unique within one account. */
+    private fun messageKey(msg: Message) = "${msg.accountLabel}|${msg.id}"
+
+    /** True if the message is shown as unread in the inbox — either because the server says
+     *  so, or because the user manually reset it back to unread (see markAsUnread). */
+    fun isEffectivelyUnread(msg: Message): Boolean =
+        msg.isMessageRead == false || sessionManager.manuallyUnreadMessageKeys.contains(messageKey(msg))
+
     fun toggleExpand(msg: Message) {
         viewModelScope.launch {
             val current = _expanded.value
@@ -169,8 +178,37 @@ class MessagesViewModel @Inject constructor(
                     repository.getMessageWithAttachments(msg).getOrDefault(msg)
                 } else msg
                 _expanded.value = current + (msg.id to withDetail)
+                // Opening a message marks it read server-side (the detail endpoint does this,
+                // same as WebUntis's own web client) — but the inbox list we already loaded
+                // doesn't know that yet, so the unread dot would otherwise stay on until the
+                // next full refresh. Patch it locally, clear any manual "mark unread" reset
+                // for this message, and pull the real count from the server.
+                if (isEffectivelyUnread(msg) && !msg.isSent && !msg.isDraft) {
+                    markMessageReadLocally(msg)
+                }
             }
         }
+    }
+
+    private fun markMessageReadLocally(msg: Message) {
+        sessionManager.manuallyUnreadMessageKeys = sessionManager.manuallyUnreadMessageKeys - messageKey(msg)
+        val list = (_inboxState.value as? UiState.Success)?.data ?: return
+        _inboxState.value = UiState.Success(
+            list.map { if (it.id == msg.id && it.accountLabel == msg.accountLabel) it.copy(isMessageRead = true) else it }
+        )
+        refreshUnreadCount()
+    }
+
+    /**
+     * Resets a message back to "unread" as a personal reminder. Local/client-side only —
+     * there's no WebUntis API to un-read a message server-side, so this doesn't change the
+     * server's own unread count, only how the message looks in this app's inbox. Collapses
+     * the message if it was expanded, since re-marking something you're currently reading as
+     * unread wouldn't make sense.
+     */
+    fun markAsUnread(msg: Message) {
+        sessionManager.manuallyUnreadMessageKeys = sessionManager.manuallyUnreadMessageKeys + messageKey(msg)
+        _expanded.value = _expanded.value - msg.id
     }
 
     // ── Compose ────────────────────────────────────────────────────────────────

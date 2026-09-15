@@ -328,4 +328,5 @@
     <string name="messages_delete_draft_title">Entwurf löschen?</string>
     <string name="messages_delete_message_title">Nachricht löschen?</string>
     <string name="messages_no_subject">(Kein Betreff)</string>
+    <string name="messages_mark_unread">Als ungelesen markieren</string>
 </resources>
