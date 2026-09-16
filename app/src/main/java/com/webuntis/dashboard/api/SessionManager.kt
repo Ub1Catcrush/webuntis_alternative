@@ -331,6 +331,14 @@ class SessionManager @Inject constructor(
         get() = plainPrefs.getStringSet(KEY_MANUALLY_UNREAD_MESSAGES, emptySet()) ?: emptySet()
         set(value) { plainPrefs.edit().putStringSet(KEY_MANUALLY_UNREAD_MESSAGES, value).apply() }
 
+    /** Last successfully-resolved Tenant-Id (see WebUntisRepository.tenantIdFromToken).
+     *  Required on absence create/update/delete — cached so a transient JWT-decode hiccup
+     *  doesn't drop it and cause those requests to be sent without it (which the server
+     *  rejects with a bare 403 that otherwise gets misread as "session expired"). */
+    var cachedTenantId: String?
+        get() = plainPrefs.getString(KEY_CACHED_TENANT_ID, null)
+        set(value) { plainPrefs.edit().putString(KEY_CACHED_TENANT_ID, value).apply() }
+
     /** What the second (small) line of a week-view tile shows, below the short subject name. */
     enum class WeekViewSecondLine { SUBJECT_LONG_NAME, TEACHER_LONG_NAME, NONE }
 
@@ -566,6 +574,7 @@ class SessionManager @Inject constructor(
         private const val KEY_LAST_NOTIFIED_SNAPSHOT = "last_notified_snapshot"
         private const val KEY_CHANGES_LAST_VIEWED_AT = "changes_last_viewed_at"
         private const val KEY_MANUALLY_UNREAD_MESSAGES = "manually_unread_messages"
+        private const val KEY_CACHED_TENANT_ID = "cached_tenant_id"
         private const val KEY_CACHE_TTL              = "cache_ttl_minutes"
         const val DEFAULT_TIMETABLE_DAYS = 5
         const val MIN_TIMETABLE_DAYS     = 1

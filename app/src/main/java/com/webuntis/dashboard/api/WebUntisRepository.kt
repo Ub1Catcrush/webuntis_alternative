@@ -407,15 +407,31 @@ class WebUntisRepository @Inject constructor(
         }
     }
 
-    /** Extracts the tenant_id claim from the current JWT bearer token (base64url decode of payload). */
+    /** Extracts the tenant_id claim from the current JWT bearer token (base64url decode of
+     *  payload). WebUntis write endpoints (create/update/delete absence) 403 without this, so
+     *  as a defensive measure against the claim key varying between deployments, several
+     *  spellings are tried, and the last value that resolved is cached (see
+     *  SessionManager.cachedTenantId) so a transient decode hiccup doesn't lose it entirely. */
     private fun tenantIdFromToken(): String? {
-        val token = bearerToken ?: return null
-        return try {
-            val payload = token.split(".").getOrNull(1) ?: return null
-            val padded = payload + "=".repeat((4 - payload.length % 4) % 4)
-            val json = String(android.util.Base64.decode(padded, android.util.Base64.URL_SAFE))
-            com.google.gson.JsonParser.parseString(json).asJsonObject.get("tenant_id")?.asString
-        } catch (e: Exception) { null }
+        val token = bearerToken
+        val fromToken = token?.let {
+            try {
+                val payload = it.split(".").getOrNull(1) ?: return@let null
+                val padded = payload + "=".repeat((4 - payload.length % 4) % 4)
+                val json = String(android.util.Base64.decode(padded, android.util.Base64.URL_SAFE))
+                val obj = com.google.gson.JsonParser.parseString(json).asJsonObject
+                obj.get("tenant_id")?.asString
+                    ?: obj.get("tenantId")?.asString
+                    ?: obj.get("tenantid")?.asString
+            } catch (e: Exception) { null }
+        }
+        if (!fromToken.isNullOrBlank()) {
+            sessionManager.cachedTenantId = fromToken
+            return fromToken
+        }
+        // JWT didn't have it (or there's no token yet) — fall back to whatever we last
+        // resolved successfully, rather than sending no Tenant-Id header at all.
+        return sessionManager.cachedTenantId
     }
 
     private suspend fun fetchBearerToken(): Result<String?> {
@@ -446,8 +462,31 @@ class WebUntisRepository @Inject constructor(
     private suspend fun fetchCsrfToken(): Result<String?> {
         return try {
             val resp = service().getEmbeddedPage()
-            val html = rawBody(resp) ?: return Result.success(null)
+            if (resp.headers()["X-WebUntis-Session-Expired"] == "true" || resp.code() == 401) {
+                throw SessionExpiredException()
+            }
+            // Deliberately NOT using the shared rawBody() here: it unconditionally treats any
+            // successful response whose body starts with "<html"/"<!DOCTYPE" as a session-expiry
+            // redirect — correct for the JSON API endpoints it's normally used for, but wrong
+            // here, since embedded.do's body IS HTML on every successful call (that's the whole
+            // point of scraping it for the CSRF token). Applying that same rule here made this
+            // fetch throw SessionExpiredException 100% of the time, valid session or not, which
+            // is why csrfToken ended up permanently MISSING and every absence write 403'd no
+            // matter how "fresh" the login was.
+            val html = (if (resp.isSuccessful) resp.body()?.string() else resp.errorBody()?.string())
+                ?: return Result.success(null)
+            // A genuine expired-session redirect for this page lands on the plain login/anonymous
+            // shell instead of the real embedded page — that page has no dojoConfig/grupet user
+            // data in it, unlike a normal successful response (see the sample HTML this was
+            // written against).
+            if (!resp.isSuccessful || (!html.contains("dojoConfig") &&
+                    (html.contains("login.do", ignoreCase = true) || html.contains("index.do", ignoreCase = true)))) {
+                throw SessionExpiredException()
+            }
             val token = Regex("\"csrfToken\"\\s*:\\s*\"([^\"]+)\"").find(html)?.groupValues?.get(1)
+            if (token.isNullOrBlank()) {
+                android.util.Log.w("WebUntis", "fetchCsrfToken: embedded.do returned OK but no csrfToken found in dojoConfig (page may have changed)")
+            }
             sessionManager.csrfToken = token
             Result.success(token)
         } catch (e: Exception) {
@@ -508,6 +547,10 @@ class WebUntisRepository @Inject constructor(
             if (tokenResult.isFailure) {
                 android.util.Log.w("WebUntis", "Bearer token fetch failed right after login: ${tokenResult.exceptionOrNull()?.message}")
             }
+            // Needed before any write request (create/update/delete absence etc.) — fetched
+            // proactively here (not just lazily via ensureCsrfToken() on first use) so a fresh
+            // login/app start already has it ready, same as reAuthSilently() does.
+            fetchCsrfToken()
             val session = result.getOrNull()
             // Resolve classId now — awaited — so the class-timetable toggle is already correct
             // by the time the UI renders (e.g. right after LoginViewModel sets isLoggedIn=true),
@@ -1533,9 +1576,71 @@ class WebUntisRepository @Inject constructor(
         if (sessionManager.csrfToken.isNullOrBlank()) fetchCsrfToken()
     }
 
+    /**
+     * Like rawBody(), but for the three absence write endpoints (create/update/delete), which
+     * need an extra distinction rawBody() can't make on its own: a 403 with an *empty* body is
+     * genuinely ambiguous there — it's just as often a missing Tenant-Id or CSRF token as an
+     * actually-expired session. rawBody() alone always guesses "session expired" for that shape
+     * (because that IS what an expired Bearer token looks like on other endpoints), which sends
+     * the request through reAuthSilently() and a retry — but a missing Tenant-Id/CSRF-Token
+     * isn't fixed by re-authenticating, so the retry 403s again with the exact same problem,
+     * and the user is stuck seeing "Session abgelaufen" even right after a fresh login/app
+     * start. Reads the body only once (unlike calling rawBody() after a separate peek, which
+     * would consume okhttp's response body stream twice and silently return blank on the
+     * second read).
+     */
+    private fun rawBodyForAbsenceWrite(
+        r: retrofit2.Response<okhttp3.ResponseBody>, tenantId: String?, csrf: String?
+    ): String? {
+        if (r.headers()["X-WebUntis-Session-Expired"] == "true") throw SessionExpiredException()
+        if (r.code() == 401) throw SessionExpiredException()
+
+        val raw = if (r.isSuccessful) r.body()?.string() else r.errorBody()?.string()
+        val bodyText = raw?.trim() ?: ""
+
+        if (r.code() == 403 && bodyText.isBlank()) {
+            val missing = buildList {
+                if (tenantId.isNullOrBlank()) add("Tenant-Id")
+                if (csrf.isNullOrBlank()) add("CSRF-Token")
+            }
+            if (missing.isNotEmpty()) {
+                throw Exception(
+                    "Anlegen/Ändern/Löschen fehlgeschlagen: ${missing.joinToString(" und ")} " +
+                    "konnte(n) nicht ermittelt werden (HTTP 403). Das ist kein abgelaufenes " +
+                    "Login — bitte einmal aus- und wieder einloggen, damit diese Werte neu " +
+                    "geladen werden; tritt es danach weiterhin auf, ist es ein App-Bug und " +
+                    "keine abgelaufene Sitzung."
+                )
+            }
+            // Both present and it's STILL a bare 403 — that really does look like session expiry.
+            throw SessionExpiredException()
+        }
+
+        if (bodyText.contains("-32001") ||
+            bodyText.contains("Session abgelaufen", ignoreCase = true) ||
+            bodyText.contains("login.do", ignoreCase = true) ||
+            bodyText.contains("index.do", ignoreCase = true) ||
+            bodyText.contains("\"name\":\"anonym\"", ignoreCase = true)) {
+            throw SessionExpiredException()
+        }
+
+        if (!r.isSuccessful) {
+            val extracted = tryExtractMessage(bodyText)
+            throw Exception(if (extracted != null) "$extracted (HTTP ${r.code()})" else "HTTP ${r.code()}")
+        }
+
+        if (bodyText.startsWith("<html", ignoreCase = true) || bodyText.startsWith("<!DOCTYPE", ignoreCase = true)) {
+            throw SessionExpiredException()
+        }
+
+        return bodyText.ifEmpty { null }
+    }
+
     suspend fun createAbsence(req: CreateAbsenceRequest): Result<Absence> = withSessionRetry {
         try {
             ensureCsrfToken()
+            val tenantId = tenantIdFromToken()
+            val csrf = sessionManager.csrfToken
             // Diagnostic aid: if a write request still 403s despite a valid CSRF token, the next
             // thing to check is whether the active session is actually the parent/guardian
             // account (personType 12) rather than the student's own — this line makes that
@@ -1544,13 +1649,13 @@ class WebUntisRepository @Inject constructor(
                 "WebUntis",
                 "createAbsence: personType=${sessionManager.session?.personType} " +
                     "personId=${sessionManager.session?.personId} studentId=${req.studentId} " +
-                    "csrfToken=${if (sessionManager.csrfToken.isNullOrBlank()) "MISSING" else "present"}"
+                    "tenantId=${tenantId ?: "MISSING"} csrfToken=${if (csrf.isNullOrBlank()) "MISSING" else "present"}"
             )
-            // WebUntis write endpoints require Tenant-Id header (from JWT claim) + JSESSIONID cookie.
-            // The Bearer token is intentionally omitted (scope mg:r = read-only).
-            val tenantId = tenantIdFromToken()
+            // WebUntis write endpoints require Tenant-Id header (from JWT claim) + JSESSIONID
+            // cookie + CSRF token. The Bearer token is intentionally omitted (scope mg:r =
+            // read-only).
             val resp = service().createAbsence(null, tenantId, req)
-            val raw = rawBody(resp) ?: return@withSessionRetry Result.failure(Exception("Fehler beim Erstellen"))
+            val raw = rawBodyForAbsenceWrite(resp, tenantId, csrf) ?: return@withSessionRetry Result.failure(Exception("Fehler beim Erstellen"))
             val json = JsonParser.parseString(raw).asJsonObject
             val resultObj = json.getAsJsonObject("data")?.getAsJsonObject("result")
             if (resultObj != null) Result.success(parseJson(resultObj.toString(), object : TypeToken<Absence>() {}))
@@ -1562,8 +1667,9 @@ class WebUntisRepository @Inject constructor(
         try {
             ensureCsrfToken()
             val tenantId = tenantIdFromToken()
+            val csrf = sessionManager.csrfToken
             val resp = service().updateAbsence(null, tenantId, id, req)
-            val raw = rawBody(resp) ?: return@withSessionRetry Result.failure(Exception("Fehler beim Aktualisieren"))
+            val raw = rawBodyForAbsenceWrite(resp, tenantId, csrf) ?: return@withSessionRetry Result.failure(Exception("Fehler beim Aktualisieren"))
             val json = JsonParser.parseString(raw).asJsonObject
             val resultObj = json.getAsJsonObject("data")?.getAsJsonObject("result")
             if (resultObj != null) Result.success(parseJson(resultObj.toString(), object : TypeToken<Absence>() {}))
@@ -1575,14 +1681,10 @@ class WebUntisRepository @Inject constructor(
         try {
             ensureCsrfToken()
             val tenantId = tenantIdFromToken()
+            val csrf = sessionManager.csrfToken
             val resp = service().deleteAbsence(null, tenantId, DeleteAbsenceRequest(listOf(id)))
-            val raw = if (resp.isSuccessful) resp.body()?.string() else resp.errorBody()?.string()
-            if (resp.isSuccessful) {
-                // Response: {"data":{"success":true}} or just 2xx
-                Result.success(Unit)
-            } else {
-                Result.failure(Exception("error_delete_failed"))
-            }
+            rawBodyForAbsenceWrite(resp, tenantId, csrf)
+            Result.success(Unit)
         } catch (e: Exception) { Result.failure(e) }
     }
 

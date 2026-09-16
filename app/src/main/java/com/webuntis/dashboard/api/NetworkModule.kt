@@ -85,6 +85,21 @@ object NetworkModule {
                         .path(path)
                         .secure()
                         .build())
+
+                    // The web client also sends Tenant-Id as a cookie (in addition to the
+                    // header WebUntisRepository already sets on write requests) — mirror that
+                    // here in case the server checks the cookie rather than (or in addition
+                    // to) the header for some endpoints.
+                    sessionManager.cachedTenantId?.let { tenantId ->
+                        stored.removeAll { it.name == "Tenant-Id" }
+                        stored.add(Cookie.Builder()
+                            .name("Tenant-Id")
+                            .value(tenantId)
+                            .domain(host)
+                            .path(path)
+                            .secure()
+                            .build())
+                    }
                 }
                 return stored
             }
