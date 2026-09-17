@@ -276,6 +276,9 @@
     <string name="settings_notifications_enabled">Notify me about schedule changes</string>
     <string name="settings_notifications_enabled_desc">Periodically checks in the background for cancellations, substitutions, room changes, new messages, homework, and classbook entries.</string>
     <string name="settings_notifications_permission_denied">Without notification permission, this feature can\'t show any alerts.</string>
+    <string name="settings_battery_optimization_btn">Disable battery optimization</string>
+    <string name="settings_battery_optimization_desc">Without this exemption, the system kills the background check early on many devices (especially Samsung, Xiaomi), so no notifications arrive.</string>
+    <string name="settings_battery_optimization_failed">Couldn\'t open the setting. Please disable battery optimization for this app manually in your device\'s battery settings.</string>
 
     <!-- Background change-check notifications (see PlanChangeCheckWorker) -->
     <string name="notif_channel_timetable">Schedule changes</string>

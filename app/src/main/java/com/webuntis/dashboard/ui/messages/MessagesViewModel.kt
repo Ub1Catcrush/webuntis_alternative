@@ -19,7 +19,8 @@ enum class MessagesTab { INBOX, SENT, DRAFTS }
 @HiltViewModel
 class MessagesViewModel @Inject constructor(
     private val repository: WebUntisRepository,
-    val sessionManager: SessionManager
+    val sessionManager: SessionManager,
+    private val appForegroundEvents: com.webuntis.dashboard.api.AppForegroundEvents
 ) : ViewModel() {
 
     // ── Tab ────────────────────────────────────────────────────────────────────
@@ -95,6 +96,9 @@ class MessagesViewModel @Inject constructor(
         loadInbox()
         refreshUnreadCount()
         loadNameCatalog()
+        // Refreshes only the currently active tab — matches what refresh() (pull-to-refresh)
+        // already does, rather than force-reloading all three regardless of which is visible.
+        viewModelScope.launch { appForegroundEvents.onForegroundResume.collect { refresh(); refreshUnreadCount() } }
     }
 
     private fun loadNameCatalog() {

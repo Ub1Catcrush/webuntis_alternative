@@ -41,6 +41,7 @@ class SettingsFragment : Fragment() {
         if (granted) {
             loginViewModel.sessionManager.notificationsEnabled = true
             com.webuntis.dashboard.api.NotificationScheduler.start(requireContext())
+            updateBatteryOptimizationUi()
         } else {
             // Permission denied — leave the feature off and reflect that in the switch so
             // it doesn't silently claim to be enabled while no notification can ever show.
@@ -159,8 +160,11 @@ class SettingsFragment : Fragment() {
             } else {
                 loginViewModel.sessionManager.notificationsEnabled = true
                 com.webuntis.dashboard.api.NotificationScheduler.start(requireContext())
+                updateBatteryOptimizationUi()
             }
         }
+        updateBatteryOptimizationUi()
+        binding.btnBatteryOptimization.setOnClickListener { requestIgnoreBatteryOptimizations() }
 
         // ── Week view: what the tile's second line shows ───────────────────────
         when (loginViewModel.sessionManager.weekViewSecondLine) {
@@ -431,6 +435,55 @@ class SettingsFragment : Fragment() {
         }
         // Do NOT clearSession() here — it would wipe storedCredentials before login() saves them
         loginViewModel.login(server, schoolname, username, password)
+    }
+
+    /**
+     * Shows/hides the "disable battery optimization" hint depending on both whether the
+     * feature is even on and whether the OS already exempts the app. Without this exemption,
+     * OEM battery managers (Samsung, Xiaomi, etc. — especially on Android 14/15, which
+     * tightened background execution further) routinely kill the periodic WorkManager job
+     * before it ever runs, so change-check notifications can silently never appear even
+     * though the feature is correctly enabled and everything else about it works.
+     */
+    private fun updateBatteryOptimizationUi() {
+        val enabled = loginViewModel.sessionManager.notificationsEnabled
+        val exempted = isIgnoringBatteryOptimizations()
+        val showHint = enabled && !exempted
+        binding.btnBatteryOptimization.isVisible = showHint
+        binding.textBatteryOptimizationHint.isVisible = showHint
+    }
+
+    private fun isIgnoringBatteryOptimizations(): Boolean {
+        val pm = requireContext().getSystemService(android.os.PowerManager::class.java) ?: return true
+        return pm.isIgnoringBatteryOptimizations(requireContext().packageName)
+    }
+
+    private fun requestIgnoreBatteryOptimizations() {
+        val intent = android.content.Intent(
+            android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+            android.net.Uri.parse("package:${requireContext().packageName}")
+        )
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            // Some OEM ROMs (or a Play-distributed build's policy restrictions) can refuse this
+            // intent — fall back to the general battery-settings screen so the user can still
+            // find the per-app battery option manually.
+            try {
+                startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            } catch (e2: Exception) {
+                android.widget.Toast.makeText(requireContext(), getString(R.string.settings_battery_optimization_failed), android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-check after coming back from the system battery settings (or from granting the
+        // notification permission via the system dialog on some ROMs) so the hint disappears
+        // as soon as it's no longer needed, without requiring the user to leave and re-open
+        // this screen.
+        if (_binding != null) updateBatteryOptimizationUi()
     }
 
     override fun onDestroyView() {

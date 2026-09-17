@@ -279,6 +279,9 @@
     <string name="settings_notifications_enabled">Bei Planänderungen benachrichtigen</string>
     <string name="settings_notifications_enabled_desc">Prüft regelmäßig im Hintergrund auf Ausfälle, Vertretungen, Raumänderungen, neue Nachrichten, Hausaufgaben und Klassenbucheinträge.</string>
     <string name="settings_notifications_permission_denied">Ohne Benachrichtigungs-Berechtigung kann diese Funktion keine Hinweise anzeigen.</string>
+    <string name="settings_battery_optimization_btn">Akku-Optimierung deaktivieren</string>
+    <string name="settings_battery_optimization_desc">Ohne diese Ausnahme beendet das System die Hintergrundprüfung auf vielen Geräten (v.a. Samsung, Xiaomi) vorzeitig, sodass keine Benachrichtigungen ankommen.</string>
+    <string name="settings_battery_optimization_failed">Einstellung konnte nicht geöffnet werden. Bitte manuell in den Akku-Einstellungen des Geräts für diese App die Optimierung deaktivieren.</string>
 
     <!-- Background change-check notifications (see PlanChangeCheckWorker) -->
     <string name="notif_channel_timetable">Stundenplanänderungen</string>

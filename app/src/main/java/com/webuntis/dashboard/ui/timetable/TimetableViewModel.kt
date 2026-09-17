@@ -107,7 +107,8 @@ data class SchoolDay(val day: TimetableDay) {
 
 @HiltViewModel
 class TimetableViewModel @Inject constructor(
-    private val repository: WebUntisRepository
+    private val repository: WebUntisRepository,
+    private val appForegroundEvents: com.webuntis.dashboard.api.AppForegroundEvents
 ) : ViewModel() {
 
     private val _days = MutableStateFlow<UiState<List<SchoolDay>>>(UiState.Loading)
@@ -180,7 +181,10 @@ class TimetableViewModel @Inject constructor(
     val isAtDefault: Boolean get() = _anchorDate.value == null ||
         _anchorDate.value == LocalDate.now()
 
-    init { loadAll() }
+    init {
+        loadAll()
+        viewModelScope.launch { appForegroundEvents.onForegroundResume.collect { loadAll(forceRefresh = true) } }
+    }
 
     fun loadAll(forceRefresh: Boolean = false) {
         viewModelScope.launch {

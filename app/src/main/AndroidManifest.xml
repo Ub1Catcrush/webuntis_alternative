@@ -10,6 +10,11 @@
         android:maxSdkVersion="28" />
     <!-- POST_NOTIFICATIONS required on API 33+ to show download/update notifications. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Lets Settings prompt the user to exempt the app from battery optimization — without
+         this, OEM battery managers (esp. on Android 14/15, e.g. Samsung/Xiaomi) routinely kill
+         the periodic WorkManager job before it ever runs, so scheduled-change notifications
+         silently never show despite being correctly implemented. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Required to install APKs -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 

@@ -13,7 +13,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ClassbookViewModel @Inject constructor(
-    private val repository: WebUntisRepository
+    private val repository: WebUntisRepository,
+    private val appForegroundEvents: com.webuntis.dashboard.api.AppForegroundEvents
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<UiState<List<ClassbookEntry>>>(UiState.Loading)
@@ -27,6 +28,7 @@ class ClassbookViewModel @Inject constructor(
         viewModelScope.launch {
             repository.getCurrentSchoolYearName().onSuccess { _schoolYearLabel.value = it }
         }
+        viewModelScope.launch { appForegroundEvents.onForegroundResume.collect { load(forceRefresh = true) } }
     }
 
     fun load(forceRefresh: Boolean = false) {

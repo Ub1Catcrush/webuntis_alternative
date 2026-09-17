@@ -13,7 +13,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class EventsViewModel @Inject constructor(
-    private val repository: WebUntisRepository
+    private val repository: WebUntisRepository,
+    private val appForegroundEvents: com.webuntis.dashboard.api.AppForegroundEvents
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<UiState<List<SchoolEvent>>>(UiState.Loading)
@@ -22,7 +23,10 @@ class EventsViewModel @Inject constructor(
     private val _showPast = MutableStateFlow(false)
     val showPast: StateFlow<Boolean> = _showPast
 
-    init { load() }
+    init {
+        load()
+        viewModelScope.launch { appForegroundEvents.onForegroundResume.collect { load(forceRefresh = true) } }
+    }
 
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {

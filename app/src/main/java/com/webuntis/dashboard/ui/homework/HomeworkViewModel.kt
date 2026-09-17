@@ -36,7 +36,8 @@ data class HomeworkUiItem(
 
 @HiltViewModel
 class HomeworkViewModel @Inject constructor(
-    private val repository: WebUntisRepository
+    private val repository: WebUntisRepository,
+    private val appForegroundEvents: com.webuntis.dashboard.api.AppForegroundEvents
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<UiState<List<HomeworkUiItem>>>(UiState.Loading)
@@ -47,7 +48,10 @@ class HomeworkViewModel @Inject constructor(
 
     private val doneIds = mutableSetOf<Int>()
 
-    init { load() }
+    init {
+        load()
+        viewModelScope.launch { appForegroundEvents.onForegroundResume.collect { load(forceRefresh = true) } }
+    }
 
     fun setShowPast(show: Boolean) {
         if (_showPast.value == show) return

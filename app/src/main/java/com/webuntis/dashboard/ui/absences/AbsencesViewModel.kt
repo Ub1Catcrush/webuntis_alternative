@@ -21,7 +21,8 @@ enum class AbsenceFilter { ALL, EXCUSED, UNEXCUSED, PENDING }
 
 @HiltViewModel
 class AbsencesViewModel @Inject constructor(
-    private val repository: WebUntisRepository
+    private val repository: WebUntisRepository,
+    private val appForegroundEvents: com.webuntis.dashboard.api.AppForegroundEvents
 ) : ViewModel() {
 
     // Raw list from server (unfiltered)
@@ -52,6 +53,9 @@ class AbsencesViewModel @Inject constructor(
         }
         load(forceRefresh = false)
         loadMeta()
+        viewModelScope.launch {
+            appForegroundEvents.onForegroundResume.collect { load(forceRefresh = true); loadMeta() }
+        }
     }
 
     fun load(forceRefresh: Boolean = false) {
