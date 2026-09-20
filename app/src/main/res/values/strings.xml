@@ -282,6 +282,11 @@
     <string name="settings_battery_optimization_btn">Akku-Optimierung deaktivieren</string>
     <string name="settings_battery_optimization_desc">Ohne diese Ausnahme beendet das System die Hintergrundprüfung auf vielen Geräten (v.a. Samsung, Xiaomi) vorzeitig, sodass keine Benachrichtigungen ankommen.</string>
     <string name="settings_battery_optimization_failed">Einstellung konnte nicht geöffnet werden. Bitte manuell in den Akku-Einstellungen des Geräts für diese App die Optimierung deaktivieren.</string>
+    <string name="settings_check_now_btn">Jetzt auf Änderungen prüfen</string>
+    <string name="settings_check_now_disabled">Bitte zuerst Benachrichtigungen aktivieren.</string>
+    <string name="settings_check_now_running">Prüfung läuft…</string>
+    <string name="settings_check_now_done">Prüfung abgeschlossen. Bei Änderungen erscheint jetzt eine Benachrichtigung.</string>
+    <string name="settings_check_now_failed">Prüfung fehlgeschlagen. Bitte Logcat (Tag \"PlanChangeCheckWorker\"/\"WebUntis\") prüfen.</string>
 
     <!-- Background change-check notifications (see PlanChangeCheckWorker) -->
     <string name="notif_channel_timetable">Stundenplanänderungen</string>

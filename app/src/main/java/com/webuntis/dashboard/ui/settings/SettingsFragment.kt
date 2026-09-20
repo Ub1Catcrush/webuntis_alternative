@@ -165,6 +165,7 @@ class SettingsFragment : Fragment() {
         }
         updateBatteryOptimizationUi()
         binding.btnBatteryOptimization.setOnClickListener { requestIgnoreBatteryOptimizations() }
+        binding.btnCheckNow.setOnClickListener { runCheckNow() }
 
         // ── Week view: what the tile's second line shows ───────────────────────
         when (loginViewModel.sessionManager.weekViewSecondLine) {
@@ -445,6 +446,33 @@ class SettingsFragment : Fragment() {
      * before it ever runs, so change-check notifications can silently never appear even
      * though the feature is correctly enabled and everything else about it works.
      */
+    /**
+     * Runs PlanChangeCheckWorker immediately via NotificationScheduler.checkNow() and reports
+     * back once it finishes, instead of the user having to wait up to 15 minutes for the next
+     * periodic slot and then having no way to tell "nothing changed" apart from "the pipeline
+     * is broken" if no notification shows up.
+     */
+    private fun runCheckNow() {
+        if (!loginViewModel.sessionManager.notificationsEnabled) {
+            android.widget.Toast.makeText(requireContext(), getString(R.string.settings_check_now_disabled), android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        val requestId = com.webuntis.dashboard.api.NotificationScheduler.checkNow(requireContext())
+        android.widget.Toast.makeText(requireContext(), getString(R.string.settings_check_now_running), android.widget.Toast.LENGTH_SHORT).show()
+        androidx.work.WorkManager.getInstance(requireContext())
+            .getWorkInfoByIdLiveData(requestId)
+            .observe(viewLifecycleOwner) { info ->
+                if (info == null) return@observe
+                when (info.state) {
+                    androidx.work.WorkInfo.State.SUCCEEDED ->
+                        android.widget.Toast.makeText(requireContext(), getString(R.string.settings_check_now_done), android.widget.Toast.LENGTH_LONG).show()
+                    androidx.work.WorkInfo.State.FAILED ->
+                        android.widget.Toast.makeText(requireContext(), getString(R.string.settings_check_now_failed), android.widget.Toast.LENGTH_LONG).show()
+                    else -> {}
+                }
+            }
+    }
+
     private fun updateBatteryOptimizationUi() {
         val enabled = loginViewModel.sessionManager.notificationsEnabled
         val exempted = isIgnoringBatteryOptimizations()

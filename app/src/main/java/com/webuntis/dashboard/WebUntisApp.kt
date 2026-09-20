@@ -5,14 +5,8 @@ import android.app.Application
 import android.os.Bundle
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
-import androidx.work.Constraints
-import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
 import com.webuntis.dashboard.api.AppForegroundEvents
 import com.webuntis.dashboard.api.NotificationScheduler
-import com.webuntis.dashboard.api.PlanChangeCheckWorker
 import com.webuntis.dashboard.api.SessionManager
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -65,17 +59,11 @@ class WebUntisApp : Application(), Configuration.Provider {
 
             appForegroundEvents.notifyForegroundResume()
             // Also kick the change-check worker immediately instead of waiting for its next
-            // periodic slot (up to 30 min) — otherwise a change that happened while
+            // periodic slot (up to 15 min) — otherwise a change that happened while
             // backgrounded wouldn't be notified about until well after the user is already
             // back in the app and would rather just see it on screen.
             if (sessionManager.notificationsEnabled) {
-                WorkManager.getInstance(this@WebUntisApp).enqueueUniqueWork(
-                    IMMEDIATE_CHECK_WORK_NAME,
-                    ExistingWorkPolicy.KEEP,
-                    OneTimeWorkRequestBuilder<PlanChangeCheckWorker>()
-                        .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                        .build()
-                )
+                NotificationScheduler.checkNow(this@WebUntisApp)
             }
         }
 
@@ -89,7 +77,6 @@ class WebUntisApp : Application(), Configuration.Provider {
 
     companion object {
         private const val FOREGROUND_REFRESH_THRESHOLD_MS = 60_000L // 1 minute
-        private const val IMMEDIATE_CHECK_WORK_NAME = "plan_change_check_immediate"
     }
 }
 

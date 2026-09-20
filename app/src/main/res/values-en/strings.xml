@@ -279,6 +279,11 @@
     <string name="settings_battery_optimization_btn">Disable battery optimization</string>
     <string name="settings_battery_optimization_desc">Without this exemption, the system kills the background check early on many devices (especially Samsung, Xiaomi), so no notifications arrive.</string>
     <string name="settings_battery_optimization_failed">Couldn\'t open the setting. Please disable battery optimization for this app manually in your device\'s battery settings.</string>
+    <string name="settings_check_now_btn">Check for changes now</string>
+    <string name="settings_check_now_disabled">Please enable notifications first.</string>
+    <string name="settings_check_now_running">Checking…</string>
+    <string name="settings_check_now_done">Check complete. A notification will show if anything changed.</string>
+    <string name="settings_check_now_failed">Check failed. Please check Logcat (tag \"PlanChangeCheckWorker\"/\"WebUntis\").</string>
 
     <!-- Background change-check notifications (see PlanChangeCheckWorker) -->
     <string name="notif_channel_timetable">Schedule changes</string>

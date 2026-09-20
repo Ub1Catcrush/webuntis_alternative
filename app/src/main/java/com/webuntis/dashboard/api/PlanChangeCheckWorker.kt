@@ -43,10 +43,14 @@ class PlanChangeCheckWorker @AssistedInject constructor(
     private val tag = "PlanChangeCheckWorker"
 
     override suspend fun doWork(): Result {
-        if (!sessionManager.notificationsEnabled) return Result.success()
+        if (!sessionManager.notificationsEnabled) {
+            Log.i(tag, "Skipping: notifications disabled in settings")
+            return Result.success()
+        }
         // No session, or never logged in with "remember me" — nothing we can silently
         // re-authenticate with in the background (see SessionManager.storedCredentials).
         if (sessionManager.session == null || sessionManager.storedCredentials == null) {
+            Log.i(tag, "Skipping: no session (session=${sessionManager.session != null}, storedCredentials=${sessionManager.storedCredentials != null})")
             return Result.success()
         }
 
@@ -55,6 +59,9 @@ class PlanChangeCheckWorker @AssistedInject constructor(
 
             val previous = readSnapshot()
             val isFirstRun = previous == null
+            if (isFirstRun) {
+                Log.i(tag, "First run for this session — establishing baseline only, no notifications will be sent this cycle (avoids flooding with pre-existing state). The NEXT scheduled run is the earliest one that can notify.")
+            }
             // Mutable "working copy" we persist after every category, so a failure partway
             // through doesn't roll back categories that already succeeded this run.
             var snapshot = pruneExpired(previous ?: ChangeSnapshot())
@@ -71,6 +78,9 @@ class PlanChangeCheckWorker @AssistedInject constructor(
             snapshot = checkClassbook(snapshot, notify = !isFirstRun)
             persist(snapshot)
 
+            Log.i(tag, "Check complete: ${snapshot.lessonStatus.size} lessons/${snapshot.messageIds.size} messages/" +
+                "${snapshot.homeworkIds.size} homework/${snapshot.classbookIds.size} classbook entries tracked, " +
+                "${snapshot.notifiedAt.size} keys in the 7-day dedup ledger")
             Result.success()
         } catch (e: Exception) {
             Log.w(tag, "Background check failed, will retry next cycle", e)
@@ -135,8 +145,12 @@ class PlanChangeCheckWorker @AssistedInject constructor(
     /** Only lessons in the near future are worth notifying about — a change to a lesson from
      *  last week (e.g. re-fetched while backfilling enrichment) shouldn't resurface. */
     private suspend fun checkTimetable(baseline: ChangeSnapshot, notify: Boolean): ChangeSnapshot {
-        val days = repository.getSchoolDaysFrom(LocalDate.now(), numDays = 5, forceRefresh = true)
-            .getOrNull() ?: return baseline
+        val daysResult = repository.getSchoolDaysFrom(LocalDate.now(), numDays = 5, forceRefresh = true)
+        val days = daysResult.getOrNull()
+        if (days == null) {
+            Log.w(tag, "checkTimetable: fetch failed, keeping previous baseline — ${daysResult.exceptionOrNull()}")
+            return baseline
+        }
         val lessons = days.flatMap { it.lessons }
 
         val current = lessons.associate { lessonKey(it) to lessonState(it) }
@@ -151,6 +165,7 @@ class PlanChangeCheckWorker @AssistedInject constructor(
         // Gate on the 7-day dedup ledger too: a key we already notified about recently is
         // skipped even if it looks "changed" against the (possibly stale/partial) state map.
         val toNotify = changed.filterKeys { key -> baseline.isFresh("timetable:$key") }
+        Log.i(tag, "checkTimetable: ${lessons.size} lessons fetched, ${changed.size} changed vs. last check, ${toNotify.size} not already notified in the last 7 days")
         if (toNotify.isEmpty()) return result
 
         val bySubjectLesson = lessons.associateBy { lessonKey(it) }
@@ -182,12 +197,18 @@ class PlanChangeCheckWorker @AssistedInject constructor(
     }
 
     private suspend fun checkMessages(baseline: ChangeSnapshot, notify: Boolean): ChangeSnapshot {
-        val messages = repository.getMessages(forceRefresh = true).getOrNull() ?: return baseline
+        val fetched = repository.getMessages(forceRefresh = true)
+        val messages = fetched.getOrNull()
+        if (messages == null) {
+            Log.w(tag, "checkMessages: fetch failed, keeping previous baseline — ${fetched.exceptionOrNull()}")
+            return baseline
+        }
         val currentIds = messages.map { it.id }.toSet()
         var result = baseline.copy(messageIds = currentIds)
         if (!notify) return result
 
         val newOnes = messages.filter { it.id !in baseline.messageIds && baseline.isFresh("message:${it.id}") }
+        Log.i(tag, "checkMessages: ${messages.size} messages fetched, ${newOnes.size} new")
         if (newOnes.isEmpty()) return result
 
         notificationHelper.notifyNewMessages(newOnes.size, newOnes.singleOrNull()?.subject)
@@ -200,12 +221,18 @@ class PlanChangeCheckWorker @AssistedInject constructor(
     }
 
     private suspend fun checkHomework(baseline: ChangeSnapshot, notify: Boolean): ChangeSnapshot {
-        val homework = repository.getHomework(forceRefresh = true).getOrNull()?.first ?: return baseline
+        val fetched = repository.getHomework(forceRefresh = true)
+        val homework = fetched.getOrNull()?.first
+        if (homework == null) {
+            Log.w(tag, "checkHomework: fetch failed, keeping previous baseline — ${fetched.exceptionOrNull()}")
+            return baseline
+        }
         val currentIds = homework.map { it.id }.toSet()
         var result = baseline.copy(homeworkIds = currentIds)
         if (!notify) return result
 
         val newOnes = homework.filter { it.id !in baseline.homeworkIds && baseline.isFresh("homework:${it.id}") }
+        Log.i(tag, "checkHomework: ${homework.size} entries fetched, ${newOnes.size} new")
         if (newOnes.isEmpty()) return result
 
         notificationHelper.notifyNewHomework(newOnes.size, newOnes.singleOrNull()?.subject)
@@ -218,12 +245,18 @@ class PlanChangeCheckWorker @AssistedInject constructor(
     }
 
     private suspend fun checkClassbook(baseline: ChangeSnapshot, notify: Boolean): ChangeSnapshot {
-        val entries = repository.getClassbookEntries(forceRefresh = true).getOrNull() ?: return baseline
+        val fetched = repository.getClassbookEntries(forceRefresh = true)
+        val entries = fetched.getOrNull()
+        if (entries == null) {
+            Log.w(tag, "checkClassbook: fetch failed, keeping previous baseline — ${fetched.exceptionOrNull()}")
+            return baseline
+        }
         val currentIds = entries.map { it.id }.toSet()
         var result = baseline.copy(classbookIds = currentIds)
         if (!notify) return result
 
         val newOnes = entries.filter { it.id !in baseline.classbookIds && baseline.isFresh("classbook:${it.id}") }
+        Log.i(tag, "checkClassbook: ${entries.size} entries fetched, ${newOnes.size} new")
         if (newOnes.isEmpty()) return result
 
         notificationHelper.notifyNewClassbookEntries(newOnes.size, newOnes.singleOrNull()?.subject)
