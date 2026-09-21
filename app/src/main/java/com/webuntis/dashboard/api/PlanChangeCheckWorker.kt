@@ -60,22 +60,28 @@ class PlanChangeCheckWorker @AssistedInject constructor(
             val previous = readSnapshot()
             val isFirstRun = previous == null
             if (isFirstRun) {
-                Log.i(tag, "First run for this session — establishing baseline only, no notifications will be sent this cycle (avoids flooding with pre-existing state). The NEXT scheduled run is the earliest one that can notify.")
+                Log.i(tag, "First run (no stored snapshot — fresh install, cleared data, or unparseable snapshot). Establishing baseline; only items dated within the last $RECENT_WINDOW_DAYS day(s) can notify this cycle.")
             }
             // Mutable "working copy" we persist after every category, so a failure partway
             // through doesn't roll back categories that already succeeded this run.
             var snapshot = pruneExpired(previous ?: ChangeSnapshot())
 
+            // Timetable is the one category with no usable "when was this change made"
+            // signal — a lesson only carries its own date, not when it got cancelled — so
+            // there's no way to tell a change made 5 minutes ago from one made last month.
+            // It therefore stays fully suppressed on a first run (notifying every existing
+            // cancellation in the next 5 days would be a flood). The other three categories
+            // carry real dates, so they use the recency window instead of blanket suppression.
             snapshot = checkTimetable(snapshot, notify = !isFirstRun)
             persist(snapshot)
 
-            snapshot = checkMessages(snapshot, notify = !isFirstRun)
+            snapshot = checkMessages(snapshot, isFirstRun)
             persist(snapshot)
 
-            snapshot = checkHomework(snapshot, notify = !isFirstRun)
+            snapshot = checkHomework(snapshot, isFirstRun)
             persist(snapshot)
 
-            snapshot = checkClassbook(snapshot, notify = !isFirstRun)
+            snapshot = checkClassbook(snapshot, isFirstRun)
             persist(snapshot)
 
             Log.i(tag, "Check complete: ${snapshot.lessonStatus.size} lessons/${snapshot.messageIds.size} messages/" +
@@ -196,7 +202,7 @@ class PlanChangeCheckWorker @AssistedInject constructor(
         return result
     }
 
-    private suspend fun checkMessages(baseline: ChangeSnapshot, notify: Boolean): ChangeSnapshot {
+    private suspend fun checkMessages(baseline: ChangeSnapshot, isFirstRun: Boolean): ChangeSnapshot {
         val fetched = repository.getMessages(forceRefresh = true)
         val messages = fetched.getOrNull()
         if (messages == null) {
@@ -205,10 +211,16 @@ class PlanChangeCheckWorker @AssistedInject constructor(
         }
         val currentIds = messages.map { it.id }.toSet()
         var result = baseline.copy(messageIds = currentIds)
-        if (!notify) return result
 
-        val newOnes = messages.filter { it.id !in baseline.messageIds && baseline.isFresh("message:${it.id}") }
-        Log.i(tag, "checkMessages: ${messages.size} messages fetched, ${newOnes.size} new")
+        val candidates = if (isFirstRun) {
+            // Don't silently swallow something that just arrived: on a first run the id-diff
+            // has nothing to compare against, so fall back to the message's own date.
+            messages.filter { isRecentIso(it.sentDateTime) }
+        } else {
+            messages.filter { it.id !in baseline.messageIds }
+        }
+        val newOnes = candidates.filter { baseline.isFresh("message:${it.id}") }
+        Log.i(tag, "checkMessages: ${messages.size} fetched, ${candidates.size} candidate(s) (${if (isFirstRun) "first run: by date" else "by id-diff"}), ${newOnes.size} to notify")
         if (newOnes.isEmpty()) return result
 
         notificationHelper.notifyNewMessages(newOnes.size, newOnes.singleOrNull()?.subject)
@@ -220,7 +232,7 @@ class PlanChangeCheckWorker @AssistedInject constructor(
         return result
     }
 
-    private suspend fun checkHomework(baseline: ChangeSnapshot, notify: Boolean): ChangeSnapshot {
+    private suspend fun checkHomework(baseline: ChangeSnapshot, isFirstRun: Boolean): ChangeSnapshot {
         val fetched = repository.getHomework(forceRefresh = true)
         val homework = fetched.getOrNull()?.first
         if (homework == null) {
@@ -229,10 +241,11 @@ class PlanChangeCheckWorker @AssistedInject constructor(
         }
         val currentIds = homework.map { it.id }.toSet()
         var result = baseline.copy(homeworkIds = currentIds)
-        if (!notify) return result
 
-        val newOnes = homework.filter { it.id !in baseline.homeworkIds && baseline.isFresh("homework:${it.id}") }
-        Log.i(tag, "checkHomework: ${homework.size} entries fetched, ${newOnes.size} new")
+        val candidates = if (isFirstRun) homework.filter { isRecentYmd(it.date) }
+        else homework.filter { it.id !in baseline.homeworkIds }
+        val newOnes = candidates.filter { baseline.isFresh("homework:${it.id}") }
+        Log.i(tag, "checkHomework: ${homework.size} fetched, ${candidates.size} candidate(s) (${if (isFirstRun) "first run: by date" else "by id-diff"}), ${newOnes.size} to notify")
         if (newOnes.isEmpty()) return result
 
         notificationHelper.notifyNewHomework(newOnes.size, newOnes.singleOrNull()?.subject)
@@ -244,7 +257,7 @@ class PlanChangeCheckWorker @AssistedInject constructor(
         return result
     }
 
-    private suspend fun checkClassbook(baseline: ChangeSnapshot, notify: Boolean): ChangeSnapshot {
+    private suspend fun checkClassbook(baseline: ChangeSnapshot, isFirstRun: Boolean): ChangeSnapshot {
         val fetched = repository.getClassbookEntries(forceRefresh = true)
         val entries = fetched.getOrNull()
         if (entries == null) {
@@ -253,10 +266,11 @@ class PlanChangeCheckWorker @AssistedInject constructor(
         }
         val currentIds = entries.map { it.id }.toSet()
         var result = baseline.copy(classbookIds = currentIds)
-        if (!notify) return result
 
-        val newOnes = entries.filter { it.id !in baseline.classbookIds && baseline.isFresh("classbook:${it.id}") }
-        Log.i(tag, "checkClassbook: ${entries.size} entries fetched, ${newOnes.size} new")
+        val candidates = if (isFirstRun) entries.filter { isRecentYmd(it.date) }
+        else entries.filter { it.id !in baseline.classbookIds }
+        val newOnes = candidates.filter { baseline.isFresh("classbook:${it.id}") }
+        Log.i(tag, "checkClassbook: ${entries.size} fetched, ${candidates.size} candidate(s) (${if (isFirstRun) "first run: by date" else "by id-diff"}), ${newOnes.size} to notify")
         if (newOnes.isEmpty()) return result
 
         notificationHelper.notifyNewClassbookEntries(newOnes.size, newOnes.singleOrNull()?.subject)
@@ -266,5 +280,29 @@ class PlanChangeCheckWorker @AssistedInject constructor(
             newOnes.map { ChangeLogEntry("classbook", it.subject.orEmpty().ifBlank { "Neuer Klassenbucheintrag" }, "", now) }
         )
         return result
+    }
+
+    /** True for a "yyyy-MM-dd..." / ISO timestamp within the recency window (see [RECENT_WINDOW_DAYS]). */
+    private fun isRecentIso(iso: String?): Boolean {
+        val datePart = iso?.substringBefore('T')?.takeIf { it.isNotBlank() } ?: return false
+        return try {
+            !LocalDate.parse(datePart).isBefore(LocalDate.now().minusDays(RECENT_WINDOW_DAYS))
+        } catch (e: Exception) { false }
+    }
+
+    /** True for a WebUntis yyyyMMdd int within the recency window. */
+    private fun isRecentYmd(ymd: Int?): Boolean {
+        val v = ymd ?: return false
+        return try {
+            val date = LocalDate.of(v / 10000, (v / 100) % 100, v % 100)
+            !date.isBefore(LocalDate.now().minusDays(RECENT_WINDOW_DAYS))
+        } catch (e: Exception) { false }
+    }
+
+    companion object {
+        /** How far back an item may be dated and still notify on a first run, where there's no
+         *  previous snapshot to diff against. Kept short so a fresh install reports what just
+         *  happened without replaying the whole term. */
+        private const val RECENT_WINDOW_DAYS = 1L
     }
 }
