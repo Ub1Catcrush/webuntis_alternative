@@ -1709,7 +1709,7 @@ class WebUntisRepository @Inject constructor(
         username: String, password: String, label: String
     ): List<Message> {
         return try {
-            val svc  = retrofitFactory.create(server)
+            val svc  = retrofitFactory.createIsolated(server)
             val body = JsonRpcRequest(
                 method = "authenticate",
                 params = mapOf<String, Any>("user" to username, "password" to password, "client" to "android")
@@ -1969,7 +1969,7 @@ class WebUntisRepository @Inject constructor(
         username: String, password: String, label: String, folder: String
     ): List<Message> {
         return try {
-            val svc = retrofitFactory.create(server)
+            val svc = retrofitFactory.createIsolated(server)
             val loginBody = JsonRpcRequest(
                 method = "authenticate",
                 params = mapOf<String, Any>("user" to username, "password" to password, "client" to "android")
@@ -2004,7 +2004,7 @@ class WebUntisRepository @Inject constructor(
             val token: String = if (fromSecondAccount) {
                 val acc     = sessionManager.secondAccount ?: return Result.failure(Exception("Kein 2. Account"))
                 val session = sessionManager.session       ?: return Result.failure(Exception("Nicht eingeloggt"))
-                val svc     = retrofitFactory.create(session.server)
+                val svc     = retrofitFactory.createIsolated(session.server)
                 val loginBody = JsonRpcRequest(
                     method = "authenticate",
                     params = mapOf<String, Any>("user" to acc.username, "password" to acc.password, "client" to "android")
@@ -2079,7 +2079,7 @@ class WebUntisRepository @Inject constructor(
             val token: String = if (fromSecondAccount) {
                 val acc     = sessionManager.secondAccount ?: return Result.failure(Exception("Kein 2. Account"))
                 val session = sessionManager.session       ?: return Result.failure(Exception("Nicht eingeloggt"))
-                val svc     = retrofitFactory.create(session.server)
+                val svc     = retrofitFactory.createIsolated(session.server)
                 val loginBody = JsonRpcRequest(
                     method = "authenticate",
                     params = mapOf<String, Any>("user" to acc.username, "password" to acc.password, "client" to "android"))
