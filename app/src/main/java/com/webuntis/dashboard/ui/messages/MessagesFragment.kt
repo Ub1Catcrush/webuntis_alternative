@@ -259,17 +259,18 @@ class MessagesFragment : Fragment() {
         }
         scroll.addView(layout)
 
-        // Account spinner (only shown when 2nd account exists)
-        val hasSecond   = viewModel.sessionManager.secondAccount != null
+        // Account spinner (only shown when at least one additional child account exists) —
+        // position 0 is always the primary account; positions 1..N map 1:1 to
+        // additionalAccounts, so accountSpinner.selectedItemPosition - 1 indexes into it.
+        val additionalAccounts = viewModel.sessionManager.additionalAccounts
         val primaryName = viewModel.sessionManager.session?.personName ?: "Hauptaccount"
-        val secondName  = viewModel.sessionManager.secondAccount?.label
-            ?.takeIf { it.isNotBlank() }
-            ?: viewModel.sessionManager.secondAccount?.personName
-            ?: "2. Account"
         val accountSpinner = Spinner(ctx)
-        if (hasSecond) {
+        if (additionalAccounts.isNotEmpty()) {
+            val names = listOf(primaryName) + additionalAccounts.map { acc ->
+                acc.label.ifBlank { acc.personName.ifBlank { acc.username } }
+            }
             accountSpinner.adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item,
-                listOf("Von: $primaryName", "Von: $secondName"))
+                names.map { "Von: $it" })
             layout.addView(accountSpinner)
         }
 
@@ -450,15 +451,15 @@ class MessagesFragment : Fragment() {
                     Toast.makeText(ctx, getString(R.string.messages_compose_error_empty), Toast.LENGTH_LONG).show()
                     composeOpen = false; return@setPositiveButton
                 }
-                val fromSecond = hasSecond && accountSpinner.selectedItemPosition == 1
-                viewModel.sendMessage(subject, body, ids, fromSecond, replyTo?.id)
+                val fromAccountKey = additionalAccounts.getOrNull(accountSpinner.selectedItemPosition - 1)?.key
+                viewModel.sendMessage(subject, body, ids, fromAccountKey, replyTo?.id)
                 composeOpen = false
             }
             .setNeutralButton(getString(R.string.messages_compose_btn_save_draft)) { _, _ ->
                 val subject    = etSubject.text.toString().trim()
                 val body       = etBody.text.toString()
-                val fromSecond = hasSecond && accountSpinner.selectedItemPosition == 1
-                viewModel.saveDraft(subject, body, fromSecond, draftId = draft?.id)
+                val fromAccountKey = additionalAccounts.getOrNull(accountSpinner.selectedItemPosition - 1)?.key
+                viewModel.saveDraft(subject, body, fromAccountKey, draftId = draft?.id)
                 composeOpen = false
             }
             .setNegativeButton(getString(R.string.messages_compose_btn_cancel)) { _, _ -> viewModel.closeCompose(); composeOpen = false }

@@ -74,9 +74,40 @@ class WebUntisRepository @Inject constructor(
         return updated
     }
 
+    private val additionalBearerTokens = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val additionalBearerTokenFetchedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /**
+     * How long a child account's bearer token is reused before logging in again. Kept fairly
+     * short (unlike the primary's, which is refreshed reactively on 401/expiry) because a
+     * stale child token failing deep inside, say, per-lesson enrichment wouldn't necessarily
+     * surface as a clean retry — capping reuse time bounds how long that risk window stays
+     * open, while still avoiding a full extra login for every single nested call.
+     */
+    private val ADDITIONAL_TOKEN_TTL_MS = 5 * 60 * 1000L
+
+    /**
+     * Resolves the Bearer header to use for whichever account is currently active for
+     * browsing (see SessionManager.activeAccount / the account switcher). This is the ONE
+     * place nearly every read function in this file gets its auth header from, so making it
+     * account-aware here is what makes the switcher affect timetable/absences/homework/
+     * classbook/events without having to individually thread an account parameter through
+     * every one of those functions (and their own nested helpers) by hand.
+     */
     private suspend fun getAuthHeader(): String? {
-        val token = bearerToken ?: fetchBearerToken().getOrNull()
-        return token?.let { "Bearer $it" }
+        val active = sessionManager.activeAccount ?: run {
+            val token = bearerToken ?: fetchBearerToken().getOrNull()
+            return token?.let { "Bearer $it" }
+        }
+        val fetchedAt = additionalBearerTokenFetchedAt[active.key]
+        val cached = additionalBearerTokens[active.key]
+        if (cached != null && fetchedAt != null && System.currentTimeMillis() - fetchedAt < ADDITIONAL_TOKEN_TTL_MS) {
+            return "Bearer $cached"
+        }
+        val session = sessionManager.session ?: return null
+        val token = loginAdditionalAccount(session.server, session.schoolname, active) ?: return null
+        additionalBearerTokenFetchedAt[active.key] = System.currentTimeMillis()
+        return "Bearer $token"
     }
 
     /**
@@ -168,7 +199,7 @@ class WebUntisRepository @Inject constructor(
 
     private suspend fun <T> withSessionRetry(block: suspend () -> Result<T>): Result<T> {
         return try {
-            reLoginIfNeeded()
+            if (sessionManager.activeAccount == null) reLoginIfNeeded()
             val result = block()
 
             val error = result.exceptionOrNull()
@@ -180,6 +211,25 @@ class WebUntisRepository @Inject constructor(
             if (result.isSuccess) sessionManager.touchSession()
             result
         } catch (e: SessionExpiredException) {
+            val active = sessionManager.activeAccount
+            if (active != null) {
+                // A child account's token expired/was rejected. Refresh THAT SAME child and
+                // retry — deliberately never falls through to the primary-account re-auth
+                // below, which would silently re-authenticate as the wrong account (exactly
+                // the class of bug already found once in the second-account message flow).
+                android.util.Log.i("WebUntis", "Session expired for additional account '${active.label.ifBlank { active.username }}' mid-request — re-logging in as that account and retrying")
+                additionalBearerTokens.remove(active.key)
+                additionalBearerTokenFetchedAt.remove(active.key)
+                val session = sessionManager.session ?: return Result.failure(e)
+                val fresh = loginAdditionalAccount(session.server, session.schoolname, active)
+                if (fresh == null) return Result.failure(e)
+                return try {
+                    block()
+                } catch (t2: Throwable) {
+                    android.util.Log.e("WebUntis", "withSessionRetry (additional account): retry FAILED — ${t2.javaClass.name}: ${t2.message}", t2)
+                    Result.failure(Exception("${t2.javaClass.simpleName}: ${t2.message ?: "unbekannter Fehler beim Wiederholen"}"))
+                }
+            }
             android.util.Log.i("WebUntis", "Session expired mid-request — attempting silent re-auth and retry")
             val creds   = sessionManager.storedCredentials
             val session = sessionManager.session
@@ -207,17 +257,28 @@ class WebUntisRepository @Inject constructor(
 
     private data class CacheEntry<T>(val fetchedAt: Long, val data: Result<T>)
 
-    private var cacheTimetable:    CacheEntry<List<TimetableDay>>?                        = null
-    private var cacheHomework:     CacheEntry<Pair<List<Homework>, Map<String, String>>>? = null
-    private var cacheEvents:       CacheEntry<List<SchoolEvent>>?                         = null
-    private var cacheClassbook:    CacheEntry<List<ClassbookEntry>>?                      = null
+    /** Cache key for whichever account is currently active for browsing (see
+     *  SessionManager.activeAccount / the account switcher) — "primary" for the main account. */
+    private fun currentAccountScope(): String = sessionManager.activeAccountKey ?: "primary"
+
+    // Per-student data — scoped by account, so switching the active child doesn't show a
+    // stale/mixed result left over from whoever was active before (see currentAccountScope()).
+    private var cacheTimetableByAccount:    MutableMap<String, CacheEntry<List<TimetableDay>>> = mutableMapOf()
+    private var cacheHomeworkByAccount:     MutableMap<String, CacheEntry<Pair<List<Homework>, Map<String, String>>>> = mutableMapOf()
+    private var cacheEventsByAccount:       MutableMap<String, CacheEntry<List<SchoolEvent>>> = mutableMapOf()
+    private var cacheClassbookByAccount:    MutableMap<String, CacheEntry<List<ClassbookEntry>>> = mutableMapOf()
+    // Holds both the reported absences AND their per-lesson breakdown, since both come from
+    // the single classreg/absencetimes/student call — see fetchAbsencesAndTimes().
+    private var cacheAbsencesByAccount:     MutableMap<String, CacheEntry<Pair<List<Absence>, List<AbsenceTime>>>> = mutableMapOf()
+    private var cacheAbsencesMetaByAccount: MutableMap<String, CacheEntry<AbsencesMetaData>> = mutableMapOf()
+
+    // School-wide data (not per-student) — stays a single shared cache regardless of which
+    // account is active.
     private var cacheSchoolYear:   CacheEntry<List<com.webuntis.dashboard.model.SchoolYearInfo>>? = null
-    private var cacheAbsences:     CacheEntry<List<Absence>>?                             = null
     private var cacheMessages:     CacheEntry<List<Message>>?                             = null
     private var cacheSentMessages: CacheEntry<List<Message>>?                             = null
     private var cacheDraftMessages:CacheEntry<List<Message>>?                             = null
     private var cacheTeachers:     List<com.webuntis.dashboard.model.RecipientPerson>?   = null
-    private var cacheAbsencesMeta: CacheEntry<AbsencesMetaData>?                        = null
     private var cacheTimegrid:     CacheEntry<List<com.webuntis.dashboard.model.TimegridRow>>? = null
     // "Unterrichtsinhalte" tab: incrementally-grown cache of Lesson.teachingContent entries.
     // Unlike the other cache* fields this isn't a single CacheEntry, because the tab's window
@@ -243,24 +304,24 @@ class WebUntisRepository @Inject constructor(
     }
 
     private fun clearAllDataCaches() {
-        cacheTimetable = null; cacheHomework = null; cacheEvents = null
-        cacheClassbook = null; cacheSchoolYear = null; cacheAbsences = null; cacheMessages = null; cacheSentMessages = null; cacheDraftMessages = null; cacheTeachers = null
+        cacheTimetableByAccount.clear(); cacheHomeworkByAccount.clear(); cacheEventsByAccount.clear()
+        cacheClassbookByAccount.clear(); cacheSchoolYear = null; cacheAbsencesByAccount.clear(); cacheMessages = null; cacheSentMessages = null; cacheDraftMessages = null; cacheTeachers = null
         cacheTeachingContentDays = 0; cacheTeachingContentEntries = emptyList()
-        cacheAbsencesMeta = null; cacheTimegrid = null
+        cacheAbsencesMetaByAccount.clear(); cacheTimegrid = null
     }
 
     /** Switches between the personal ("MY_TIMETABLE") and class ("STANDARD") timetable views. */
     fun setTimetableViewMode(mode: SessionManager.TimetableViewMode) {
         if (sessionManager.timetableViewMode == mode) return
         sessionManager.timetableViewMode = mode
-        cacheTimetable = null
+        cacheTimetableByAccount.clear()
     }
 
     /** Updates which class-plan subjects are allowed to fill gaps in COMBINED mode and refreshes. */
     fun setCombinedOverlaySubjects(subjects: Set<String>) {
         if (sessionManager.combinedOverlaySubjects == subjects) return
         sessionManager.combinedOverlaySubjects = subjects
-        cacheTimetable = null
+        cacheTimetableByAccount.clear()
     }
 
     /**
@@ -288,7 +349,7 @@ class WebUntisRepository @Inject constructor(
             .sortedBy { it.displayLabel.lowercase() }
     }
 
-    fun isHomeworkCacheFresh():  Boolean { val e = cacheHomework  ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
+    fun isHomeworkCacheFresh():  Boolean { val e = cacheHomeworkByAccount[currentAccountScope()]  ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
 
     /**
      * Builds a short↔long lookup for subjects and teachers from whatever timetable data is
@@ -297,7 +358,7 @@ class WebUntisRepository @Inject constructor(
      * endpoints — this lets the UI show both, e.g. "Mathematik (M)" / "Müller (Mü)".
      */
     suspend fun getNameCatalog(): NameCatalog {
-        val cachedLessons = cacheTimetable?.data?.getOrNull()?.flatMap { it.lessons }
+        val cachedLessons = cacheTimetableByAccount[currentAccountScope()]?.data?.getOrNull()?.flatMap { it.lessons }
         val lessons = if (!cachedLessons.isNullOrEmpty()) cachedLessons else {
             val start = LocalDate.now().minusDays(7).toUntis()
             val end   = LocalDate.now().plusDays(14).toUntis()
@@ -326,11 +387,11 @@ class WebUntisRepository @Inject constructor(
         }
         return NameCatalog(subjectMap, teacherMap, colorMap)
     }
-    fun isEventsCacheFresh():    Boolean { val e = cacheEvents    ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
-    fun isClassbookCacheFresh(): Boolean { val e = cacheClassbook ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
-    fun isAbsencesCacheFresh():  Boolean { val e = cacheAbsences  ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
+    fun isEventsCacheFresh():    Boolean { val e = cacheEventsByAccount[currentAccountScope()]    ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
+    fun isClassbookCacheFresh(): Boolean { val e = cacheClassbookByAccount[currentAccountScope()] ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
+    fun isAbsencesCacheFresh():  Boolean { val e = cacheAbsencesByAccount[currentAccountScope()]  ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
     fun isMessagesCacheFresh():  Boolean { val e = cacheMessages  ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
-    fun isTimetableCacheFresh(): Boolean { val e = cacheTimetable ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
+    fun isTimetableCacheFresh(): Boolean { val e = cacheTimetableByAccount[currentAccountScope()] ?: return false; return sessionManager.isCacheFresh(e.fetchedAt) }
 
     private val gson: Gson = GsonBuilder()
         .setStrictness(Strictness.LENIENT)
@@ -870,8 +931,8 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun getTwoSchoolDays(forceRefresh: Boolean = false): Result<List<TimetableDay>> = withCacheOrFetch(
         forceRefresh = forceRefresh,
-        cache = { cacheTimetable },
-        store = { cacheTimetable = it },
+        cache = { cacheTimetableByAccount[currentAccountScope()] },
+        store = { cacheTimetableByAccount[currentAccountScope()] = it },
     ) {
         val numDays = sessionManager.timetableDays
         val today = LocalDate.now()
@@ -1186,8 +1247,8 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun getHomework(forceRefresh: Boolean = false): Result<Pair<List<Homework>, Map<String, String>>> = withCacheOrFetch(
         forceRefresh = forceRefresh,
-        cache = { cacheHomework },
-        store = { cacheHomework = it },
+        cache = { cacheHomeworkByAccount[currentAccountScope()] },
+        store = { cacheHomeworkByAccount[currentAccountScope()] = it },
     ) {
         try {
             val token = getAuthHeader()
@@ -1307,8 +1368,8 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun getClassbookEntries(forceRefresh: Boolean = false): Result<List<ClassbookEntry>> = withCacheOrFetch(
         forceRefresh = forceRefresh,
-        cache = { cacheClassbook },
-        store = { cacheClassbook = it },
+        cache = { cacheClassbookByAccount[currentAccountScope()] },
+        store = { cacheClassbookByAccount[currentAccountScope()] = it },
     ) {
         try {
             val token = getAuthHeader()
@@ -1438,8 +1499,8 @@ class WebUntisRepository @Inject constructor(
 
     suspend fun getEvents(forceRefresh: Boolean = false, includePast: Boolean = false): Result<List<SchoolEvent>> = withCacheOrFetch(
         forceRefresh = forceRefresh,
-        cache = { if (includePast) null else cacheEvents },
-        store = { if (!includePast) cacheEvents = it },
+        cache = { if (includePast) null else cacheEventsByAccount[currentAccountScope()] },
+        store = { if (!includePast) cacheEventsByAccount[currentAccountScope()] = it },
     ) {
         try {
             val token = getAuthHeader()
@@ -1536,30 +1597,49 @@ class WebUntisRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
-    suspend fun getAbsences(forceRefresh: Boolean = false, excuseStatusId: Int = -1): Result<List<Absence>> = withCacheOrFetch(
-        forceRefresh = forceRefresh || excuseStatusId != -1,
-        cache = { if (excuseStatusId != -1) null else cacheAbsences },
-        store = { if (excuseStatusId == -1) cacheAbsences = it },
+    /**
+     * Single fetch backing both absence lists in the UI: the reported "Abwesenheits-Nachrichten"
+     * ([Absence], unchanged shape/behaviour from before) and the per-lesson breakdown used for
+     * the day-grouped "Liste der Abwesenheiten" ([AbsenceTime], with missedDays/missedHours/
+     * missedMins). Both arrive in one classreg/absencetimes/student response and share one
+     * cache entry, so [getAbsences] and [getAbsenceTimes] never cause two network round-trips
+     * even when called back-to-back (e.g. AbsencesViewModel.load()) — the second call is served
+     * from cache as long as the first one just refreshed it.
+     */
+    private suspend fun fetchAbsencesAndTimes(forceRefresh: Boolean = false): Result<Pair<List<Absence>, List<AbsenceTime>>> = withCacheOrFetch(
+        forceRefresh = forceRefresh,
+        cache = { cacheAbsencesByAccount[currentAccountScope()] },
+        store = { cacheAbsencesByAccount[currentAccountScope()] = it },
     ) {
         try {
             val token = getAuthHeader()
             val studentId = sessionManager.studentId
-            if (studentId == 0) return@withCacheOrFetch Result.success(emptyList())
+            if (studentId == 0) return@withCacheOrFetch Result.success(emptyList<Absence>() to emptyList())
             val today = LocalDate.now()
             val yearStart = if (today.monthValue >= 8) today.year else today.year - 1
             val startDate = "${yearStart}0801"
             val endDate   = "${yearStart + 1}1231"
-            val resp = service().getAbsences(token, startDate, endDate, studentId, excuseStatusId)
-            val raw = rawBody(resp) ?: return@withCacheOrFetch Result.success(emptyList())
-            val absResp: AbsencesResponse = parseJson(raw)
-            Result.success((absResp.data?.absences ?: emptyList()).sortedByDescending { it.startDate ?: 0 })
+            val resp = service().getAbsenceTimes(token, startDate, endDate, studentId)
+            val raw = rawBody(resp) ?: return@withCacheOrFetch Result.success(emptyList<Absence>() to emptyList())
+            val parsed: AbsenceTimesResponse = parseJson(raw)
+            val absences = (parsed.data?.absences ?: emptyList()).sortedByDescending { it.startDate ?: 0 }
+            val absenceTimes = parsed.data?.absenceTimes ?: emptyList()
+            Result.success(absences to absenceTimes)
         } catch (e: Exception) { Result.failure(e) }
     }
 
+    /** The "Abwesenheits-Nachrichten" tab — one row per reported absence. */
+    suspend fun getAbsences(forceRefresh: Boolean = false, excuseStatusId: Int = -1): Result<List<Absence>> =
+        fetchAbsencesAndTimes(forceRefresh).map { it.first }
+
+    /** The "Liste der Abwesenheiten" tab — one entry per missed lesson period. */
+    suspend fun getAbsenceTimes(forceRefresh: Boolean = false): Result<List<AbsenceTime>> =
+        fetchAbsencesAndTimes(forceRefresh).map { it.second }
+
     suspend fun getAbsencesMeta(forceRefresh: Boolean = false): Result<AbsencesMetaData> = withCacheOrFetch(
         forceRefresh = forceRefresh,
-        cache = { cacheAbsencesMeta },
-        store = { cacheAbsencesMeta = it },
+        cache = { cacheAbsencesMetaByAccount[currentAccountScope()] },
+        store = { cacheAbsencesMetaByAccount[currentAccountScope()] = it },
     ) {
         try {
             val token = getAuthHeader()
@@ -1688,8 +1768,6 @@ class WebUntisRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
-    @Volatile private var secondBearerToken: String? = null
-
     private suspend fun fetchMessagesWithToken(token: String, label: String): List<Message> {
         val resp = service().getMessagesAuth(token)
         val effective = if (resp.code() in listOf(401, 403)) {
@@ -1704,49 +1782,76 @@ class WebUntisRepository @Inject constructor(
             .map { it.copy(accountLabel = label) }
     }
 
-    private suspend fun fetchMessagesForSecondAccount(
-        server: String, schoolname: String,
-        username: String, password: String, label: String
-    ): List<Message> {
+    /**
+     * Logs in as one additional (child) account through its own isolated session (see
+     * RetrofitFactory.createIsolated — this MUST be isolated, not the shared client: the next
+     * step, getBearerToken(), takes no credential of its own and mints a token for whichever
+     * session cookie comes along, so sharing the primary's cookie jar here would silently mint
+     * a token for the PRIMARY account instead of this one) and returns its bearer token.
+     * Updates that account's cached label/name/type along the way. Returns null on any failure
+     * (wrong/expired credentials, network error, ...) rather than throwing, since a single
+     * failed child shouldn't stop the others (or the primary) from loading.
+     *
+     * The returned token is plain and Bearer-authenticated, so — unlike the login/token-minting
+     * step itself — callers can use it with the ordinary shared client for the actual data
+     * fetch; only this login step needs the isolated cookie jar.
+     */
+    private suspend fun loginAdditionalAccount(
+        server: String, schoolname: String, account: SessionManager.SecondAccount
+    ): String? {
         return try {
-            val svc  = retrofitFactory.createIsolated(server)
+            val svc = retrofitFactory.createIsolated(server)
             val body = JsonRpcRequest(
                 method = "authenticate",
-                params = mapOf<String, Any>("user" to username, "password" to password, "client" to "android")
+                params = mapOf<String, Any>("user" to account.username, "password" to account.password, "client" to "android")
             )
             val loginResp = svc.jsonRpcLogin(schoolname, body)
-            val loginRaw  = loginResp.body()?.string()?.trim() ?: return emptyList()
+            val loginRaw = loginResp.body()?.string()?.trim() ?: return null
             val rpcResp: JsonRpcResponse<AuthResult> =
                 parseJson(loginRaw, object : TypeToken<JsonRpcResponse<AuthResult>>() {})
-            val authResult = rpcResp.result ?: return emptyList()
+            val authResult = rpcResp.result ?: return null
 
-            val resolvedLabel = label.ifBlank {
-                authResult.personName?.takeIf { it.isNotBlank() } ?: username
+            val resolvedLabel = account.label.ifBlank {
+                authResult.personName?.takeIf { it.isNotBlank() } ?: account.username
             }
-            // Metadaten des 2. Accounts aktualisieren (Name/Typ können sich ändern)
-            sessionManager.secondAccount?.let { existing ->
-                sessionManager.secondAccount = existing.copy(
+            sessionManager.addOrUpdateAdditionalAccount(
+                account.copy(
                     personType = authResult.personType ?: 0,
                     personName = authResult.personName ?: "",
                     label = resolvedLabel
                 )
-            }
+            )
 
             val bearerResp = svc.getBearerToken()
-            val bearerRaw  = bearerResp.body()?.string()?.trim() ?: return emptyList()
+            val bearerRaw = bearerResp.body()?.string()?.trim() ?: return null
             val token = if (bearerRaw.startsWith("{"))
                 com.google.gson.JsonParser.parseString(bearerRaw).asJsonObject.get("token")?.asString ?: bearerRaw
             else bearerRaw.trim('"')
-            secondBearerToken = token
+            additionalBearerTokens[account.key] = token
+            token
+        } catch (e: Exception) {
+            android.util.Log.e("WebUntis", "Zusatz-Account (${account.label.ifBlank { account.username }}) – Login fehlgeschlagen", e)
+            null
+        }
+    }
 
-            val msgResp = svc.getMessagesAuth("Bearer $token")
-            val raw     = rawBody(msgResp) ?: return emptyList()
+    private suspend fun fetchMessagesForAdditionalAccount(
+        server: String, schoolname: String, account: SessionManager.SecondAccount
+    ): List<Message> {
+        val token = loginAdditionalAccount(server, schoolname, account) ?: return emptyList()
+        return try {
+            // The label may have just been resolved/updated inside loginAdditionalAccount —
+            // re-read it so messages carry the current one, not the possibly-blank one passed in.
+            val label = sessionManager.additionalAccounts.firstOrNull { it.key == account.key }?.label
+                ?: account.label.ifBlank { account.username }
+            val msgResp = service().getMessagesAuth("Bearer $token")
+            val raw = rawBody(msgResp) ?: return emptyList()
             val msgsResp: MessagesResponse = parseJson(raw)
             ((msgsResp.incomingMessages ?: emptyList()) +
                     (msgsResp.readConfirmationMessages ?: emptyList()))
-                .map { it.copy(accountLabel = resolvedLabel) }
+                .map { it.copy(accountLabel = label) }
         } catch (e: Exception) {
-            android.util.Log.e("WebUntis", "2. Account – Nachrichten konnten nicht geladen werden", e)
+            android.util.Log.e("WebUntis", "Zusatz-Account – Nachrichten konnten nicht geladen werden", e)
             emptyList()
         }
     }
@@ -1755,10 +1860,10 @@ class WebUntisRepository @Inject constructor(
     private fun tokenForMessage(msg: Message): String? {
         val raw = bearerToken ?: return null
         val primaryHeader = "Bearer $raw"
-        val secondLabel = sessionManager.secondAccount?.label ?: return primaryHeader
-        return if (!msg.accountLabel.isNullOrBlank() && msg.accountLabel == secondLabel)
-            secondBearerToken?.let { "Bearer $it" } ?: primaryHeader
-        else primaryHeader
+        val label = msg.accountLabel
+        if (label.isNullOrBlank()) return primaryHeader
+        val account = sessionManager.additionalAccounts.firstOrNull { it.label == label } ?: return primaryHeader
+        return additionalBearerTokens[account.key]?.let { "Bearer $it" } ?: primaryHeader
     }
 
     suspend fun getMessages(forceRefresh: Boolean = false): Result<List<Message>> = withCacheOrFetch(
@@ -1773,17 +1878,21 @@ class WebUntisRepository @Inject constructor(
 
             val token   = getAuthHeader() ?: return@withCacheOrFetch Result.failure(Exception("Nicht authentifiziert"))
             val primary = fetchMessagesWithToken(token, primaryLabel)
-            val second  = sessionManager.secondAccount?.let { acc ->
-                val server = session?.server ?: return@let emptyList()
-                fetchMessagesForSecondAccount(server, session.schoolname,
-                    acc.username, acc.password, acc.label)
-            } ?: emptyList()
+            val server  = session?.server
+            val additional = if (server == null) emptyList() else {
+                // Sequential, not parallel: each of these is a full separate login, and running
+                // them concurrently would mean juggling N isolated cookie jars' login/token
+                // steps at once for marginal speed gain on what's already a background refresh.
+                sessionManager.additionalAccounts.flatMap { acc ->
+                    fetchMessagesForAdditionalAccount(server, session.schoolname, acc)
+                }
+            }
 
             // Deduplizierung: IDs sind nur innerhalb eines Accounts eindeutig.
             // accountLabel + id als zusammengesetzter Key verhindert, dass Nachrichten
-            // des 2. Accounts fälschlicherweise herausgefiltert werden.
+            // eines Zusatz-Accounts fälschlicherweise herausgefiltert werden.
             val seenKeys = mutableSetOf<String>()
-            val merged   = (primary + second)
+            val merged   = (primary + additional)
                 .sortedByDescending { it.sentDateTimeForSorting }
                 .filter { msg -> seenKeys.add("${msg.accountLabel}|${msg.id}") }
             Result.success(merged)
@@ -1915,11 +2024,11 @@ class WebUntisRepository @Inject constructor(
             val primaryLabel = session?.personName?.takeIf { it.isNotBlank() } ?: session?.accountTypeLabel ?: "Hauptaccount"
             val token        = getAuthHeader() ?: return@withCacheOrFetch Result.failure(Exception("Nicht authentifiziert"))
             val primary      = fetchFolderMessages(token, "SENT", primaryLabel)
-            val second       = sessionManager.secondAccount?.let { acc ->
-                val server = session?.server ?: return@let emptyList<Message>()
-                fetchFolderForSecondAccount(server, session.schoolname, acc.username, acc.password, acc.label, "SENT")
-            } ?: emptyList()
-            Result.success((primary + second).sortedByDescending { it.sentDateTimeForSorting })
+            val server       = session?.server
+            val additional   = if (server == null) emptyList() else sessionManager.additionalAccounts.flatMap { acc ->
+                fetchFolderForAdditionalAccount(server, session.schoolname, acc, "SENT")
+            }
+            Result.success((primary + additional).sortedByDescending { it.sentDateTimeForSorting })
         } catch (e: Exception) { Result.failure(e) }
     }
 
@@ -1935,11 +2044,11 @@ class WebUntisRepository @Inject constructor(
             val primaryLabel = session?.personName?.takeIf { it.isNotBlank() } ?: session?.accountTypeLabel ?: "Hauptaccount"
             val token        = getAuthHeader() ?: return@withCacheOrFetch Result.failure(Exception("Nicht authentifiziert"))
             val primary      = fetchFolderMessages(token, "DRAFTS", primaryLabel)
-            val second       = sessionManager.secondAccount?.let { acc ->
-                val server = session?.server ?: return@let emptyList<Message>()
-                fetchFolderForSecondAccount(server, session.schoolname, acc.username, acc.password, acc.label, "DRAFTS")
-            } ?: emptyList()
-            Result.success((primary + second).sortedByDescending { it.sentDateTimeForSorting })
+            val server       = session?.server
+            val additional   = if (server == null) emptyList() else sessionManager.additionalAccounts.flatMap { acc ->
+                fetchFolderForAdditionalAccount(server, session.schoolname, acc, "DRAFTS")
+            }
+            Result.success((primary + additional).sortedByDescending { it.sentDateTimeForSorting })
         } catch (e: Exception) { Result.failure(e) }
     }
 
@@ -1964,27 +2073,16 @@ class WebUntisRepository @Inject constructor(
         return msgs.map { it.copy(accountLabel = label.takeIf { l -> l.isNotBlank() }, storedIn = storedIn) }
     }
 
-    private suspend fun fetchFolderForSecondAccount(
-        server: String, schoolname: String,
-        username: String, password: String, label: String, folder: String
+    private suspend fun fetchFolderForAdditionalAccount(
+        server: String, schoolname: String, account: SessionManager.SecondAccount, folder: String
     ): List<Message> {
+        val token = loginAdditionalAccount(server, schoolname, account) ?: return emptyList()
+        val label = sessionManager.additionalAccounts.firstOrNull { it.key == account.key }?.label
+            ?: account.label.ifBlank { account.username }
         return try {
-            val svc = retrofitFactory.createIsolated(server)
-            val loginBody = JsonRpcRequest(
-                method = "authenticate",
-                params = mapOf<String, Any>("user" to username, "password" to password, "client" to "android")
-            )
-            val loginRaw = svc.jsonRpcLogin(schoolname, loginBody).body()?.string()?.trim() ?: return emptyList()
-            val rpcResp: JsonRpcResponse<AuthResult> =
-                parseJson(loginRaw, object : TypeToken<JsonRpcResponse<AuthResult>>() {})
-            rpcResp.result ?: return emptyList()
-            val bearerRaw = svc.getBearerToken().body()?.string()?.trim() ?: return emptyList()
-            val token = if (bearerRaw.startsWith("{"))
-                com.google.gson.JsonParser.parseString(bearerRaw).asJsonObject.get("token")?.asString ?: bearerRaw
-            else bearerRaw.trim('"')
             fetchFolderMessages("Bearer $token", folder, label)
         } catch (e: Exception) {
-            android.util.Log.e("WebUntis", "2. Account – $folder fehlgeschlagen", e)
+            android.util.Log.e("WebUntis", "Zusatz-Account – $folder fehlgeschlagen", e)
             emptyList()
         }
     }
@@ -1997,25 +2095,17 @@ class WebUntisRepository @Inject constructor(
         recipientPersonIds: List<Int>,
         allowReply: Boolean = true,
         replyToMsgId: Int? = null,
-        fromSecondAccount: Boolean = false
+        fromAccountKey: String? = null
     ): Result<Unit> {
         return try {
             ensureCsrfToken() // same session cookie rides along even on this Bearer-token endpoint
-            val token: String = if (fromSecondAccount) {
-                val acc     = sessionManager.secondAccount ?: return Result.failure(Exception("Kein 2. Account"))
-                val session = sessionManager.session       ?: return Result.failure(Exception("Nicht eingeloggt"))
-                val svc     = retrofitFactory.createIsolated(session.server)
-                val loginBody = JsonRpcRequest(
-                    method = "authenticate",
-                    params = mapOf<String, Any>("user" to acc.username, "password" to acc.password, "client" to "android")
-                )
-                svc.jsonRpcLogin(session.schoolname, loginBody)
-                val bearerRaw = svc.getBearerToken().body()?.string()?.trim()
-                    ?: return Result.failure(Exception("Kein Token"))
-                val raw = if (bearerRaw.startsWith("{"))
-                    com.google.gson.JsonParser.parseString(bearerRaw).asJsonObject.get("token")?.asString ?: bearerRaw
-                else bearerRaw.trim('"')
-                "Bearer $raw"
+            val token: String = if (fromAccountKey != null) {
+                val acc     = sessionManager.additionalAccounts.firstOrNull { it.key == fromAccountKey }
+                    ?: return Result.failure(Exception("Zusatz-Account nicht gefunden"))
+                val session = sessionManager.session ?: return Result.failure(Exception("Nicht eingeloggt"))
+                loginAdditionalAccount(session.server, session.schoolname, acc)
+                    ?.let { "Bearer $it" }
+                    ?: return Result.failure(Exception("Anmeldung für Zusatz-Account fehlgeschlagen"))
             } else {
                 getAuthHeader() ?: return Result.failure(Exception("Nicht authentifiziert"))
             }
@@ -2070,26 +2160,19 @@ class WebUntisRepository @Inject constructor(
         content: String,
         recipientPersonIds: List<Int> = emptyList(),
         draftId: Int? = null,
-        fromSecondAccount: Boolean = false,
+        fromAccountKey: String? = null,
         attachments: List<Pair<String, ByteArray>> = emptyList(),   // new files: filename → bytes
         removedAttachmentIds: List<String> = emptyList()            // existing storage IDs to delete
     ): Result<Message> {
         return try {
             ensureCsrfToken() // same session cookie rides along even on this Bearer-token endpoint
-            val token: String = if (fromSecondAccount) {
-                val acc     = sessionManager.secondAccount ?: return Result.failure(Exception("Kein 2. Account"))
-                val session = sessionManager.session       ?: return Result.failure(Exception("Nicht eingeloggt"))
-                val svc     = retrofitFactory.createIsolated(session.server)
-                val loginBody = JsonRpcRequest(
-                    method = "authenticate",
-                    params = mapOf<String, Any>("user" to acc.username, "password" to acc.password, "client" to "android"))
-                svc.jsonRpcLogin(session.schoolname, loginBody)
-                val bearerRaw = svc.getBearerToken().body()?.string()?.trim()
-                    ?: return Result.failure(Exception("Kein Token"))
-                val raw = if (bearerRaw.startsWith("{"))
-                    com.google.gson.JsonParser.parseString(bearerRaw).asJsonObject.get("token")?.asString ?: bearerRaw
-                else bearerRaw.trim('"')
-                "Bearer $raw"
+            val token: String = if (fromAccountKey != null) {
+                val acc     = sessionManager.additionalAccounts.firstOrNull { it.key == fromAccountKey }
+                    ?: return Result.failure(Exception("Zusatz-Account nicht gefunden"))
+                val session = sessionManager.session ?: return Result.failure(Exception("Nicht eingeloggt"))
+                loginAdditionalAccount(session.server, session.schoolname, acc)
+                    ?.let { "Bearer $it" }
+                    ?: return Result.failure(Exception("Anmeldung für Zusatz-Account fehlgeschlagen"))
             } else {
                 getAuthHeader() ?: return Result.failure(Exception("Nicht authentifiziert"))
             }
@@ -2184,7 +2267,15 @@ class WebUntisRepository @Inject constructor(
      * saves them as the second account in [SessionManager].
      * Returns a human-readable summary string for the UI on success.
      */
-    suspend fun verifyAndSaveSecondAccount(username: String, password: String, label: String): Result<String> {
+    /**
+     * Verifies a new additional (child) account's credentials and adds it to the list (or
+     * updates it in place if that username is already configured). Verification works by
+     * briefly logging in AS that account through the primary session/login flow (this is a
+     * one-off verification step, not how the account is used afterward — ongoing data fetches
+     * use loginAdditionalAccount()'s isolated session instead, see RetrofitFactory.createIsolated),
+     * then restoring the primary session from its stored credentials.
+     */
+    suspend fun verifyAndAddAdditionalAccount(username: String, password: String, label: String): Result<String> {
         // session should always be present; if not, try re-login from persisted credentials
         if (sessionManager.session == null) {
             val creds  = sessionManager.storedCredentials
@@ -2200,27 +2291,27 @@ class WebUntisRepository @Inject constructor(
             val result = if (rpc.isSuccess) rpc else loginViaRest(session.server, session.schoolname, username, password)
             result.fold(
                 onSuccess = { sessionData ->
-                    val second = SessionManager.SecondAccount(
+                    val account = SessionManager.SecondAccount(
                         username   = username,
                         password   = password,
                         label      = label.trim(),
                         personType = sessionData.personType,
                         personName = sessionData.personName
                     )
-                    sessionManager.secondAccount = second
+                    sessionManager.addOrUpdateAdditionalAccount(account)
                     // Restore primary session so the main account stays logged in
                     login(session.server, session.schoolname,
                         sessionManager.storedCredentials?.first ?: session.username,
                         sessionManager.storedCredentials?.second ?: "")
                     val info = buildString {
-                        if (second.personName.isNotBlank()) append(second.personName)
-                        if (second.accountTypeLabel.isNotBlank()) {
+                        if (account.personName.isNotBlank()) append(account.personName)
+                        if (account.accountTypeLabel.isNotBlank()) {
                             if (isNotEmpty()) append(" · ")
-                            append(second.accountTypeLabel)
+                            append(account.accountTypeLabel)
                         }
-                        if (second.label.isNotBlank()) {
+                        if (account.label.isNotBlank()) {
                             if (isNotEmpty()) append(" (")
-                            append(second.label)
+                            append(account.label)
                             append(")")
                         }
                         if (isEmpty()) append(username)

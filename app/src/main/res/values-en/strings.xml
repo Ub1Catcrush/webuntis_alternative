@@ -139,6 +139,16 @@
     <string name="absence_delete_title">Delete absence?</string>
     <string name="absence_delete_message">Do you really want to delete this absence?</string>
     <string name="absence_delete_confirm">Delete</string>
+    <string name="absence_view_messages">Messages</string>
+    <string name="absence_view_list">List</string>
+    <string name="absence_missed_one_period">1 missed period</string>
+    <string name="absence_missed_minutes">%1$d missed minutes</string>
+    <string name="absence_counting_yes">counts toward absences</string>
+    <string name="absence_counting_no">doesn\'t count</string>
+    <plurals name="absence_missed_periods">
+        <item quantity="one">%d missed period</item>
+        <item quantity="other">%d missed periods</item>
+    </plurals>
     <string name="btn_cancel">Cancel</string>
     <string name="btn_save">Save</string>
 
@@ -180,19 +190,21 @@
     <string name="settings_logout_button">Sign out</string>
     <string name="settings_saved_ok">✓ Successfully saved and reconnected</string>
     <string name="settings_timetable_days_label">Displayed school days</string>
-    <string name="settings_second_account_title">Second account (student)</string>
-    <string name="settings_second_account_notice">Messages from both accounts are merged into one inbox.</string>
+    <string name="settings_second_account_title">Additional children</string>
+    <string name="settings_second_account_notice">Messages from every added child are merged with the main account\'s into one inbox.</string>
+    <string name="settings_second_add_another">Add another child</string>
     <string name="settings_second_label_hint">Label (e.g. Simon)</string>
     <string name="settings_second_username_hint">Username (student)</string>
     <string name="settings_second_password_hint">Password (student)</string>
-    <string name="settings_second_save_button">Save second account</string>
-    <string name="settings_second_remove_button">Remove second account</string>
+    <string name="settings_second_save_button">Add child</string>
+    <string name="settings_second_remove_button">Remove</string>
     <string name="settings_second_password_saved_hint">Saved – leave blank to keep</string>
     <string name="settings_second_connecting">Connecting…</string>
-    <string name="settings_second_removed">Second account removed.</string>
+    <string name="settings_second_removed">Removed.</string>
     <string name="settings_second_error_credentials">Username and password are required.</string>
     <string name="settings_second_error_prefix">Error: %s</string>
-    <string name="settings_second_saved_prefix">✓ %s</string>
+    <string name="settings_second_saved_prefix">✓ %s added</string>
+    <string name="settings_second_no_accounts">No additional children added yet.</string>
 
     <!-- Display settings -->
     <string name="settings_long_names_section">Show full names</string>
@@ -269,7 +281,7 @@
 
     <!-- Settings section headers -->
     <string name="settings_section_account">Main Account</string>
-    <string name="settings_section_second_account">Second Account</string>
+    <string name="settings_section_second_account">Additional Children</string>
     <string name="settings_section_timetable">Timetable</string>
     <string name="settings_section_display">Display</string>
     <string name="settings_section_notifications">Notifications</string>
@@ -334,4 +346,6 @@
     <string name="messages_delete_message_title">Delete message?</string>
     <string name="messages_no_subject">(No subject)</string>
     <string name="messages_mark_unread">Mark as unread</string>
+    <string name="action_switch_account">Switch child</string>
+    <string name="account_switcher_title">Select child</string>
 </resources>

@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
 import com.webuntis.dashboard.R
 import com.webuntis.dashboard.databinding.FragmentHomeworkBinding
+import com.webuntis.dashboard.ui.common.setupAccountSwitcher
 import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
@@ -40,6 +41,7 @@ class HomeworkFragment : Fragment() {
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         binding.swipeRefresh.setOnRefreshListener { viewModel.load(forceRefresh = true) }
+        binding.toolbar.setupAccountSwitcher(viewModel.activeAccountManager)
 
         binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab?) {

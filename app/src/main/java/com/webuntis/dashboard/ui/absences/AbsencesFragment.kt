@@ -27,8 +27,13 @@ import com.webuntis.dashboard.R
 import com.webuntis.dashboard.api.CreateAbsenceRequest
 import com.webuntis.dashboard.databinding.DialogEditAbsenceBinding
 import com.webuntis.dashboard.databinding.FragmentAbsencesBinding
+import com.webuntis.dashboard.ui.common.setupAccountSwitcher
 import com.webuntis.dashboard.databinding.ItemAbsenceBinding
+import com.webuntis.dashboard.databinding.ItemAbsenceDayHeaderBinding
+import com.webuntis.dashboard.databinding.ItemAbsenceTimeBinding
 import com.webuntis.dashboard.model.Absence
+import com.webuntis.dashboard.model.AbsenceDayGroup
+import com.webuntis.dashboard.model.AbsenceDayRow
 import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
@@ -63,40 +68,42 @@ class AbsencesFragment : Fragment() {
                 Toast.makeText(requireContext(), getString(R.string.absence_cannot_edit), Toast.LENGTH_SHORT).show()
             }
         }
+        val dayAdapter = AbsenceDayAdapter()
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerView.adapter = adapter
         binding.swipeRefresh.setOnRefreshListener { viewModel.load(forceRefresh = true) }
+        binding.toolbar.setupAccountSwitcher(viewModel.activeAccountManager)
         binding.fabAdd.setOnClickListener { showEditAbsenceDialog(null) }
+
+        binding.btnViewMessages.setOnClickListener { viewModel.setViewMode(AbsencesViewMode.MESSAGES) }
+        binding.btnViewList.setOnClickListener { viewModel.setViewMode(AbsencesViewMode.LIST) }
 
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
+                    viewModel.viewMode.collect { mode ->
+                        val showMessages = mode == AbsencesViewMode.MESSAGES
+                        binding.toggleViewMode.check(
+                            if (showMessages) binding.btnViewMessages.id else binding.btnViewList.id
+                        )
+                        binding.filterScroll.isVisible = showMessages
+                        binding.recyclerView.adapter = if (showMessages) adapter else dayAdapter
+                        // Re-render the currently visible list under the freshly swapped adapter.
+                        renderCurrentList(adapter, dayAdapter, showMessages)
+                    }
+                }
+                launch {
                     viewModel.state.collect { state ->
                         binding.swipeRefresh.isRefreshing = false
-                        when (state) {
-                            is UiState.Loading -> {
-                                binding.progressBar.isVisible = true
-                                binding.recyclerView.isVisible = false
-                                binding.emptyView.isVisible = false
-                            }
-                            is UiState.Success -> {
-                                binding.progressBar.isVisible = false
-                                if (state.data.isEmpty()) {
-                                    binding.recyclerView.isVisible = false
-                                    binding.emptyView.isVisible = true
-                                    binding.emptyView.text = getString(R.string.label_no_absences_short)
-                                } else {
-                                    binding.recyclerView.isVisible = true
-                                    binding.emptyView.isVisible = false
-                                    adapter.submitList(state.data)
-                                }
-                            }
-                            is UiState.Error -> {
-                                binding.progressBar.isVisible = false
-                                binding.recyclerView.isVisible = false
-                                binding.emptyView.isVisible = true
-                                binding.emptyView.text = state.message
-                            }
+                        if (viewModel.viewMode.value == AbsencesViewMode.MESSAGES) {
+                            renderMessagesState(state, adapter)
+                        }
+                    }
+                }
+                launch {
+                    viewModel.dayGroups.collect { state ->
+                        binding.swipeRefresh.isRefreshing = false
+                        if (viewModel.viewMode.value == AbsencesViewMode.LIST) {
+                            renderDayGroupsState(state, dayAdapter)
                         }
                     }
                 }
@@ -115,7 +122,72 @@ class AbsencesFragment : Fragment() {
 
         // Build fixed 4-chip filter bar (done once, client-side filtering)
         buildFilterChips()
-        binding.filterScroll.isVisible = true
+    }
+
+    /** Re-applies whichever state (messages or day groups) matches the newly active view mode
+     *  right after the RecyclerView's adapter was swapped, so switching tabs doesn't show a
+     *  stale/empty list until the next state emission. */
+    private fun renderCurrentList(adapter: AbsenceAdapter, dayAdapter: AbsenceDayAdapter, showMessages: Boolean) {
+        if (showMessages) renderMessagesState(viewModel.state.value, adapter)
+        else renderDayGroupsState(viewModel.dayGroups.value, dayAdapter)
+    }
+
+    private fun renderMessagesState(state: UiState<List<Absence>>, adapter: AbsenceAdapter) {
+        when (state) {
+            is UiState.Loading -> {
+                binding.progressBar.isVisible = true
+                binding.recyclerView.isVisible = false
+                binding.emptyView.isVisible = false
+            }
+            is UiState.Success -> {
+                binding.progressBar.isVisible = false
+                if (state.data.isEmpty()) {
+                    binding.recyclerView.isVisible = false
+                    binding.emptyView.isVisible = true
+                    binding.emptyView.text = getString(R.string.label_no_absences_short)
+                } else {
+                    binding.recyclerView.isVisible = true
+                    binding.emptyView.isVisible = false
+                    adapter.submitList(state.data)
+                }
+            }
+            is UiState.Error -> {
+                binding.progressBar.isVisible = false
+                binding.recyclerView.isVisible = false
+                binding.emptyView.isVisible = true
+                binding.emptyView.text = state.message
+            }
+        }
+    }
+
+    private fun renderDayGroupsState(state: UiState<List<AbsenceDayGroup>>, dayAdapter: AbsenceDayAdapter) {
+        when (state) {
+            is UiState.Loading -> {
+                binding.progressBar.isVisible = true
+                binding.recyclerView.isVisible = false
+                binding.emptyView.isVisible = false
+            }
+            is UiState.Success -> {
+                binding.progressBar.isVisible = false
+                if (state.data.isEmpty()) {
+                    binding.recyclerView.isVisible = false
+                    binding.emptyView.isVisible = true
+                    binding.emptyView.text = getString(R.string.label_no_absences_short)
+                } else {
+                    binding.recyclerView.isVisible = true
+                    binding.emptyView.isVisible = false
+                    dayAdapter.submitList(state.data.flatMap { group ->
+                        listOf(AbsenceListItem.Header(group)) + group.rows.map { AbsenceListItem.Row(it) }
+                    })
+                }
+            }
+            is UiState.Error -> {
+                binding.progressBar.isVisible = false
+                binding.recyclerView.isVisible = false
+                binding.emptyView.isVisible = true
+                binding.emptyView.text = state.message
+            }
+        }
     }
 
     private fun buildFilterChips() {
@@ -417,5 +489,114 @@ class AbsenceAdapter(private val onClick: (Absence) -> Unit) : ListAdapter<Absen
     object Diff : DiffUtil.ItemCallback<Absence>() {
         override fun areItemsTheSame(a: Absence, b: Absence) = a.id == b.id
         override fun areContentsTheSame(a: Absence, b: Absence) = a == b
+    }
+}
+
+/** Flattened row type for the day-grouped "Liste der Abwesenheiten" RecyclerView: a date
+ *  header followed by that day's rows (see [com.webuntis.dashboard.model.AbsenceDayGroup]). */
+private sealed class AbsenceListItem {
+    data class Header(val group: AbsenceDayGroup) : AbsenceListItem()
+    data class Row(val row: AbsenceDayRow) : AbsenceListItem()
+}
+
+private fun untisTimeLabel(t: Int): String =
+    t.toString().padStart(4, '0').let { "${it.take(2)}:${it.drop(2)}" }
+
+private class AbsenceDayAdapter : ListAdapter<AbsenceListItem, RecyclerView.ViewHolder>(Diff) {
+
+    override fun getItemViewType(position: Int): Int = when (getItem(position)) {
+        is AbsenceListItem.Header -> TYPE_HEADER
+        is AbsenceListItem.Row    -> TYPE_ROW
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder =
+        if (viewType == TYPE_HEADER)
+            HeaderVH(ItemAbsenceDayHeaderBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+        else
+            RowVH(ItemAbsenceTimeBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        when (val item = getItem(position)) {
+            is AbsenceListItem.Header -> (holder as HeaderVH).bind(item.group)
+            is AbsenceListItem.Row    -> (holder as RowVH).bind(item.row)
+        }
+    }
+
+    class HeaderVH(private val b: ItemAbsenceDayHeaderBinding) : RecyclerView.ViewHolder(b.root) {
+        fun bind(group: AbsenceDayGroup) {
+            val ctx = b.root.context
+            b.textDate.text = group.dateLabel
+            // Quick at-a-glance total: full absence days count their periodCount, a single
+            // missed period counts as 1 when missedHours == 1 — pure lateness (minutes only)
+            // isn't added here, it's shown per-row instead.
+            val totalPeriods = group.rows.sumOf { row ->
+                when (row) {
+                    is AbsenceDayRow.FullDay -> row.periodCount
+                    is AbsenceDayRow.Partial -> if (row.missedHours == 1) 1 else 0
+                }
+            }
+            b.textDayTotal.text = if (totalPeriods > 0)
+                ctx.resources.getQuantityString(R.plurals.absence_missed_periods, totalPeriods, totalPeriods)
+            else ""
+        }
+    }
+
+    class RowVH(private val b: ItemAbsenceTimeBinding) : RecyclerView.ViewHolder(b.root) {
+        fun bind(row: AbsenceDayRow) {
+            val ctx = b.root.context
+
+            val reasonName: String?
+            val statusName: String?
+            val excused: Boolean
+            val counting: Boolean
+            val noteText: String?
+
+            when (row) {
+                is AbsenceDayRow.FullDay -> {
+                    b.textTime.text = "${ctx.getString(R.string.label_absence_fullday)} · " +
+                        "${untisTimeLabel(row.startTime)} – ${untisTimeLabel(row.endTime)}"
+                    b.textSubjects.text = row.subjects.joinToString(", ")
+                    b.textAmount.text = ctx.resources.getQuantityString(
+                        R.plurals.absence_missed_periods, row.periodCount, row.periodCount
+                    )
+                    reasonName = row.reasonName; statusName = row.statusName
+                    excused = row.excused; counting = row.counting; noteText = row.text
+                }
+                is AbsenceDayRow.Partial -> {
+                    b.textTime.text = "${untisTimeLabel(row.startTime)} – ${untisTimeLabel(row.endTime)}"
+                    b.textSubjects.text = row.subjectName?.takeIf { it.isNotBlank() } ?: "–"
+                    b.textAmount.text = if (row.missedHours == 1)
+                        ctx.getString(R.string.absence_missed_one_period)
+                    else
+                        ctx.getString(R.string.absence_missed_minutes, row.missedMins)
+                    reasonName = row.reasonName; statusName = row.statusName
+                    excused = row.excused; counting = row.counting; noteText = row.text
+                }
+            }
+
+            b.textReason.text = reasonName?.takeIf { it.isNotBlank() } ?: "–"
+            val note = noteText?.takeIf { it.isNotBlank() && it != reasonName }
+            b.textNote.text = note
+            b.textNote.isVisible = !note.isNullOrBlank()
+
+            b.textStatus.text = statusName?.takeIf { it.isNotBlank() } ?: "–"
+            val isApp = statusName?.contains("APP", ignoreCase = true) == true
+            val bgRes = when { isApp -> R.color.yellow_container; excused -> R.color.green_container; else -> R.color.red_container }
+            val textRes = when { isApp -> R.color.yellow; excused -> R.color.green; else -> R.color.red }
+            b.textStatus.setBackgroundResource(bgRes)
+            b.textStatus.setTextColor(ContextCompat.getColor(ctx, textRes))
+
+            b.textCounting.setText(if (counting) R.string.absence_counting_yes else R.string.absence_counting_no)
+        }
+    }
+
+    companion object {
+        private const val TYPE_HEADER = 0
+        private const val TYPE_ROW = 1
+    }
+
+    object Diff : DiffUtil.ItemCallback<AbsenceListItem>() {
+        override fun areItemsTheSame(a: AbsenceListItem, b: AbsenceListItem) = a == b
+        override fun areContentsTheSame(a: AbsenceListItem, b: AbsenceListItem) = a == b
     }
 }

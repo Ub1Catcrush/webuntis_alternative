@@ -15,6 +15,7 @@ import android.os.Bundle
 import android.view.*
 import com.webuntis.dashboard.R
 import com.webuntis.dashboard.databinding.FragmentClassbookBinding
+import com.webuntis.dashboard.ui.common.setupAccountSwitcher
 import com.webuntis.dashboard.databinding.ItemClassbookBinding
 import com.webuntis.dashboard.model.ClassbookEntry
 import com.webuntis.dashboard.model.UiState
@@ -41,6 +42,7 @@ class ClassbookFragment : Fragment() {
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         binding.swipeRefresh.setOnRefreshListener { viewModel.load(forceRefresh = true) }
+        binding.toolbar.setupAccountSwitcher(viewModel.activeAccountManager)
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.collect { state ->

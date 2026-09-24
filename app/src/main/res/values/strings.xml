@@ -141,6 +141,16 @@
     <string name="absence_delete_title">Abwesenheit löschen?</string>
     <string name="absence_delete_message">Möchten Sie diese Abwesenheit wirklich löschen?</string>
     <string name="absence_delete_confirm">Löschen</string>
+    <string name="absence_view_messages">Nachrichten</string>
+    <string name="absence_view_list">Liste</string>
+    <string name="absence_missed_one_period">1 Fehlstunde</string>
+    <string name="absence_missed_minutes">%1$d Fehlminuten</string>
+    <string name="absence_counting_yes">zählt zur Fehlzeit</string>
+    <string name="absence_counting_no">zählt nicht</string>
+    <plurals name="absence_missed_periods">
+        <item quantity="one">%d Fehlstunde</item>
+        <item quantity="other">%d Fehlstunden</item>
+    </plurals>
     <string name="btn_cancel">Abbrechen</string>
     <string name="btn_save">Speichern</string>
 
@@ -182,19 +192,21 @@
     <string name="settings_logout_button">Abmelden</string>
     <string name="settings_saved_ok">✓ Erfolgreich gespeichert und neu angemeldet</string>
     <string name="settings_timetable_days_label">Angezeigte Schultage</string>
-    <string name="settings_second_account_title">Zweiter Account (Schüler)</string>
-    <string name="settings_second_account_notice">Nachrichten beider Accounts werden zusammengeführt.</string>
+    <string name="settings_second_account_title">Weitere Kinder</string>
+    <string name="settings_second_account_notice">Nachrichten aller hinzugefügten Kinder werden mit denen des Hauptaccounts zusammengeführt.</string>
+    <string name="settings_second_add_another">Weiteres Kind hinzufügen</string>
     <string name="settings_second_label_hint">Bezeichnung (z. B. Simon)</string>
     <string name="settings_second_username_hint">Benutzername (Schüler)</string>
     <string name="settings_second_password_hint">Passwort (Schüler)</string>
-    <string name="settings_second_save_button">Zweiten Account speichern</string>
-    <string name="settings_second_remove_button">Zweiten Account entfernen</string>
+    <string name="settings_second_save_button">Kind hinzufügen</string>
+    <string name="settings_second_remove_button">Entfernen</string>
     <string name="settings_second_password_saved_hint">Gespeichert – leer lassen zum Beibehalten</string>
     <string name="settings_second_connecting">Verbinde…</string>
-    <string name="settings_second_removed">Zweiter Account entfernt.</string>
+    <string name="settings_second_removed">Entfernt.</string>
     <string name="settings_second_error_credentials">Benutzername und Passwort erforderlich.</string>
     <string name="settings_second_error_prefix">Fehler: %s</string>
-    <string name="settings_second_saved_prefix">✓ %s</string>
+    <string name="settings_second_saved_prefix">✓ %s hinzugefügt</string>
+    <string name="settings_second_no_accounts">Noch keine weiteren Kinder hinzugefügt.</string>
 
     <!-- Display settings -->
     <string name="settings_long_names_section">Klarnamen anzeigen</string>
@@ -272,7 +284,7 @@
 
     <!-- Settings section headers -->
     <string name="settings_section_account">Hauptaccount</string>
-    <string name="settings_section_second_account">Zweiter Account</string>
+    <string name="settings_section_second_account">Weitere Kinder</string>
     <string name="settings_section_timetable">Stundenplan</string>
     <string name="settings_section_display">Anzeige</string>
     <string name="settings_section_notifications">Benachrichtigungen</string>
@@ -337,4 +349,6 @@
     <string name="messages_delete_message_title">Nachricht löschen?</string>
     <string name="messages_no_subject">(Kein Betreff)</string>
     <string name="messages_mark_unread">Als ungelesen markieren</string>
+    <string name="action_switch_account">Kind wechseln</string>
+    <string name="account_switcher_title">Kind auswählen</string>
 </resources>

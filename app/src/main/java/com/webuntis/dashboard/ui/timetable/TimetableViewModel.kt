@@ -11,6 +11,7 @@ import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import javax.inject.Inject
@@ -108,7 +109,8 @@ data class SchoolDay(val day: TimetableDay) {
 @HiltViewModel
 class TimetableViewModel @Inject constructor(
     private val repository: WebUntisRepository,
-    private val appForegroundEvents: com.webuntis.dashboard.api.AppForegroundEvents
+    private val appForegroundEvents: com.webuntis.dashboard.api.AppForegroundEvents,
+    val activeAccountManager: com.webuntis.dashboard.api.ActiveAccountManager
 ) : ViewModel() {
 
     private val _days = MutableStateFlow<UiState<List<SchoolDay>>>(UiState.Loading)
@@ -184,6 +186,9 @@ class TimetableViewModel @Inject constructor(
     init {
         loadAll()
         viewModelScope.launch { appForegroundEvents.onForegroundResume.collect { loadAll(forceRefresh = true) } }
+        // .drop(1): the StateFlow immediately replays its current value to a new collector,
+        // which would otherwise trigger a redundant reload right after the loadAll() above.
+        viewModelScope.launch { activeAccountManager.current.drop(1).collect { loadAll(forceRefresh = true) } }
     }
 
     fun loadAll(forceRefresh: Boolean = false) {

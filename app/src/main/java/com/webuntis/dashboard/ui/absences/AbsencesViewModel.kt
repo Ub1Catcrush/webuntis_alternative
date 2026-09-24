@@ -5,28 +5,44 @@ import androidx.lifecycle.viewModelScope
 import com.webuntis.dashboard.api.CreateAbsenceRequest
 import com.webuntis.dashboard.api.WebUntisRepository
 import com.webuntis.dashboard.model.Absence
+import com.webuntis.dashboard.model.AbsenceDayGroup
+import com.webuntis.dashboard.model.AbsenceTime
 import com.webuntis.dashboard.model.AbsencesMetaData
 import com.webuntis.dashboard.model.UiState
+import com.webuntis.dashboard.model.groupByDay
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.webuntis.dashboard.model.TimegridRow
 import java.time.LocalDate
 import java.time.LocalTime
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 enum class AbsenceFilter { ALL, EXCUSED, UNEXCUSED, PENDING }
 
+/** Which of the two absences views is currently shown — see [AbsencesFragment]'s toggle. */
+enum class AbsencesViewMode { MESSAGES, LIST }
+
 @HiltViewModel
 class AbsencesViewModel @Inject constructor(
     private val repository: WebUntisRepository,
-    private val appForegroundEvents: com.webuntis.dashboard.api.AppForegroundEvents
+    private val appForegroundEvents: com.webuntis.dashboard.api.AppForegroundEvents,
+    val activeAccountManager: com.webuntis.dashboard.api.ActiveAccountManager
 ) : ViewModel() {
 
     // Raw list from server (unfiltered)
     private val _allAbsences = MutableStateFlow<UiState<List<Absence>>>(UiState.Loading)
+
+    // Per-lesson breakdown backing the day-grouped "Liste der Abwesenheiten" view.
+    private val _allAbsenceTimes = MutableStateFlow<UiState<List<AbsenceTime>>>(UiState.Loading)
+    private val _dayGroups = MutableStateFlow<UiState<List<AbsenceDayGroup>>>(UiState.Loading)
+    val dayGroups: StateFlow<UiState<List<AbsenceDayGroup>>> = _dayGroups
+
+    private val _viewMode = MutableStateFlow(AbsencesViewMode.MESSAGES)
+    val viewMode: StateFlow<AbsencesViewMode> = _viewMode
 
     private val _meta = MutableStateFlow<AbsencesMetaData?>(null)
     val meta: StateFlow<AbsencesMetaData?> = _meta
@@ -51,22 +67,47 @@ class AbsencesViewModel @Inject constructor(
                 }
             }.collect { _state.value = it }
         }
+        // Re-group into days whenever the raw per-lesson breakdown changes
+        viewModelScope.launch {
+            _allAbsenceTimes.collect { raw ->
+                _dayGroups.value = when (raw) {
+                    is UiState.Success -> UiState.Success(raw.data.groupByDay())
+                    is UiState.Loading -> UiState.Loading
+                    is UiState.Error   -> UiState.Error(raw.message)
+                }
+            }
+        }
         load(forceRefresh = false)
         loadMeta()
         viewModelScope.launch {
             appForegroundEvents.onForegroundResume.collect { load(forceRefresh = true); loadMeta() }
         }
+        viewModelScope.launch {
+            activeAccountManager.current.drop(1).collect { load(forceRefresh = true); loadMeta() }
+        }
+    }
+
+    fun setViewMode(mode: AbsencesViewMode) {
+        _viewMode.value = mode
     }
 
     fun load(forceRefresh: Boolean = false) {
         viewModelScope.launch {
             if (forceRefresh || _allAbsences.value !is UiState.Success) {
                 _allAbsences.value = UiState.Loading
+                _allAbsenceTimes.value = UiState.Loading
             }
-            // Always fetch all absences; filtering is done client-side
+            // Both lists come from the same underlying request (see
+            // WebUntisRepository.fetchAbsencesAndTimes) — fetching them back-to-back only
+            // hits the network once, the second call is served from the shared cache entry
+            // the first one just (re-)populated.
             repository.getAbsences(forceRefresh).fold(
                 onSuccess = { _allAbsences.value = UiState.Success(it) },
                 onFailure = { _allAbsences.value = UiState.Error(it.message ?: "Fehler beim Laden") }
+            )
+            repository.getAbsenceTimes(forceRefresh = false).fold(
+                onSuccess = { _allAbsenceTimes.value = UiState.Success(it) },
+                onFailure = { _allAbsenceTimes.value = UiState.Error(it.message ?: "Fehler beim Laden") }
             )
         }
     }

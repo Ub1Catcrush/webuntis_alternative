@@ -301,6 +301,19 @@ interface WebUntisService {
         @Header("Authorization") authorization: String?
     ): Response<ResponseBody>
 
+    // Per-lesson breakdown (missedDays/missedHours/missedMins) behind the "Liste der
+    // Abwesenheiten" view — also returns the same "absences" array as above in one call.
+    @GET("api/classreg/absencetimes/student")
+    suspend fun getAbsenceTimes(
+        @Header("Authorization") authorization: String?,
+        @Query("startDate") startDate: String,
+        @Query("endDate") endDate: String,
+        @Query("studentId") studentId: Int,
+        @Query("excuseStatusId") excuseStatusId: Int = -1,
+        @Query("excludeAbsences") excludeAbsences: Boolean = false,
+        @Query("excludeLateness") excludeLateness: Boolean = false
+    ): Response<ResponseBody>
+
     @POST("api/classreg/absences/students/self")
     suspend fun createAbsence(
         @Header("Authorization") authorization: String?,

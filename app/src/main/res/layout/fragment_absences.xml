@@ -15,7 +15,35 @@
             android:layout_height="?attr/actionBarSize"
             app:title="@string/nav_absences"
             app:subtitleTextAppearance="@style/TextAppearance.Material3.BodySmall"
-            app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge" />
+            app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge"
+            app:menu="@menu/menu_account_switcher" />
+
+        <!-- Abwesenheits-Nachrichten <-> gruppierte Liste -->
+        <com.google.android.material.button.MaterialButtonToggleGroup
+            android:id="@+id/toggle_view_mode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:layout_marginBottom="8dp"
+            app:singleSelection="true"
+            app:selectionRequired="true">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_view_messages"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/absence_view_messages" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_view_list"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/absence_view_list" />
+
+        </com.google.android.material.button.MaterialButtonToggleGroup>
 
         <!-- Filter chip row -->
         <HorizontalScrollView

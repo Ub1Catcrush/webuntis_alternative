@@ -19,6 +19,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -37,7 +38,8 @@ data class HomeworkUiItem(
 @HiltViewModel
 class HomeworkViewModel @Inject constructor(
     private val repository: WebUntisRepository,
-    private val appForegroundEvents: com.webuntis.dashboard.api.AppForegroundEvents
+    private val appForegroundEvents: com.webuntis.dashboard.api.AppForegroundEvents,
+    val activeAccountManager: com.webuntis.dashboard.api.ActiveAccountManager
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<UiState<List<HomeworkUiItem>>>(UiState.Loading)
@@ -51,6 +53,7 @@ class HomeworkViewModel @Inject constructor(
     init {
         load()
         viewModelScope.launch { appForegroundEvents.onForegroundResume.collect { load(forceRefresh = true) } }
+        viewModelScope.launch { activeAccountManager.current.drop(1).collect { load(forceRefresh = true) } }
     }
 
     fun setShowPast(show: Boolean) {

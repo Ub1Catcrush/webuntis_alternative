@@ -81,7 +81,7 @@ class SettingsFragment : Fragment() {
                         loginViewModel.login(session.server, session.schoolname, creds.first, creds.second)
                     }
                     bindCurrentValues()
-                    if (result.secondUpdated) loginViewModel.primeSecondAccountState()
+                    if (result.secondUpdated) renderAdditionalAccountsList()
                 }
                 is com.webuntis.dashboard.api.SessionManager.ImportResult.Error ->
                     android.widget.Toast.makeText(requireContext(), result.message, android.widget.Toast.LENGTH_LONG).show()
@@ -269,10 +269,7 @@ class SettingsFragment : Fragment() {
         binding.btnSaveSecond.setOnClickListener {
             val label    = binding.inputSecondLabel.text.toString().trim()
             val username = binding.inputSecondUsername.text.toString().trim()
-            val typed    = binding.inputSecondPassword.text.toString()
-            val password = typed.ifBlank {
-                loginViewModel.sessionManager.secondAccount?.password ?: ""
-            }
+            val password = binding.inputSecondPassword.text.toString()
             if (username.isBlank() || password.isBlank()) {
                 binding.statusSecond.text = getString(R.string.settings_second_error_credentials)
                 binding.statusSecond.isVisible = true
@@ -281,9 +278,7 @@ class SettingsFragment : Fragment() {
             loginViewModel.saveSecondAccount(username, password, label)
         }
 
-        binding.btnRemoveSecond.setOnClickListener {
-            loginViewModel.removeSecondAccount()
-        }
+        renderAdditionalAccountsList()
 
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -296,27 +291,20 @@ class SettingsFragment : Fragment() {
                         }
                         is SecondAccountState.Saved -> {
                             binding.btnSaveSecond.isEnabled = true
-                            binding.btnRemoveSecond.isVisible = true
                             binding.statusSecond.text = getString(R.string.settings_second_saved_prefix, state.info)
                             binding.statusSecond.isVisible = true
-                            val stored = loginViewModel.sessionManager.secondAccount
-                            if (stored != null) {
-                                if (binding.inputSecondLabel.text.isNullOrBlank())
-                                    binding.inputSecondLabel.setText(stored.label)
-                                if (binding.inputSecondUsername.text.isNullOrBlank())
-                                    binding.inputSecondUsername.setText(stored.username)
-                                binding.inputSecondPasswordLayout.hint =
-                                    getString(R.string.settings_second_password_saved_hint)
-                            }
-                        }
-                        is SecondAccountState.Removed -> {
-                            binding.btnSaveSecond.isEnabled = true
-                            binding.btnRemoveSecond.isVisible = false
+                            // Clear the form so it's ready for the next child, rather than
+                            // looking like it's still showing/editing the one just added.
                             binding.inputSecondLabel.text?.clear()
                             binding.inputSecondUsername.text?.clear()
                             binding.inputSecondPassword.text?.clear()
+                            renderAdditionalAccountsList()
+                        }
+                        is SecondAccountState.Removed -> {
+                            binding.btnSaveSecond.isEnabled = true
                             binding.statusSecond.text = getString(R.string.settings_second_removed)
                             binding.statusSecond.isVisible = true
+                            renderAdditionalAccountsList()
                         }
                         is SecondAccountState.Error -> {
                             binding.btnSaveSecond.isEnabled = true
@@ -405,17 +393,56 @@ class SettingsFragment : Fragment() {
         binding.inputPassword.hint = if (loginViewModel.sessionManager.storedCredentials != null)
             getString(R.string.login_password_saved_hint)
         else getString(R.string.login_password_hint)
-        val second = loginViewModel.sessionManager.secondAccount
-        if (second != null) {
-            loginViewModel.primeSecondAccountState()
-            if (binding.inputSecondUsername.text.isNullOrBlank())
-                binding.inputSecondUsername.setText(second.username)
-            if (binding.inputSecondLabel.text.isNullOrBlank())
-                binding.inputSecondLabel.setText(second.label)
-            binding.inputSecondPasswordLayout.hint = getString(R.string.settings_second_password_saved_hint)
-            binding.btnRemoveSecond.isVisible = true
-        } else {
-            binding.inputSecondPasswordLayout.hint = getString(R.string.settings_second_password_hint)
+        renderAdditionalAccountsList()
+    }
+
+    /**
+     * Renders one row per configured additional (child) account into layout_additional_accounts,
+     * each with its own "Entfernen" button — replaces the single-account show/hide-remove-button
+     * approach now that there can be several. Built programmatically rather than via a
+     * RecyclerView + adapter: this list is short (a handful of children at most) and lives on an
+     * already-scrolling settings screen, so the extra machinery isn't worth it here.
+     */
+    private fun renderAdditionalAccountsList() {
+        val container = binding.layoutAdditionalAccounts
+        container.removeAllViews()
+        val accounts = loginViewModel.additionalAccounts
+        if (accounts.isEmpty()) {
+            val empty = android.widget.TextView(requireContext()).apply {
+                text = getString(R.string.settings_second_no_accounts)
+                setTextColor(androidx.core.content.ContextCompat.getColor(requireContext(), android.R.color.darker_gray))
+                textSize = 13f
+                setPadding(0, 0, 0, 12)
+            }
+            container.addView(empty)
+            return
+        }
+        accounts.forEach { account ->
+            val row = android.widget.LinearLayout(requireContext()).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, 0, 0, 12)
+            }
+            val info = buildString {
+                if (account.personName.isNotBlank()) append(account.personName) else append(account.username)
+                if (account.label.isNotBlank() && account.label != account.personName) {
+                    append(" (").append(account.label).append(")")
+                }
+            }
+            val label = android.widget.TextView(requireContext()).apply {
+                text = info
+                textSize = 14f
+                layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val removeBtn = com.google.android.material.button.MaterialButton(
+                requireContext(), null, com.google.android.material.R.attr.borderlessButtonStyle
+            ).apply {
+                text = getString(R.string.settings_second_remove_button)
+                setOnClickListener { loginViewModel.removeAdditionalAccount(account.key) }
+            }
+            row.addView(label)
+            row.addView(removeBtn)
+            container.addView(row)
         }
     }
 

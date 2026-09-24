@@ -14,6 +14,7 @@ import com.google.android.material.tabs.TabLayoutMediator
 import com.webuntis.dashboard.R
 import com.webuntis.dashboard.databinding.DialogLessonDetailBinding
 import com.webuntis.dashboard.databinding.FragmentTimetableBinding
+import com.webuntis.dashboard.ui.common.setupAccountSwitcher
 import com.webuntis.dashboard.model.Lesson
 import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.AndroidEntryPoint
@@ -42,6 +43,7 @@ class TimetableFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         binding.swipeRefresh.setOnRefreshListener { viewModel.loadAll(forceRefresh = true) }
+        binding.toolbar.setupAccountSwitcher(viewModel.activeAccountManager)
 
         binding.btnPrevDays.setOnClickListener { viewModel.shiftDays(-5) }
         binding.btnNextDays.setOnClickListener { viewModel.shiftDays(+5) }

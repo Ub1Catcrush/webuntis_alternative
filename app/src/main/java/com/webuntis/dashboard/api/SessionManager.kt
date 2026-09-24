@@ -215,7 +215,10 @@ class SessionManager @Inject constructor(
         get() = prefs.getInt(KEY_CLASS_ID, 0)
         set(v) = prefs.edit().putInt(KEY_CLASS_ID, v).apply()
 
-    // ── Second account ────────────────────────────────────────────────────────
+    // ── Additional (child) accounts ─────────────────────────────────────────────
+    // A parent can have more than one child at the school, each needing its own separate
+    // login (this school setup doesn't link multiple students under one parent login the way
+    // some do) — so this is a list, not a single optional slot.
 
     data class SecondAccount(
         val username:   String,
@@ -230,36 +233,75 @@ class SessionManager @Inject constructor(
             12   -> "Eltern"
             else -> "Unbekannt"
         }
+        /** Stable identity for this account, independent of its (editable) display label —
+         *  used as the key everywhere an additional account needs to be looked up or compared
+         *  (message accountLabel matching, the active-account selector, dedup, etc.). */
+        val key: String get() = username
     }
 
-    var secondAccount: SecondAccount?
+    /**
+     * All additional (non-primary) accounts. Persisted as one JSON array (unlike most fields
+     * here, which use individual keys) since the count is variable. Reads also handle a
+     * one-time migration from the old single-account storage (pre-multi-child support), so
+     * nobody loses their already-configured second account when updating.
+     */
+    var additionalAccounts: List<SecondAccount>
         get() {
-            val u = prefs.getString(KEY_SECOND_USER, null) ?: return null
-            val p = prefs.getString(KEY_SECOND_PASS, null) ?: return null
-            return SecondAccount(
-                username   = u,
-                password   = p,
+            val json = prefs.getString(KEY_ADDITIONAL_ACCOUNTS, null)
+            if (json != null) {
+                return try {
+                    overlayGson.fromJson<List<SecondAccount>>(
+                        json, object : com.google.gson.reflect.TypeToken<List<SecondAccount>>() {}.type
+                    ) ?: emptyList()
+                } catch (e: Exception) { emptyList() }
+            }
+            // One-time migration from the old single-account keys.
+            val legacyUser = prefs.getString(KEY_SECOND_USER, null)
+            val legacyPass = prefs.getString(KEY_SECOND_PASS, null)
+            if (legacyUser == null || legacyPass == null) return emptyList()
+            val migrated = listOf(SecondAccount(
+                username   = legacyUser,
+                password   = legacyPass,
                 label      = prefs.getString(KEY_SECOND_LABEL, "") ?: "",
                 personType = prefs.getInt(KEY_SECOND_TYPE, 0),
                 personName = prefs.getString(KEY_SECOND_NAME, "") ?: ""
-            )
+            ))
+            additionalAccounts = migrated // persists under the new key, below
+            prefs.edit()
+                .remove(KEY_SECOND_USER).remove(KEY_SECOND_PASS)
+                .remove(KEY_SECOND_LABEL).remove(KEY_SECOND_TYPE).remove(KEY_SECOND_NAME)
+                .apply()
+            return migrated
         }
         set(value) {
-            if (value == null) {
-                prefs.edit()
-                    .remove(KEY_SECOND_USER).remove(KEY_SECOND_PASS)
-                    .remove(KEY_SECOND_LABEL).remove(KEY_SECOND_TYPE).remove(KEY_SECOND_NAME)
-                    .apply()
-            } else {
-                prefs.edit()
-                    .putString(KEY_SECOND_USER,  value.username)
-                    .putString(KEY_SECOND_PASS,  value.password)
-                    .putString(KEY_SECOND_LABEL, value.label)
-                    .putInt(KEY_SECOND_TYPE,     value.personType)
-                    .putString(KEY_SECOND_NAME,  value.personName)
-                    .apply()
-            }
+            prefs.edit().putString(KEY_ADDITIONAL_ACCOUNTS, overlayGson.toJson(value)).apply()
         }
+
+    fun addOrUpdateAdditionalAccount(account: SecondAccount) {
+        val current = additionalAccounts.toMutableList()
+        val idx = current.indexOfFirst { it.key == account.key }
+        if (idx >= 0) current[idx] = account else current.add(account)
+        additionalAccounts = current
+    }
+
+    fun removeAdditionalAccount(key: String) {
+        additionalAccounts = additionalAccounts.filterNot { it.key == key }
+        if (activeAccountKey == key) activeAccountKey = null
+    }
+
+    /**
+     * Which account's data (timetable, absences, homework, classbook, events) is currently
+     * being browsed — null means the primary account. Independent of which account messages
+     * are sent/composed as, since that's chosen per-message instead (see MessagesViewModel).
+     */
+    var activeAccountKey: String?
+        get() = plainPrefs.getString(KEY_ACTIVE_ACCOUNT, null)
+        set(value) { plainPrefs.edit().putString(KEY_ACTIVE_ACCOUNT, value).apply() }
+
+    /** The currently active additional account, or null if browsing the primary account, or
+     *  if [activeAccountKey] no longer matches any configured account (it was removed). */
+    val activeAccount: SecondAccount?
+        get() = activeAccountKey?.let { key -> additionalAccounts.firstOrNull { it.key == key } }
 
     // ── UI settings (plainPrefs) ──────────────────────────────────────────────
 
@@ -420,15 +462,17 @@ class SessionManager @Inject constructor(
                 addProperty("personType", it.personType)
             }
             storedCredentials?.let { addProperty("password", it.second) }
-            secondAccount?.let { acc ->
-                add("secondAccount", com.google.gson.JsonObject().apply {
-                    addProperty("username",   acc.username)
-                    addProperty("password",   acc.password)
-                    addProperty("label",      acc.label)
-                    addProperty("personType", acc.personType)
-                    addProperty("personName", acc.personName)
-                })
-            }
+            add("secondAccounts", com.google.gson.JsonArray().apply {
+                additionalAccounts.forEach { acc ->
+                    add(com.google.gson.JsonObject().apply {
+                        addProperty("username",   acc.username)
+                        addProperty("password",   acc.password)
+                        addProperty("label",      acc.label)
+                        addProperty("personType", acc.personType)
+                        addProperty("personName", acc.personName)
+                    })
+                }
+            })
             addProperty("timetableDays",      timetableDays)
             addProperty("showLongSubjects",   showLongSubjects)
             addProperty("showLongTeachers",   showLongTeachers)
@@ -477,19 +521,40 @@ class SessionManager @Inject constructor(
                 primaryUpdated = true
             }
 
-            obj.getAsJsonObject("secondAccount")?.let { sa ->
+            // New format: an array (supports multiple children). Falls back to the old
+            // single-object "secondAccount" key so backups made before multi-child support
+            // still import correctly.
+            val importedAccounts = mutableListOf<SecondAccount>()
+            obj.getAsJsonArray("secondAccounts")?.forEach { el ->
+                val sa = el.asJsonObject
                 val u = sa.get("username")?.asString
                 val p = sa.get("password")?.asString
                 if (!u.isNullOrBlank() && !p.isNullOrBlank()) {
-                    secondAccount = SecondAccount(
+                    importedAccounts += SecondAccount(
                         username   = u,
                         password   = p,
                         label      = sa.get("label")?.asString ?: "",
                         personType = sa.get("personType")?.asInt ?: 0,
                         personName = sa.get("personName")?.asString ?: ""
                     )
-                    secondUpdated = true
                 }
+            }
+            obj.getAsJsonObject("secondAccount")?.let { sa ->
+                val u = sa.get("username")?.asString
+                val p = sa.get("password")?.asString
+                if (!u.isNullOrBlank() && !p.isNullOrBlank()) {
+                    importedAccounts += SecondAccount(
+                        username   = u,
+                        password   = p,
+                        label      = sa.get("label")?.asString ?: "",
+                        personType = sa.get("personType")?.asInt ?: 0,
+                        personName = sa.get("personName")?.asString ?: ""
+                    )
+                }
+            }
+            if (importedAccounts.isNotEmpty()) {
+                importedAccounts.forEach { addOrUpdateAdditionalAccount(it) }
+                secondUpdated = true
             }
 
             obj.get("timetableDays")?.asInt?.let      { timetableDays      = it }
@@ -557,6 +622,8 @@ class SessionManager @Inject constructor(
         private const val KEY_SECOND_LABEL = "second_label"
         private const val KEY_SECOND_TYPE  = "second_type"
         private const val KEY_SECOND_NAME  = "second_name"
+        private const val KEY_ADDITIONAL_ACCOUNTS = "additional_accounts"
+        private const val KEY_ACTIVE_ACCOUNT = "active_account_key"
         private const val KEY_TIMETABLE_DAYS        = "timetable_days"
         private const val KEY_SHOW_LONG_SUBJECTS     = "show_long_subjects"
         private const val KEY_SHOW_LONG_TEACHERS     = "show_long_teachers"

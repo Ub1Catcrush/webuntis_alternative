@@ -81,11 +81,9 @@ class LoginViewModel @Inject constructor(
     private val _secondAccountState = MutableStateFlow<SecondAccountState>(SecondAccountState.Idle)
     val secondAccountState: StateFlow<SecondAccountState> = _secondAccountState
 
-    /**
-     * Called by SettingsFragment on open when a second account already exists in
-     * SessionManager. Primes the StateFlow with Saved so the UI collector renders
-     * the stored account without requiring a Force Close / re-launch.
-     */
+    /** All configured additional (child) accounts, for the list shown in Settings. */
+    val additionalAccounts: List<SessionManager.SecondAccount> get() = sessionManager.additionalAccounts
+
     /** Re-fetches the timetable after a settings change (e.g. day count). */
     fun refreshTimetable() {
         viewModelScope.launch { repository.getTwoSchoolDays(forceRefresh = true) }
@@ -103,36 +101,19 @@ class LoginViewModel @Inject constructor(
         repository.clearDataCachesOnly()
     }
 
-    fun primeSecondAccountState() {
-        val second = sessionManager.secondAccount ?: return
-        val info = buildString {
-            if (second.personName.isNotBlank()) append(second.personName)
-            if (second.accountTypeLabel.isNotBlank()) {
-                if (isNotEmpty()) append(" · ")
-                append(second.accountTypeLabel)
-            }
-            if (second.label.isNotBlank()) {
-                if (isNotEmpty()) append(" (")
-                append(second.label)
-                append(")")
-            }
-            if (isEmpty()) append(second.username)
-        }
-        _secondAccountState.value = SecondAccountState.Saved(info)
-    }
-
+    /** Adds/verifies a new additional (child) account — does not affect existing ones. */
     fun saveSecondAccount(username: String, password: String, label: String) {
         viewModelScope.launch {
             _secondAccountState.value = SecondAccountState.Loading
-            repository.verifyAndSaveSecondAccount(username, password, label).fold(
+            repository.verifyAndAddAdditionalAccount(username, password, label).fold(
                 onSuccess = { info -> _secondAccountState.value = SecondAccountState.Saved(info) },
                 onFailure = { _secondAccountState.value = SecondAccountState.Error(it.message ?: "Fehler beim Laden") }
             )
         }
     }
 
-    fun removeSecondAccount() {
-        sessionManager.secondAccount = null
+    fun removeAdditionalAccount(key: String) {
+        sessionManager.removeAdditionalAccount(key)
         _secondAccountState.value = SecondAccountState.Removed
     }
 }

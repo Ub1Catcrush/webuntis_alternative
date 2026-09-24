@@ -236,14 +236,14 @@ class MessagesViewModel @Inject constructor(
         subject: String,
         content: String,
         recipientIds: List<Int>,
-        fromSecondAccount: Boolean,
+        fromAccountKey: String?,
         replyToMsgId: Int? = null
     ) {
         viewModelScope.launch {
             _composeState.value = ComposeState.Sending
             repository.sendMessage(subject, content, recipientIds,
                 allowReply = true, replyToMsgId = replyToMsgId,
-                fromSecondAccount = fromSecondAccount
+                fromAccountKey = fromAccountKey
             ).fold(
                 onSuccess = {
                     _composeState.value = ComposeState.Sent
@@ -257,7 +257,7 @@ class MessagesViewModel @Inject constructor(
     fun saveDraft(
         subject: String,
         content: String,
-        fromSecondAccount: Boolean,
+        fromAccountKey: String?,
         draftId: Int? = null
     ) {
         viewModelScope.launch {
@@ -266,7 +266,7 @@ class MessagesViewModel @Inject constructor(
                 subject = subject,
                 content = content,
                 draftId = draftId,
-                fromSecondAccount = fromSecondAccount,
+                fromAccountKey = fromAccountKey,
                 attachments = _pendingAttachments.value.filter { it.second.isNotEmpty() },
                 removedAttachmentIds = removedAttachmentIds
             ).fold(
