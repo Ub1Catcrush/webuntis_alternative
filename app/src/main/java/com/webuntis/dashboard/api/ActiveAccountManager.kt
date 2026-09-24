@@ -36,12 +36,10 @@ class ActiveAccountManager @Inject constructor(
      *  switcher UI) don't each need their own separate SessionManager injection just for this. */
     val additionalAccounts: List<SessionManager.SecondAccount> get() = sessionManager.additionalAccounts
 
-    /** Human-readable label for a given key ("Hauptaccount" for null, the child's label otherwise). */
+    /** Human-readable label for a given key — [SessionManager.mainAccountLabel] for the
+     *  primary account (null), the child's own label/name otherwise. */
     fun labelFor(key: String?): String {
-        if (key == null) {
-            val session = sessionManager.session
-            return session?.personName?.takeIf { it.isNotBlank() } ?: session?.accountTypeLabel ?: "Hauptaccount"
-        }
+        if (key == null) return sessionManager.mainAccountLabel
         val account = sessionManager.additionalAccounts.firstOrNull { it.key == key } ?: return key
         return account.label.ifBlank { account.personName.ifBlank { account.username } }
     }

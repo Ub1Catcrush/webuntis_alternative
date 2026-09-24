@@ -263,7 +263,7 @@ class MessagesFragment : Fragment() {
         // position 0 is always the primary account; positions 1..N map 1:1 to
         // additionalAccounts, so accountSpinner.selectedItemPosition - 1 indexes into it.
         val additionalAccounts = viewModel.sessionManager.additionalAccounts
-        val primaryName = viewModel.sessionManager.session?.personName ?: "Hauptaccount"
+        val primaryName = viewModel.sessionManager.mainAccountLabel
         val accountSpinner = Spinner(ctx)
         if (additionalAccounts.isNotEmpty()) {
             val names = listOf(primaryName) + additionalAccounts.map { acc ->

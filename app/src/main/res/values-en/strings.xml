@@ -191,7 +191,7 @@
     <string name="settings_saved_ok">✓ Successfully saved and reconnected</string>
     <string name="settings_timetable_days_label">Displayed school days</string>
     <string name="settings_second_account_title">Additional children</string>
-    <string name="settings_second_account_notice">Messages from every added child are merged with the main account\'s into one inbox.</string>
+    <string name="settings_second_account_notice">Messages from every added child are merged with the main account into one inbox.</string>
     <string name="settings_second_add_another">Add another child</string>
     <string name="settings_second_label_hint">Label (e.g. Simon)</string>
     <string name="settings_second_username_hint">Username (student)</string>
@@ -281,6 +281,8 @@
 
     <!-- Settings section headers -->
     <string name="settings_section_account">Main Account</string>
+    <string name="settings_main_alias_hint_default">Display name (default: %1$s)</string>
+    <string name="settings_main_alias_helper">Shown everywhere the account would otherwise be shown (account switcher, messages) — e.g. with multiple children.</string>
     <string name="settings_section_second_account">Additional Children</string>
     <string name="settings_section_timetable">Timetable</string>
     <string name="settings_section_display">Display</string>

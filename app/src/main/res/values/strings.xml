@@ -284,6 +284,8 @@
 
     <!-- Settings section headers -->
     <string name="settings_section_account">Hauptaccount</string>
+    <string name="settings_main_alias_hint_default">Bezeichnung (Standard: %1$s)</string>
+    <string name="settings_main_alias_helper">Wird überall angezeigt, wo sonst der Account stehen würde (Kontenauswahl, Nachrichten) – z. B. bei mehreren Kindern.</string>
     <string name="settings_section_second_account">Weitere Kinder</string>
     <string name="settings_section_timetable">Stundenplan</string>
     <string name="settings_section_display">Anzeige</string>

@@ -389,6 +389,16 @@ class SettingsFragment : Fragment() {
             binding.inputSchoolname.setText(session.schoolname)
             binding.inputUsername.setText(
                 loginViewModel.sessionManager.storedCredentials?.first ?: session.username)
+            binding.inputMainAlias.setText(loginViewModel.sessionManager.mainAccountAlias ?: "")
+            // Shows what will be used if the field is left empty, without duplicating the
+            // actual default logic (SessionManager.mainAccountLabel is the single source of
+            // truth for it — this just previews it for the currently signed-in role).
+            val defaultAlias = when {
+                session.isParent  -> "Eltern"
+                session.isStudent -> "Kind"
+                else              -> session.accountTypeLabel
+            }
+            binding.inputMainAlias.hint = getString(R.string.settings_main_alias_hint_default, defaultAlias)
         }
         binding.inputPassword.hint = if (loginViewModel.sessionManager.storedCredentials != null)
             getString(R.string.login_password_saved_hint)
@@ -461,6 +471,8 @@ class SettingsFragment : Fragment() {
             binding.statusText.isVisible = true
             return
         }
+        // Persisted independently of the login call itself — doesn't need a re-login to apply.
+        loginViewModel.sessionManager.mainAccountAlias = binding.inputMainAlias.text?.toString()
         // Do NOT clearSession() here — it would wipe storedCredentials before login() saves them
         loginViewModel.login(server, schoolname, username, password)
     }

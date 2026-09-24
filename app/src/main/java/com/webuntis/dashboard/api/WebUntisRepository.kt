@@ -1873,8 +1873,7 @@ class WebUntisRepository @Inject constructor(
     ) {
         try {
             val session      = sessionManager.session
-            val primaryLabel = session?.personName?.takeIf { it.isNotBlank() }
-                ?: session?.accountTypeLabel ?: "Hauptaccount"
+            val primaryLabel = sessionManager.mainAccountLabel
 
             val token   = getAuthHeader() ?: return@withCacheOrFetch Result.failure(Exception("Nicht authentifiziert"))
             val primary = fetchMessagesWithToken(token, primaryLabel)
@@ -2021,7 +2020,7 @@ class WebUntisRepository @Inject constructor(
     ) {
         try {
             val session      = sessionManager.session
-            val primaryLabel = session?.personName?.takeIf { it.isNotBlank() } ?: session?.accountTypeLabel ?: "Hauptaccount"
+            val primaryLabel = sessionManager.mainAccountLabel
             val token        = getAuthHeader() ?: return@withCacheOrFetch Result.failure(Exception("Nicht authentifiziert"))
             val primary      = fetchFolderMessages(token, "SENT", primaryLabel)
             val server       = session?.server
@@ -2041,7 +2040,7 @@ class WebUntisRepository @Inject constructor(
     ) {
         try {
             val session      = sessionManager.session
-            val primaryLabel = session?.personName?.takeIf { it.isNotBlank() } ?: session?.accountTypeLabel ?: "Hauptaccount"
+            val primaryLabel = sessionManager.mainAccountLabel
             val token        = getAuthHeader() ?: return@withCacheOrFetch Result.failure(Exception("Nicht authentifiziert"))
             val primary      = fetchFolderMessages(token, "DRAFTS", primaryLabel)
             val server       = session?.server

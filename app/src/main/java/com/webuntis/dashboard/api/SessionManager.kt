@@ -303,6 +303,40 @@ class SessionManager @Inject constructor(
     val activeAccount: SecondAccount?
         get() = activeAccountKey?.let { key -> additionalAccounts.firstOrNull { it.key == key } }
 
+    /**
+     * User-editable display name for the primary (main) account. Persisted independently of
+     * the session itself (survives clearSession()/re-login, just like storedCredentials) but
+     * cleared on a full clearAll() logout, since a fresh login is a different account. Blank
+     * or unset falls back to a role-based default — see [mainAccountLabel] — so most users
+     * never need to touch this at all.
+     */
+    var mainAccountAlias: String?
+        get() = plainPrefs.getString(KEY_MAIN_ACCOUNT_ALIAS, null)?.takeIf { it.isNotBlank() }
+        set(value) {
+            val trimmed = value?.trim()
+            if (trimmed.isNullOrBlank()) plainPrefs.edit().remove(KEY_MAIN_ACCOUNT_ALIAS).apply()
+            else plainPrefs.edit().putString(KEY_MAIN_ACCOUNT_ALIAS, trimmed).apply()
+        }
+
+    /**
+     * Effective label for the primary account, used everywhere its identity is shown instead
+     * of its raw login email: the account switcher dialog, the "Von:"/accountLabel tagging on
+     * messages (getMessages/getSentMessages/getDrafts), and the compose dialog's account
+     * picker. Precedence: the user's manual [mainAccountAlias] override, else a role-based
+     * default ("Eltern" for a parent login, "Kind" for the student's own login), else the
+     * generic account-type label (teacher/unknown), else a final "Hauptaccount" fallback for
+     * when there's no session at all yet.
+     */
+    val mainAccountLabel: String get() {
+        mainAccountAlias?.let { return it }
+        val s = session ?: return "Hauptaccount"
+        return when {
+            s.isParent  -> "Eltern"
+            s.isStudent -> "Kind"
+            else        -> s.accountTypeLabel
+        }
+    }
+
     // ── UI settings (plainPrefs) ──────────────────────────────────────────────
 
     var timetableDays: Int
@@ -624,6 +658,7 @@ class SessionManager @Inject constructor(
         private const val KEY_SECOND_NAME  = "second_name"
         private const val KEY_ADDITIONAL_ACCOUNTS = "additional_accounts"
         private const val KEY_ACTIVE_ACCOUNT = "active_account_key"
+        private const val KEY_MAIN_ACCOUNT_ALIAS = "main_account_alias"
         private const val KEY_TIMETABLE_DAYS        = "timetable_days"
         private const val KEY_SHOW_LONG_SUBJECTS     = "show_long_subjects"
         private const val KEY_SHOW_LONG_TEACHERS     = "show_long_teachers"
