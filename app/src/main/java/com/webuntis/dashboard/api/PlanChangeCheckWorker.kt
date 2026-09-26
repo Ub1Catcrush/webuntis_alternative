@@ -98,9 +98,7 @@ class PlanChangeCheckWorker @AssistedInject constructor(
     }
 
     private fun readSnapshot(): ChangeSnapshot? =
-        sessionManager.lastNotifiedSnapshot?.let { json ->
-            try { gson.fromJson(json, ChangeSnapshot::class.java) } catch (e: Exception) { null }
-        }
+        ChangeSnapshot.parse(sessionManager.lastNotifiedSnapshot, gson)
 
     private fun persist(snapshot: ChangeSnapshot) {
         sessionManager.lastNotifiedSnapshot = gson.toJson(snapshot)

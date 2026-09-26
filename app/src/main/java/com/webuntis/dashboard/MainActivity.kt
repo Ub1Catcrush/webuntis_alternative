@@ -139,9 +139,7 @@ class MainActivity : AppCompatActivity() {
 
         val sessionManager = loginViewModel.sessionManager
         val json = sessionManager.lastNotifiedSnapshot ?: return
-        val snapshot = try {
-            com.google.gson.Gson().fromJson(json, ChangeSnapshot::class.java)
-        } catch (e: Exception) { return }
+        val snapshot = ChangeSnapshot.parse(json) ?: return
         val hasUnseen = snapshot.recentChanges.any { it.timestampMs > sessionManager.changesLastViewedAt }
         if (hasUnseen) navController.navigate(R.id.recentChangesDialogFragment)
     }

@@ -1060,7 +1060,7 @@ data class AbsenceTime(
     // WebUntis counts a "Fehlstunde" as one missed lesson period, not a clock hour — so
     // missedHours is almost always 0 or 1 per period, while missedMins holds the period's
     // actual duration. missedDays == 1 marks exactly one period per reported absence per day
-    // as the one that "counts" that day as a whole absence day (see groupByDay below).
+    // as the one that "counts" that day as a whole absence day (see groupIntoAbsenceEntries below).
     val missedDays: Int = 0,
     val missedHours: Int = 0,
     val missedMins: Int = 0,
@@ -1068,95 +1068,122 @@ data class AbsenceTime(
     val text: String? = null
 )
 
-/** One rendered row in the day-grouped absence list (see [List<AbsenceTime>.groupByDay]). */
-sealed class AbsenceDayRow {
-    /** A day where at least one period is flagged missedDays=1 — WebUntis treats the whole
-     *  day as a single absence day, so every period of that reported absence on that day is
-     *  merged into one summary row instead of being listed period by period. */
-    data class FullDay(
+/** One rendered entry in the "Liste der Abwesenheiten" view (see
+ *  [List<AbsenceTime>.groupIntoAbsenceEntries]). */
+sealed class AbsenceListEntry {
+    /** One or more consecutive full-absence days belonging to the same reported absence
+     *  (same absenceId), merged into a single entry spanning [startDate]..[endDate] —
+     *  [startDate] == [endDate] for a single full day. Always one continuous reported period
+     *  even if it crosses a weekend with no lessons (and therefore no AbsenceTime entries) in
+     *  between, since every period here already shares one absenceId to begin with. */
+    data class FullDayRange(
+        val startDate: Int,
+        val endDate: Int,
+        val dayCount: Int,
         val subjects: List<String>,
-        val startTime: Int,
-        val endTime: Int,
         val periodCount: Int,
         val reasonName: String?,
         val statusName: String?,
         val excused: Boolean,
         val counting: Boolean,
         val text: String?
-    ) : AbsenceDayRow()
+    ) : AbsenceListEntry()
 
-    /** A single missed period on a day with no missedDays=1 flag (e.g. a late arrival or one
-     *  missed lesson) — shown on its own line, labelled "1 Fehlstunde" when missedHours == 1,
-     *  otherwise with the missed minutes. */
-    data class Partial(
-        val subjectName: String?,
-        val startTime: Int,
-        val endTime: Int,
-        val missedHours: Int,
-        val missedMins: Int,
-        val reasonName: String?,
-        val statusName: String?,
-        val excused: Boolean,
-        val counting: Boolean,
-        val text: String?
-    ) : AbsenceDayRow()
-}
+    /** A single day with one or more non-full-day periods (e.g. a late arrival) — not part of
+     *  any [FullDayRange], shown as its own date header with one row per period. */
+    data class PartialDay(
+        val date: Int,
+        val rows: List<Row>
+    ) : AbsenceListEntry() {
+        data class Row(
+            val subjectName: String?,
+            val startTime: Int,
+            val endTime: Int,
+            val missedHours: Int,
+            val missedMins: Int,
+            val reasonName: String?,
+            val statusName: String?,
+            val excused: Boolean,
+            val counting: Boolean,
+            val text: String?
+        )
+    }
 
-data class AbsenceDayGroup(
-    val date: Int,
-    val rows: List<AbsenceDayRow>
-) {
-    val dateLabel: String get() {
-        val d = date.toString()
-        return if (d.length == 8) "${d.substring(6)}.${d.substring(4, 6)}.${d.substring(0, 4)}" else d
+    /** Newest-first sort key: the last calendar day this entry touches. */
+    val sortDate: Int get() = when (this) {
+        is FullDayRange -> endDate
+        is PartialDay   -> date
     }
 }
 
+fun untisDateLabel(date: Int): String {
+    val d = date.toString()
+    return if (d.length == 8) "${d.substring(6)}.${d.substring(4, 6)}.${d.substring(0, 4)}" else d
+}
+
 /**
- * Groups raw per-lesson [AbsenceTime] entries into a newest-day-first list of [AbsenceDayGroup],
- * applying the missedDays=1 "whole day" consolidation described on [AbsenceDayRow.FullDay].
+ * Groups raw per-lesson [AbsenceTime] entries into a newest-first list of [AbsenceListEntry].
+ *
+ * A day counts as a "full absence day" *for a given reported absence* (absenceId) when any of
+ * that absence's periods on that day carries missedDays == 1 — WebUntis flags exactly one
+ * period per absenceId per day that way to mark the day as counting as a whole absence day.
+ * ALL of one absenceId's full days are merged into a single [AbsenceListEntry.FullDayRange]
+ * spanning its earliest to latest full day: since an absenceId is one continuous reported
+ * absence by definition, this is correct even across a weekend with no school (and therefore
+ * no AbsenceTime rows at all) in between — grouping by absenceId sidesteps having to detect
+ * calendar-day adjacency at all. A day that isn't a full day for its absenceId (e.g. a single
+ * lateness) instead becomes an [AbsenceListEntry.PartialDay] row, grouped by calendar date.
  */
-fun List<AbsenceTime>.groupByDay(): List<AbsenceDayGroup> =
-    groupBy { it.date }
-        .toSortedMap(compareByDescending { it })
-        .map { (date, entries) ->
-            val sorted = entries.sortedBy { it.startTime }
-            val isFullDay = sorted.any { it.missedDays == 1 }
-            val rows: List<AbsenceDayRow> = if (isFullDay) {
-                // Multiple reported absences can land on the same day (e.g. a late arrival plus
-                // a later sickness report) — group by absenceId so each keeps its own
-                // reason/status/text instead of blending them together.
-                sorted.groupBy { it.absenceId }.map { (_, group) ->
-                    AbsenceDayRow.FullDay(
-                        subjects = group.mapNotNull { it.subjectName }.distinct(),
-                        startTime = group.minOf { it.startTime },
-                        endTime = group.maxOf { it.endTime },
-                        periodCount = group.size,
-                        reasonName = group.first().absenceReasonName,
-                        statusName = group.first().excuseStatusName,
-                        excused = group.first().excused == true,
-                        counting = group.any { it.counting == true },
-                        text = group.firstOrNull { !it.text.isNullOrBlank() }?.text
-                    )
-                }
-            } else {
-                sorted.map { e ->
-                    AbsenceDayRow.Partial(
-                        subjectName = e.subjectName,
-                        startTime = e.startTime,
-                        endTime = e.endTime,
-                        missedHours = e.missedHours,
-                        missedMins = e.missedMins,
-                        reasonName = e.absenceReasonName,
-                        statusName = e.excuseStatusName,
-                        excused = e.excused == true,
-                        counting = e.counting == true,
-                        text = e.text
-                    )
-                }
-            }
-            AbsenceDayGroup(date, rows)
+fun List<AbsenceTime>.groupIntoAbsenceEntries(): List<AbsenceListEntry> {
+    val ranges = mutableListOf<AbsenceListEntry.FullDayRange>()
+    val partialByDate = mutableMapOf<Int, MutableList<AbsenceListEntry.PartialDay.Row>>()
+
+    groupBy { it.absenceId }.forEach { (_, entriesForAbsence) ->
+        val byDate = entriesForAbsence.groupBy { it.date }
+        val fullDates = byDate.filterValues { dayEntries -> dayEntries.any { it.missedDays == 1 } }
+
+        if (fullDates.isNotEmpty()) {
+            val allFullDayEntries = fullDates.values.flatten()
+            val repr = allFullDayEntries.first()
+            ranges += AbsenceListEntry.FullDayRange(
+                startDate = fullDates.keys.min(),
+                endDate = fullDates.keys.max(),
+                dayCount = fullDates.size,
+                subjects = allFullDayEntries.mapNotNull { it.subjectName }.distinct(),
+                periodCount = allFullDayEntries.size,
+                reasonName = repr.absenceReasonName,
+                statusName = repr.excuseStatusName,
+                excused = repr.excused == true,
+                counting = allFullDayEntries.any { it.counting == true },
+                text = allFullDayEntries.firstOrNull { !it.text.isNullOrBlank() }?.text
+            )
         }
+
+        (byDate - fullDates.keys).forEach { (date, dayEntries) ->
+            val bucket = partialByDate.getOrPut(date) { mutableListOf() }
+            dayEntries.sortedBy { it.startTime }.forEach { e ->
+                bucket += AbsenceListEntry.PartialDay.Row(
+                    subjectName = e.subjectName,
+                    startTime = e.startTime,
+                    endTime = e.endTime,
+                    missedHours = e.missedHours,
+                    missedMins = e.missedMins,
+                    reasonName = e.absenceReasonName,
+                    statusName = e.excuseStatusName,
+                    excused = e.excused == true,
+                    counting = e.counting == true,
+                    text = e.text
+                )
+            }
+        }
+    }
+
+    val partialDays = partialByDate.map { (date, rows) ->
+        AbsenceListEntry.PartialDay(date, rows.sortedBy { it.startTime })
+    }
+
+    return (ranges + partialDays).sortedByDescending { it.sortDate }
+}
 
 // ─── TIMEGRID ─────────────────────────────────────────────────────────────────
 

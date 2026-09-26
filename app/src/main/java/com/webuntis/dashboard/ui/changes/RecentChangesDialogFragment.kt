@@ -39,9 +39,7 @@ class RecentChangesDialogFragment : DialogFragment() {
         val binding = DialogRecentChangesBinding.inflate(LayoutInflater.from(requireContext()))
 
         val gson = Gson()
-        val snapshot = sessionManager.lastNotifiedSnapshot?.let { json ->
-            try { gson.fromJson(json, ChangeSnapshot::class.java) } catch (e: Exception) { null }
-        }
+        val snapshot = sessionManager.lastNotifiedSnapshot?.let { json -> ChangeSnapshot.parse(json, gson) }
         val cutoff = System.currentTimeMillis() - ChangeSnapshot.NOTIFIED_TTL_MS
         val entries = snapshot?.recentChanges
             ?.filter { it.timestampMs >= cutoff }

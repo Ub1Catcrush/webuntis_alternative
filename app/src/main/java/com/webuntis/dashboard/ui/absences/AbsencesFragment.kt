@@ -34,8 +34,8 @@ import com.webuntis.dashboard.databinding.ItemAbsenceTimeBinding
 import com.webuntis.dashboard.model.Absence
 import com.webuntis.dashboard.model.AbsenceCluster
 import com.webuntis.dashboard.model.clusterConsecutive
-import com.webuntis.dashboard.model.AbsenceDayGroup
-import com.webuntis.dashboard.model.AbsenceDayRow
+import com.webuntis.dashboard.model.AbsenceListEntry
+import com.webuntis.dashboard.model.untisDateLabel
 import com.webuntis.dashboard.model.UiState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
@@ -156,7 +156,7 @@ class AbsencesFragment : Fragment() {
         }
     }
 
-    private fun renderDayGroupsState(state: UiState<List<AbsenceDayGroup>>, dayAdapter: AbsenceDayAdapter) {
+    private fun renderDayGroupsState(state: UiState<List<AbsenceListEntry>>, dayAdapter: AbsenceDayAdapter) {
         when (state) {
             is UiState.Loading -> {
                 binding.progressBar.isVisible = true
@@ -172,8 +172,15 @@ class AbsencesFragment : Fragment() {
                 } else {
                     binding.recyclerView.isVisible = true
                     binding.emptyView.isVisible = false
-                    dayAdapter.submitList(state.data.flatMap { group ->
-                        listOf(AbsenceListItem.Header(group)) + group.rows.map { AbsenceListItem.Row(it) }
+                    dayAdapter.submitList(state.data.flatMap { entry ->
+                        when (entry) {
+                            is AbsenceListEntry.FullDayRange -> listOf(AbsenceListItem.RangeCard(entry))
+                            is AbsenceListEntry.PartialDay -> {
+                                val fehlstunden = entry.rows.count { it.missedHours == 1 }
+                                listOf(AbsenceListItem.DayHeader(entry.date, fehlstunden)) +
+                                    entry.rows.map { AbsenceListItem.PartialRow(it) }
+                            }
+                        }
                     })
                 }
             }
@@ -532,11 +539,14 @@ class AbsenceAdapter(private val onEdit: (Absence) -> Unit) : ListAdapter<Absenc
     }
 }
 
-/** Flattened row type for the day-grouped "Liste der Abwesenheiten" RecyclerView: a date
- *  header followed by that day's rows (see [com.webuntis.dashboard.model.AbsenceDayGroup]). */
+/** Flattened row type for the "Liste der Abwesenheiten" RecyclerView: either a merged
+ *  full-day-range card (already carries its own date/range, no separate header needed — see
+ *  [com.webuntis.dashboard.model.AbsenceListEntry.FullDayRange]), or a date header followed by
+ *  that day's non-full-day periods ([com.webuntis.dashboard.model.AbsenceListEntry.PartialDay]). */
 private sealed class AbsenceListItem {
-    data class Header(val group: AbsenceDayGroup) : AbsenceListItem()
-    data class Row(val row: AbsenceDayRow) : AbsenceListItem()
+    data class RangeCard(val range: AbsenceListEntry.FullDayRange) : AbsenceListItem()
+    data class DayHeader(val date: Int, val fehlstunden: Int) : AbsenceListItem()
+    data class PartialRow(val row: AbsenceListEntry.PartialDay.Row) : AbsenceListItem()
 }
 
 private fun untisTimeLabel(t: Int): String =
@@ -545,8 +555,8 @@ private fun untisTimeLabel(t: Int): String =
 private class AbsenceDayAdapter : ListAdapter<AbsenceListItem, RecyclerView.ViewHolder>(Diff) {
 
     override fun getItemViewType(position: Int): Int = when (getItem(position)) {
-        is AbsenceListItem.Header -> TYPE_HEADER
-        is AbsenceListItem.Row    -> TYPE_ROW
+        is AbsenceListItem.DayHeader -> TYPE_HEADER
+        is AbsenceListItem.RangeCard, is AbsenceListItem.PartialRow -> TYPE_ROW
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder =
@@ -557,68 +567,60 @@ private class AbsenceDayAdapter : ListAdapter<AbsenceListItem, RecyclerView.View
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val item = getItem(position)) {
-            is AbsenceListItem.Header -> (holder as HeaderVH).bind(item.group)
-            is AbsenceListItem.Row    -> (holder as RowVH).bind(item.row)
+            is AbsenceListItem.DayHeader  -> (holder as HeaderVH).bind(item)
+            is AbsenceListItem.RangeCard  -> (holder as RowVH).bindRange(item.range)
+            is AbsenceListItem.PartialRow -> (holder as RowVH).bindPartial(item.row)
         }
     }
 
     class HeaderVH(private val b: ItemAbsenceDayHeaderBinding) : RecyclerView.ViewHolder(b.root) {
-        fun bind(group: AbsenceDayGroup) {
+        fun bind(header: AbsenceListItem.DayHeader) {
             val ctx = b.root.context
-            b.textDate.text = group.dateLabel
-            // A full absence day is naturally counted in whole days, not lesson periods —
-            // "6 Fehlstunden" for a day off school doesn't read the way "1 Fehltag" does.
-            // Mixed groups (e.g. a late-arrival period plus an unrelated full day) show both.
-            val fullDays = group.rows.filterIsInstance<AbsenceDayRow.FullDay>().size
-            val partialPeriods = group.rows.filterIsInstance<AbsenceDayRow.Partial>()
-                .count { it.missedHours == 1 }
-            b.textDayTotal.text = listOfNotNull(
-                fullDays.takeIf { it > 0 }?.let {
-                    ctx.resources.getQuantityString(R.plurals.absence_missed_days, it, it)
-                },
-                partialPeriods.takeIf { it > 0 }?.let {
-                    ctx.resources.getQuantityString(R.plurals.absence_missed_periods, it, it)
-                }
-            ).joinToString(" · ")
+            b.textDate.text = untisDateLabel(header.date)
+            // Only non-full-day periods land under a date header at all (a full/merged day
+            // is its own RangeCard with no header) — so this only ever needs to show the
+            // "Fehlstunde" count, never a "Fehltag" one.
+            b.textDayTotal.text = header.fehlstunden.takeIf { it > 0 }?.let {
+                ctx.resources.getQuantityString(R.plurals.absence_missed_periods, it, it)
+            } ?: ""
         }
     }
 
     class RowVH(private val b: ItemAbsenceTimeBinding) : RecyclerView.ViewHolder(b.root) {
-        fun bind(row: AbsenceDayRow) {
+
+        /** A merged full-day (or multi-day) absence — shows its own date/range directly since
+         *  it isn't nested under a date header. */
+        fun bindRange(range: AbsenceListEntry.FullDayRange) {
             val ctx = b.root.context
+            val dateText = if (range.startDate == range.endDate) untisDateLabel(range.startDate)
+                else "${untisDateLabel(range.startDate)} – ${untisDateLabel(range.endDate)}"
+            b.textTime.text = "${ctx.getString(R.string.label_absence_fullday)} · $dateText"
+            b.textSubjects.text = range.subjects.joinToString(", ")
+            // Counted in whole days, not lesson periods — "6 Fehlstunden" for a week off school
+            // doesn't read the way "5 Fehltage" does.
+            b.textAmount.text = ctx.resources.getQuantityString(
+                R.plurals.absence_missed_days, range.dayCount, range.dayCount
+            )
+            bindCommon(range.reasonName, range.statusName, range.excused, range.counting, range.text)
+        }
 
-            val reasonName: String?
-            val statusName: String?
-            val excused: Boolean
-            val counting: Boolean
-            val noteText: String?
+        /** A single non-full-day period on its own line under a date header (e.g. a late
+         *  arrival) — labelled "1 Fehlstunde" when missedHours == 1, otherwise the minutes. */
+        fun bindPartial(row: AbsenceListEntry.PartialDay.Row) {
+            val ctx = b.root.context
+            b.textTime.text = "${untisTimeLabel(row.startTime)} – ${untisTimeLabel(row.endTime)}"
+            b.textSubjects.text = row.subjectName?.takeIf { it.isNotBlank() } ?: "–"
+            b.textAmount.text = if (row.missedHours == 1)
+                ctx.getString(R.string.absence_missed_one_period)
+            else
+                ctx.getString(R.string.absence_missed_minutes, row.missedMins)
+            bindCommon(row.reasonName, row.statusName, row.excused, row.counting, row.text)
+        }
 
-            when (row) {
-                is AbsenceDayRow.FullDay -> {
-                    b.textTime.text = "${ctx.getString(R.string.label_absence_fullday)} · " +
-                        "${untisTimeLabel(row.startTime)} – ${untisTimeLabel(row.endTime)}"
-                    b.textSubjects.text = row.subjects.joinToString(", ")
-                    // A full day off is one Fehltag, regardless of how many periods that
-                    // happened to span — showing it as "%d Fehlstunden" (periodCount) reads
-                    // like a partial absence, which this specifically isn't.
-                    b.textAmount.text = ctx.resources.getQuantityString(
-                        R.plurals.absence_missed_days, 1, 1
-                    )
-                    reasonName = row.reasonName; statusName = row.statusName
-                    excused = row.excused; counting = row.counting; noteText = row.text
-                }
-                is AbsenceDayRow.Partial -> {
-                    b.textTime.text = "${untisTimeLabel(row.startTime)} – ${untisTimeLabel(row.endTime)}"
-                    b.textSubjects.text = row.subjectName?.takeIf { it.isNotBlank() } ?: "–"
-                    b.textAmount.text = if (row.missedHours == 1)
-                        ctx.getString(R.string.absence_missed_one_period)
-                    else
-                        ctx.getString(R.string.absence_missed_minutes, row.missedMins)
-                    reasonName = row.reasonName; statusName = row.statusName
-                    excused = row.excused; counting = row.counting; noteText = row.text
-                }
-            }
-
+        private fun bindCommon(
+            reasonName: String?, statusName: String?, excused: Boolean, counting: Boolean, noteText: String?
+        ) {
+            val ctx = b.root.context
             b.textReason.text = reasonName?.takeIf { it.isNotBlank() } ?: "–"
             val note = noteText?.takeIf { it.isNotBlank() && it != reasonName }
             b.textNote.text = note

@@ -5,11 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.webuntis.dashboard.api.CreateAbsenceRequest
 import com.webuntis.dashboard.api.WebUntisRepository
 import com.webuntis.dashboard.model.Absence
-import com.webuntis.dashboard.model.AbsenceDayGroup
+import com.webuntis.dashboard.model.AbsenceListEntry
 import com.webuntis.dashboard.model.AbsenceTime
 import com.webuntis.dashboard.model.AbsencesMetaData
 import com.webuntis.dashboard.model.UiState
-import com.webuntis.dashboard.model.groupByDay
+import com.webuntis.dashboard.model.groupIntoAbsenceEntries
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.webuntis.dashboard.model.TimegridRow
 import java.time.LocalDate
@@ -38,8 +38,8 @@ class AbsencesViewModel @Inject constructor(
 
     // Per-lesson breakdown backing the day-grouped "Liste der Abwesenheiten" view.
     private val _allAbsenceTimes = MutableStateFlow<UiState<List<AbsenceTime>>>(UiState.Loading)
-    private val _dayGroups = MutableStateFlow<UiState<List<AbsenceDayGroup>>>(UiState.Loading)
-    val dayGroups: StateFlow<UiState<List<AbsenceDayGroup>>> = _dayGroups
+    private val _dayGroups = MutableStateFlow<UiState<List<AbsenceListEntry>>>(UiState.Loading)
+    val dayGroups: StateFlow<UiState<List<AbsenceListEntry>>> = _dayGroups
 
     private val _viewMode = MutableStateFlow(AbsencesViewMode.MESSAGES)
     val viewMode: StateFlow<AbsencesViewMode> = _viewMode
@@ -71,7 +71,7 @@ class AbsencesViewModel @Inject constructor(
         viewModelScope.launch {
             _allAbsenceTimes.collect { raw ->
                 _dayGroups.value = when (raw) {
-                    is UiState.Success -> UiState.Success(raw.data.groupByDay())
+                    is UiState.Success -> UiState.Success(raw.data.groupIntoAbsenceEntries())
                     is UiState.Loading -> UiState.Loading
                     is UiState.Error   -> UiState.Error(raw.message)
                 }
