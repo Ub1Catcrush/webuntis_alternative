@@ -918,6 +918,100 @@ data class Absence(
     }
     val isFullDay: Boolean get() = startTime == 800 && (endTime == 1600 || endTime == 2000)
 }
+
+/**
+ * One or more consecutive [Absence] entries sharing the same reason/status/time-of-day,
+ * collapsed into a single row for the flat "Abwesenheiten" list (see AbsenceAdapter in
+ * AbsencesFragment). WebUntis's attendance system frequently logs one Absence record per
+ * calendar day even for what's really a single illness spanning a week — without this, that
+ * shows up as five near-identical rows in a row instead of one "Mo – Fr" entry.
+ */
+data class AbsenceCluster(val entries: List<Absence>) {
+    init { require(entries.isNotEmpty()) { "AbsenceCluster needs at least one entry" } }
+
+    private val first: Absence get() = entries.first()
+    private val last: Absence get() = entries.last()
+
+    /** Stable across recompositions of the same underlying entries — used for DiffUtil and to
+     *  remember which clusters are expanded (see AbsenceAdapter). */
+    val id: Int get() = first.id
+    val isMerged: Boolean get() = entries.size > 1
+    val isFullDay: Boolean get() = first.isFullDay
+    val reason: String? get() = first.reason
+    val text: String? get() = first.text
+    val excuseStatus: String? get() = first.excuseStatus
+    val isExcused: Boolean? get() = first.isExcused
+    val createdUser: String? get() = first.createdUser
+    /** Editing a merged range as one unit would be ambiguous (which day's fields would a
+     *  change even apply to?) — only a single, unmerged, editable entry can be edited directly. */
+    val canEdit: Boolean get() = !isMerged && first.canEdit == true
+    val singleAbsence: Absence? get() = if (isMerged) null else first
+
+    val timeLabel: String get() = first.timeLabel
+
+    /** Number of distinct calendar days covered. Sums each entry's own span rather than just
+     *  entries.size, since a single entry can itself already be multi-day if reported that way. */
+    val dayCount: Int get() = entries.sumOf { absenceDayCount(it) }
+
+    val dateLabel: String get() {
+        val s = first.startDate?.toString() ?: return ""
+        val e = last.endDate?.toString() ?: s
+        val fmt = { d: String -> if (d.length == 8) "${d.substring(6)}.${d.substring(4, 6)}.${d.substring(0, 4)}" else d }
+        return if (s == e) fmt(s) else "${fmt(s)} – ${fmt(e)}"
+    }
+}
+
+private fun absenceDayCount(a: Absence): Int {
+    val s = a.startDate ?: return 1
+    val e = a.endDate ?: s
+    if (s == e) return 1
+    return try {
+        val sd = untisIntToLocalDateForAbsence(s)
+        val ed = untisIntToLocalDateForAbsence(e)
+        (java.time.temporal.ChronoUnit.DAYS.between(sd, ed) + 1).toInt().coerceAtLeast(1)
+    } catch (e: Exception) { 1 }
+}
+
+private fun untisIntToLocalDateForAbsence(v: Int): java.time.LocalDate {
+    val s = v.toString().padStart(8, '0')
+    return java.time.LocalDate.of(s.substring(0, 4).toInt(), s.substring(4, 6).toInt(), s.substring(6, 8).toInt())
+}
+
+/** True if [next] starts on the next SCHOOL day after [prevEnd] — i.e. allows a Friday-to-Monday
+ *  gap to still count as consecutive, since Saturday/Sunday were never going to have a lesson
+ *  to be absent from in the first place. */
+private fun isNextSchoolDay(prevEnd: Int?, next: Int?): Boolean {
+    if (prevEnd == null || next == null) return false
+    return try {
+        var d = untisIntToLocalDateForAbsence(prevEnd).plusDays(1)
+        while (d.dayOfWeek == java.time.DayOfWeek.SATURDAY || d.dayOfWeek == java.time.DayOfWeek.SUNDAY) {
+            d = d.plusDays(1)
+        }
+        d == untisIntToLocalDateForAbsence(next)
+    } catch (e: Exception) { false }
+}
+
+/** Groups consecutive, identically-reasoned/statused/timed absences into [AbsenceCluster]s,
+ *  newest range first (matching the day-grouped "Liste der Abwesenheiten" view's order). */
+fun List<Absence>.clusterConsecutive(): List<AbsenceCluster> {
+    val sorted = sortedBy { it.startDate ?: 0 }
+    val clusters = mutableListOf<MutableList<Absence>>()
+    for (absence in sorted) {
+        val prev = clusters.lastOrNull()?.last()
+        val matches = prev != null &&
+            prev.reason == absence.reason &&
+            prev.text == absence.text &&
+            prev.excuseStatus == absence.excuseStatus &&
+            prev.isExcused == absence.isExcused &&
+            prev.startTime == absence.startTime &&
+            prev.endTime == absence.endTime &&
+            prev.canEdit == absence.canEdit &&
+            isNextSchoolDay(prev.endDate, absence.startDate)
+        if (matches) clusters.last().add(absence) else clusters.add(mutableListOf(absence))
+    }
+    return clusters.map { AbsenceCluster(it) }.sortedByDescending { it.entries.last().startDate ?: 0 }
+}
+
 // ─── ABSENCES META ────────────────────────────────────────────────────────────
 
 data class AbsenceReason(

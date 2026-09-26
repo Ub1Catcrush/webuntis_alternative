@@ -32,6 +32,8 @@ import com.webuntis.dashboard.databinding.ItemAbsenceBinding
 import com.webuntis.dashboard.databinding.ItemAbsenceDayHeaderBinding
 import com.webuntis.dashboard.databinding.ItemAbsenceTimeBinding
 import com.webuntis.dashboard.model.Absence
+import com.webuntis.dashboard.model.AbsenceCluster
+import com.webuntis.dashboard.model.clusterConsecutive
 import com.webuntis.dashboard.model.AbsenceDayGroup
 import com.webuntis.dashboard.model.AbsenceDayRow
 import com.webuntis.dashboard.model.UiState
@@ -61,13 +63,7 @@ class AbsencesFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val adapter = AbsenceAdapter { absence ->
-            if (absence.canEdit == true) {
-                showEditAbsenceDialog(absence)
-            } else {
-                Toast.makeText(requireContext(), getString(R.string.absence_cannot_edit), Toast.LENGTH_SHORT).show()
-            }
-        }
+        val adapter = AbsenceAdapter { absence -> showEditAbsenceDialog(absence) }
         val dayAdapter = AbsenceDayAdapter()
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.swipeRefresh.setOnRefreshListener { viewModel.load(forceRefresh = true) }
@@ -148,7 +144,7 @@ class AbsencesFragment : Fragment() {
                 } else {
                     binding.recyclerView.isVisible = true
                     binding.emptyView.isVisible = false
-                    adapter.submitList(state.data)
+                    adapter.submitList(state.data.clusterConsecutive())
                 }
             }
             is UiState.Error -> {
@@ -457,38 +453,82 @@ class AbsencesFragment : Fragment() {
     override fun onDestroyView() { super.onDestroyView(); _binding = null }
 }
 
-class AbsenceAdapter(private val onClick: (Absence) -> Unit) : ListAdapter<Absence, AbsenceAdapter.VH>(Diff) {
+class AbsenceAdapter(private val onEdit: (Absence) -> Unit) : ListAdapter<AbsenceCluster, AbsenceAdapter.VH>(Diff) {
+
+    /** Which clusters (by AbsenceCluster.id) are currently expanded. Held here rather than per
+     *  ViewHolder, since ListAdapter recycles/recreates ViewHolders but this adapter instance
+     *  persists for the fragment's lifetime — a collapsed row must stay collapsed after
+     *  scrolling it off-screen and back, and vice versa. */
+    private val expandedIds = mutableSetOf<Int>()
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-        VH(ItemAbsenceBinding.inflate(LayoutInflater.from(parent.context), parent, false), onClick)
+        VH(ItemAbsenceBinding.inflate(LayoutInflater.from(parent.context), parent, false)) { id ->
+            if (!expandedIds.add(id)) expandedIds.remove(id)
+            notifyItemChanged(currentList.indexOfFirst { it.id == id })
+        }
 
-    override fun onBindViewHolder(holder: VH, position: Int) = holder.bind(getItem(position))
+    override fun onBindViewHolder(holder: VH, position: Int) {
+        val cluster = getItem(position)
+        holder.bind(cluster, expandedIds.contains(cluster.id), onEdit)
+    }
 
-    class VH(private val b: ItemAbsenceBinding, private val onClick: (Absence) -> Unit) : RecyclerView.ViewHolder(b.root) {
-        fun bind(a: Absence) {
+    class VH(
+        private val b: ItemAbsenceBinding,
+        private val onToggle: (Int) -> Unit
+    ) : RecyclerView.ViewHolder(b.root) {
+        fun bind(cluster: AbsenceCluster, expanded: Boolean, onEdit: (Absence) -> Unit) {
             val ctx = b.root.context
-            b.root.setOnClickListener { onClick(a) }
-            b.textDate.text   = a.dateLabel
-            b.textTime.text   = if (a.isFullDay) ctx.getString(R.string.label_absence_fullday) else a.timeLabel
-            b.textReason.text = a.reason?.takeIf { it.isNotBlank() }
-                ?: a.text?.takeIf { it.isNotBlank() } ?: "–"
-            val noteText = a.text?.takeIf { it.isNotBlank() && it != a.reason }
-            b.textNote.text = noteText
-            b.textNote.isVisible = !noteText.isNullOrBlank()
-            b.textStatus.text = a.excuseStatus ?: "–"
+            b.layoutHeader.setOnClickListener { onToggle(cluster.id) }
 
-            val excused  = a.isExcused == true
-            val isApp    = a.excuseStatus?.contains("APP", ignoreCase = true) == true
-            val bgRes    = when { isApp -> R.color.yellow_container; excused -> R.color.green_container; else -> R.color.red_container }
-            val textRes  = when { isApp -> R.color.yellow; excused -> R.color.green; else -> R.color.red }
+            b.textDate.text = cluster.dateLabel
+            b.textTime.text = when {
+                // A full-day absence (or a merged run of them) is naturally counted in whole
+                // days, not lesson periods — showing "6 Fehlstunden" for a day off doesn't mean
+                // anything to a parent the way "1 Fehltag" does.
+                cluster.isFullDay -> ctx.resources.getQuantityString(
+                    R.plurals.absence_missed_days, cluster.dayCount, cluster.dayCount
+                )
+                else -> cluster.timeLabel
+            }
+
+            b.textStatus.text = cluster.excuseStatus ?: "–"
+            val excused = cluster.isExcused == true
+            val isApp   = cluster.excuseStatus?.contains("APP", ignoreCase = true) == true
+            val bgRes   = when { isApp -> R.color.yellow_container; excused -> R.color.green_container; else -> R.color.red_container }
+            val textRes = when { isApp -> R.color.yellow; excused -> R.color.green; else -> R.color.red }
             b.textStatus.setBackgroundResource(bgRes)
             b.textStatus.setTextColor(ContextCompat.getColor(ctx, textRes))
-            b.root.alpha = if (a.canEdit == true) 1.0f else 0.85f
+            b.root.alpha = if (cluster.isMerged || cluster.canEdit) 1.0f else 0.85f
+
+            b.iconChevron.rotation = if (expanded) 180f else 0f
+            b.layoutDetails.isVisible = expanded
+            if (!expanded) return
+
+            b.textReason.text = cluster.reason?.takeIf { it.isNotBlank() }
+                ?: cluster.text?.takeIf { it.isNotBlank() } ?: "–"
+            val noteText = cluster.text?.takeIf { it.isNotBlank() && it != cluster.reason }
+            b.textNote.text = noteText
+            b.textNote.isVisible = !noteText.isNullOrBlank()
+
+            // For a merged range, spell out which individual days it covers — the header only
+            // shows the outer range, which (skipping a weekend, say) isn't necessarily obvious.
+            if (cluster.isMerged) {
+                val days = cluster.entries.joinToString(", ") { it.dateLabel }
+                b.textMergedDays.text = ctx.getString(R.string.absence_cluster_days_prefix, days)
+                b.textMergedDays.isVisible = true
+            } else {
+                b.textMergedDays.isVisible = false
+            }
+
+            val single = cluster.singleAbsence
+            b.btnEdit.isVisible = cluster.canEdit && single != null
+            if (single != null) b.btnEdit.setOnClickListener { onEdit(single) }
         }
     }
 
-    object Diff : DiffUtil.ItemCallback<Absence>() {
-        override fun areItemsTheSame(a: Absence, b: Absence) = a.id == b.id
-        override fun areContentsTheSame(a: Absence, b: Absence) = a == b
+    object Diff : DiffUtil.ItemCallback<AbsenceCluster>() {
+        override fun areItemsTheSame(a: AbsenceCluster, b: AbsenceCluster) = a.id == b.id
+        override fun areContentsTheSame(a: AbsenceCluster, b: AbsenceCluster) = a == b
     }
 }
 
@@ -526,18 +566,20 @@ private class AbsenceDayAdapter : ListAdapter<AbsenceListItem, RecyclerView.View
         fun bind(group: AbsenceDayGroup) {
             val ctx = b.root.context
             b.textDate.text = group.dateLabel
-            // Quick at-a-glance total: full absence days count their periodCount, a single
-            // missed period counts as 1 when missedHours == 1 — pure lateness (minutes only)
-            // isn't added here, it's shown per-row instead.
-            val totalPeriods = group.rows.sumOf { row ->
-                when (row) {
-                    is AbsenceDayRow.FullDay -> row.periodCount
-                    is AbsenceDayRow.Partial -> if (row.missedHours == 1) 1 else 0
+            // A full absence day is naturally counted in whole days, not lesson periods —
+            // "6 Fehlstunden" for a day off school doesn't read the way "1 Fehltag" does.
+            // Mixed groups (e.g. a late-arrival period plus an unrelated full day) show both.
+            val fullDays = group.rows.filterIsInstance<AbsenceDayRow.FullDay>().size
+            val partialPeriods = group.rows.filterIsInstance<AbsenceDayRow.Partial>()
+                .count { it.missedHours == 1 }
+            b.textDayTotal.text = listOfNotNull(
+                fullDays.takeIf { it > 0 }?.let {
+                    ctx.resources.getQuantityString(R.plurals.absence_missed_days, it, it)
+                },
+                partialPeriods.takeIf { it > 0 }?.let {
+                    ctx.resources.getQuantityString(R.plurals.absence_missed_periods, it, it)
                 }
-            }
-            b.textDayTotal.text = if (totalPeriods > 0)
-                ctx.resources.getQuantityString(R.plurals.absence_missed_periods, totalPeriods, totalPeriods)
-            else ""
+            ).joinToString(" · ")
         }
     }
 
@@ -556,8 +598,11 @@ private class AbsenceDayAdapter : ListAdapter<AbsenceListItem, RecyclerView.View
                     b.textTime.text = "${ctx.getString(R.string.label_absence_fullday)} · " +
                         "${untisTimeLabel(row.startTime)} – ${untisTimeLabel(row.endTime)}"
                     b.textSubjects.text = row.subjects.joinToString(", ")
+                    // A full day off is one Fehltag, regardless of how many periods that
+                    // happened to span — showing it as "%d Fehlstunden" (periodCount) reads
+                    // like a partial absence, which this specifically isn't.
                     b.textAmount.text = ctx.resources.getQuantityString(
-                        R.plurals.absence_missed_periods, row.periodCount, row.periodCount
+                        R.plurals.absence_missed_days, 1, 1
                     )
                     reasonName = row.reasonName; statusName = row.statusName
                     excused = row.excused; counting = row.counting; noteText = row.text

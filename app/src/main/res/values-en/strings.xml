@@ -121,6 +121,7 @@
     <string name="label_no_absences">No absences recorded ✅</string>
     <string name="label_no_absences_short">No absences</string>
     <string name="action_filter">Filter</string>
+    <string name="action_edit">Edit</string>
     <string name="fab_add_absence">Add absence</string>
     <string name="fab_new_message">New message</string>
     <string name="dialog_absence_section_start">Start</string>
@@ -149,6 +150,11 @@
         <item quantity="one">%d missed period</item>
         <item quantity="other">%d missed periods</item>
     </plurals>
+    <plurals name="absence_missed_days">
+        <item quantity="one">%d missed day</item>
+        <item quantity="other">%d missed days</item>
+    </plurals>
+    <string name="absence_cluster_days_prefix">Includes: %s</string>
     <string name="btn_cancel">Cancel</string>
     <string name="btn_save">Save</string>
 
@@ -293,6 +299,9 @@
     <string name="settings_battery_optimization_btn">Disable battery optimization</string>
     <string name="settings_battery_optimization_desc">Without this exemption, the system kills the background check early on many devices (especially Samsung, Xiaomi), so no notifications arrive.</string>
     <string name="settings_battery_optimization_failed">Couldn\'t open the setting. Please disable battery optimization for this app manually in your device\'s battery settings.</string>
+    <string name="settings_autostart_btn">Enable autostart</string>
+    <string name="settings_autostart_desc">On this device (Xiaomi/Redmi/POCO, Huawei/Honor, Oppo/Realme/OnePlus, Vivo, etc.) the battery exemption alone often isn\'t enough — the app also needs permission to start in the background, otherwise the background check never runs at all.</string>
+    <string name="settings_autostart_failed">Couldn\'t open the autostart setting automatically. Please look for \"Autostart\" or \"Manage app launch\" for this app in your device settings.</string>
     <string name="settings_check_now_btn">Check for changes now</string>
     <string name="settings_check_now_disabled">Please enable notifications first.</string>
     <string name="settings_check_now_running">Checking…</string>

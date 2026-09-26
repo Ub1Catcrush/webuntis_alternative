@@ -48,23 +48,23 @@ class WebUntisApp : Application(), Configuration.Provider {
     private inner class ForegroundRefreshTracker : ActivityLifecycleCallbacksAdapter() {
         private var startedCount = 0
         private var backgroundedAt: Long? = null
+        /** True until the very first onActivityStarted — a cold process start should trigger an
+         *  immediate check too (see checkAndNotify below), not just a resume-from-background,
+         *  otherwise changes that happened while the app was fully killed only surface once the
+         *  next periodic slot (up to 15 min) happens to run. */
+        private var isFirstStart = true
 
         override fun onActivityStarted(activity: Activity) {
             startedCount++
             if (startedCount != 1) return
+            val coldStart = isFirstStart
+            isFirstStart = false
             val bgAt = backgroundedAt
             backgroundedAt = null
-            if (bgAt == null) return
-            if (System.currentTimeMillis() - bgAt < FOREGROUND_REFRESH_THRESHOLD_MS) return
+            if (!coldStart && (bgAt == null || System.currentTimeMillis() - bgAt < FOREGROUND_REFRESH_THRESHOLD_MS)) return
 
             appForegroundEvents.notifyForegroundResume()
-            // Also kick the change-check worker immediately instead of waiting for its next
-            // periodic slot (up to 15 min) — otherwise a change that happened while
-            // backgrounded wouldn't be notified about until well after the user is already
-            // back in the app and would rather just see it on screen.
-            if (sessionManager.notificationsEnabled) {
-                NotificationScheduler.checkNow(this@WebUntisApp)
-            }
+            checkAndNotify()
         }
 
         override fun onActivityStopped(activity: Activity) {
@@ -72,6 +72,18 @@ class WebUntisApp : Application(), Configuration.Provider {
             if (startedCount == 0 && !activity.isChangingConfigurations) {
                 backgroundedAt = System.currentTimeMillis()
             }
+        }
+    }
+
+    /** Kicks the change-check worker immediately instead of waiting for its next periodic slot
+     *  (up to 15 min) — otherwise a change that happened while backgrounded, or while the app
+     *  was fully killed (cold start), wouldn't be notified about until well after the user is
+     *  already back in the app and would rather just see it on screen. See also
+     *  MainActivity.checkAndShowUnseenChanges(), which surfaces the result in-app as a backup
+     *  for whenever the OS/ROM suppresses the system notification outright. */
+    private fun checkAndNotify() {
+        if (sessionManager.notificationsEnabled) {
+            NotificationScheduler.checkNow(this)
         }
     }
 

@@ -631,6 +631,25 @@
                         android:visibility="gone" />
 
                     <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_autostart"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/settings_autostart_btn"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/text_autostart_hint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/settings_autostart_desc"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:visibility="gone" />
+
+                    <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_check_now"
                         style="@style/Widget.Material3.Button.TextButton"
                         android:layout_width="wrap_content"

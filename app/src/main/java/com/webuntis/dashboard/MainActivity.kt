@@ -19,10 +19,13 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
+import com.webuntis.dashboard.api.AppForegroundEvents
+import com.webuntis.dashboard.api.ChangeSnapshot
 import com.webuntis.dashboard.api.UpdateManager
 import com.webuntis.dashboard.databinding.ActivityMainBinding
 import com.webuntis.dashboard.ui.login.LoginViewModel
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -37,6 +40,9 @@ class MainActivity : AppCompatActivity() {
 
     @Inject
     lateinit var updateManager: UpdateManager
+
+    @Inject
+    lateinit var appForegroundEvents: AppForegroundEvents
 
     private val navItems = listOf(
         NavItem(R.id.timetableFragment,  R.drawable.ic_calendar, R.string.nav_timetable),
@@ -86,12 +92,58 @@ class MainActivity : AppCompatActivity() {
                     } else if (!loggedIn && current != R.id.loginFragment) {
                         navController.navigate(R.id.loginFragment)
                     }
+                    // Only meaningful once actually past the login screen — see
+                    // checkAndShowUnseenChanges() for why this can't just run unconditionally
+                    // right after onCreate (the login-check navigation above hasn't settled yet
+                    // at that point, even when the user is already logged in).
+                    if (loggedIn) checkAndShowUnseenChanges()
                 }
             }
         }
 
         // Automatic update check on app launch
         checkUpdatesSilently()
+
+        // In-app fallback for missed changes: WebUntisApp already kicks an immediate
+        // PlanChangeCheckWorker run on cold start / returning from the background (see
+        // ForegroundRefreshTracker), but that only helps if the OS actually lets the system
+        // notification through — some ROMs (MIUI/Poco and similar aggressive battery managers
+        // in particular) can suppress it even with every permission granted. This instead reads
+        // the same persisted result directly and, if there's anything the user hasn't seen yet,
+        // opens the "Neuigkeiten" dialog itself — independent of whether a system notification
+        // ever showed up. The isLoggedIn collector above already covers the cold-start case (a
+        // background run may have recorded something before this launch); this covers a few
+        // seconds after each subsequent foreground-resume event, giving the just-kicked-off
+        // check time to actually finish.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                appForegroundEvents.onForegroundResume.collect {
+                    delay(4000)
+                    checkAndShowUnseenChanges()
+                }
+            }
+        }
+    }
+
+    /**
+     * Shows the "Neuigkeiten" dialog (RecentChangesDialogFragment) if the persisted
+     * ChangeSnapshot has entries newer than SessionManager.changesLastViewedAt — i.e. changes
+     * the background worker already found and recorded, but the user hasn't looked at yet.
+     * Safe to call often: it's a no-op when there's nothing new, when the login screen is
+     * showing, or when the dialog is already open.
+     */
+    private fun checkAndShowUnseenChanges() {
+        if (!::navController.isInitialized) return
+        val current = navController.currentDestination?.id
+        if (current == null || current == R.id.loginFragment || current == R.id.recentChangesDialogFragment) return
+
+        val sessionManager = loginViewModel.sessionManager
+        val json = sessionManager.lastNotifiedSnapshot ?: return
+        val snapshot = try {
+            com.google.gson.Gson().fromJson(json, ChangeSnapshot::class.java)
+        } catch (e: Exception) { return }
+        val hasUnseen = snapshot.recentChanges.any { it.timestampMs > sessionManager.changesLastViewedAt }
+        if (hasUnseen) navController.navigate(R.id.recentChangesDialogFragment)
     }
 
     private fun checkUpdatesSilently() {

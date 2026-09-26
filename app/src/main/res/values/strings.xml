@@ -123,6 +123,7 @@
     <string name="label_no_absences">Keine Abwesenheiten eingetragen ✅</string>
     <string name="label_no_absences_short">Keine Abwesenheiten</string>
     <string name="action_filter">Filtern</string>
+    <string name="action_edit">Bearbeiten</string>
     <string name="fab_add_absence">Abwesenheit hinzufügen</string>
     <string name="fab_new_message">Neue Nachricht</string>
     <string name="dialog_absence_section_start">Beginn</string>
@@ -151,6 +152,11 @@
         <item quantity="one">%d Fehlstunde</item>
         <item quantity="other">%d Fehlstunden</item>
     </plurals>
+    <plurals name="absence_missed_days">
+        <item quantity="one">%d Fehltag</item>
+        <item quantity="other">%d Fehltage</item>
+    </plurals>
+    <string name="absence_cluster_days_prefix">Enthält: %s</string>
     <string name="btn_cancel">Abbrechen</string>
     <string name="btn_save">Speichern</string>
 
@@ -296,6 +302,9 @@
     <string name="settings_battery_optimization_btn">Akku-Optimierung deaktivieren</string>
     <string name="settings_battery_optimization_desc">Ohne diese Ausnahme beendet das System die Hintergrundprüfung auf vielen Geräten (v.a. Samsung, Xiaomi) vorzeitig, sodass keine Benachrichtigungen ankommen.</string>
     <string name="settings_battery_optimization_failed">Einstellung konnte nicht geöffnet werden. Bitte manuell in den Akku-Einstellungen des Geräts für diese App die Optimierung deaktivieren.</string>
+    <string name="settings_autostart_btn">Autostart aktivieren</string>
+    <string name="settings_autostart_desc">Auf diesem Gerät (Xiaomi/Redmi/POCO, Huawei/Honor, Oppo/Realme/OnePlus, Vivo o.ä.) reicht die Akku-Ausnahme allein oft nicht — die App braucht zusätzlich die Erlaubnis, im Hintergrund zu starten, sonst läuft die Hintergrundprüfung gar nicht erst an.</string>
+    <string name="settings_autostart_failed">Autostart-Einstellung konnte nicht automatisch geöffnet werden. Bitte manuell in den Geräteeinstellungen nach \"Autostart\" oder \"App-Start verwalten\" für diese App suchen.</string>
     <string name="settings_check_now_btn">Jetzt auf Änderungen prüfen</string>
     <string name="settings_check_now_disabled">Bitte zuerst Benachrichtigungen aktivieren.</string>
     <string name="settings_check_now_running">Prüfung läuft…</string>

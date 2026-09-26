@@ -165,6 +165,7 @@ class SettingsFragment : Fragment() {
         }
         updateBatteryOptimizationUi()
         binding.btnBatteryOptimization.setOnClickListener { requestIgnoreBatteryOptimizations() }
+        binding.btnAutostart.setOnClickListener { requestAutostartPermission() }
         binding.btnCheckNow.setOnClickListener { runCheckNow() }
 
         // ── Week view: what the tile's second line shows ───────────────────────
@@ -518,6 +519,77 @@ class SettingsFragment : Fragment() {
         val showHint = enabled && !exempted
         binding.btnBatteryOptimization.isVisible = showHint
         binding.textBatteryOptimizationHint.isVisible = showHint
+
+        // Battery-optimization exemption alone isn't enough on several aggressive OEM ROMs
+        // (see requestAutostartPermission) — surface that as a separate action so it isn't
+        // missed. Shown alongside the battery hint above (not only once that one's dealt with):
+        // on these ROMs both are typically needed, and there's no reliable way to detect
+        // whether autostart is already granted the way isIgnoringBatteryOptimizations() can for
+        // battery, so this stays visible whenever notifications are on and the device is a
+        // known-affected manufacturer, letting the user re-check it any time.
+        val showAutostart = enabled && isKnownAggressiveManufacturer()
+        binding.btnAutostart.isVisible = showAutostart
+        binding.textAutostartHint.isVisible = showAutostart
+    }
+
+    private fun isKnownAggressiveManufacturer(): Boolean {
+        val manufacturer = android.os.Build.MANUFACTURER.lowercase()
+        return manufacturer in setOf("xiaomi", "poco", "redmi", "huawei", "honor", "oppo", "realme", "oneplus", "vivo", "meizu", "asus", "letv", "zte", "lenovo", "nokia")
+    }
+
+    /**
+     * Best-effort deep link into the manufacturer's own "autostart" / "manage app launch"
+     * screen. On MIUI (Xiaomi/Redmi/POCO) and several other ROMs, a background service can be
+     * fully exempted from battery optimization and STILL never get to run in the background —
+     * there's a second, ROM-specific permission gate on top that Android's standard APIs don't
+     * cover at all, which is why isIgnoringBatteryOptimizations() can't detect it and this
+     * button has to stay visible unconditionally on these devices (see updateBatteryOptimizationUi).
+     * These component names are undocumented/unofficial and can change between ROM versions, so
+     * several are tried in order before giving up and pointing the user at the app's own
+     * settings page as a fallback starting point.
+     */
+    private fun requestAutostartPermission() {
+        val manufacturer = android.os.Build.MANUFACTURER.lowercase()
+        val candidates = when {
+            manufacturer in setOf("xiaomi", "poco", "redmi") -> listOf(
+                "com.miui.securitycenter" to "com.miui.permcenter.autostart.AutoStartManagementActivity",
+                "com.miui.securitycenter" to "com.miui.permcenter.autostart.AutoStartManagementActivity2"
+            )
+            manufacturer in setOf("huawei", "honor") -> listOf(
+                "com.huawei.systemmanager" to "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity",
+                "com.huawei.systemmanager" to "com.huawei.systemmanager.optimize.process.ProtectActivity"
+            )
+            manufacturer in setOf("oppo", "realme", "oneplus") -> listOf(
+                "com.coloros.safecenter" to "com.coloros.safecenter.permission.startup.StartupAppListActivity",
+                "com.coloros.safecenter" to "com.coloros.safecenter.startupapp.StartupAppListActivity",
+                "com.oppo.safe" to "com.oppo.safe.permission.startup.StartupAppListActivity"
+            )
+            manufacturer == "vivo" -> listOf(
+                "com.vivo.permissionmanager" to "com.vivo.permissionmanager.activity.BgStartUpManagerActivity",
+                "com.iqoo.secure" to "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager"
+            )
+            manufacturer == "asus" -> listOf("com.asus.mobilemanager" to "com.asus.mobilemanager.autostart.AutoStartActivity")
+            else -> emptyList()
+        }
+        for ((pkg, cls) in candidates) {
+            try {
+                startActivity(android.content.Intent().apply {
+                    component = android.content.ComponentName(pkg, cls)
+                })
+                return
+            } catch (e: Exception) { /* try next candidate */ }
+        }
+        // Nothing worked (unknown ROM version, component renamed, ...) — the app's own settings
+        // page at least gets the user one tap away from the right area on most ROMs.
+        try {
+            startActivity(android.content.Intent(
+                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.parse("package:${requireContext().packageName}")
+            ))
+            android.widget.Toast.makeText(requireContext(), getString(R.string.settings_autostart_failed), android.widget.Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(requireContext(), getString(R.string.settings_autostart_failed), android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun isIgnoringBatteryOptimizations(): Boolean {
