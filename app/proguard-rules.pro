@@ -28,6 +28,15 @@
 # (fields quietly stay null instead of throwing), which is very hard to notice.
 -keep class com.webuntis.dashboard.model.** { *; }
 -keepclassmembers class com.webuntis.dashboard.model.** { *; }
+# ChangeSnapshot/ChangeLogEntry are also (de)serialized with Gson (see
+# ChangeSnapshot.parse / SessionManager.lastNotifiedSnapshot) but live outside
+# the model package — without this, R8 is free to merge/restructure these
+# classes in release builds, which produced a ClassCastException the moment
+# MainActivity.checkAndShowUnseenChanges() touched the deserialized
+# ChangeLogEntry list, since Gson's reflective result no longer matched the
+# class the call site expected.
+-keep class com.webuntis.dashboard.api.ChangeSnapshot { *; }
+-keep class com.webuntis.dashboard.api.ChangeLogEntry { *; }
 -keepclassmembers class * {
     @com.google.gson.annotations.SerializedName <fields>;
 }

@@ -1130,9 +1130,12 @@ fun untisDateLabel(date: Int): String {
  * ALL of one absenceId's full days are merged into a single [AbsenceListEntry.FullDayRange]
  * spanning its earliest to latest full day: since an absenceId is one continuous reported
  * absence by definition, this is correct even across a weekend with no school (and therefore
- * no AbsenceTime rows at all) in between — grouping by absenceId sidesteps having to detect
- * calendar-day adjacency at all. A day that isn't a full day for its absenceId (e.g. a single
- * lateness) instead becomes an [AbsenceListEntry.PartialDay] row, grouped by calendar date.
+ * no AbsenceTime rows at all) in between. Ranges from *different* absenceIds are then merged
+ * too, via [mergeAdjacentFullDayRanges] below — WebUntis assigns a separate absenceId per day
+ * when days are reported individually rather than as one multi-day absence, so relying on
+ * absenceId alone would otherwise show e.g. a Mon–Fri illness as five one-day entries. A day
+ * that isn't a full day for its absenceId (e.g. a single lateness) instead becomes an
+ * [AbsenceListEntry.PartialDay] row, grouped by calendar date.
  */
 fun List<AbsenceTime>.groupIntoAbsenceEntries(): List<AbsenceListEntry> {
     val ranges = mutableListOf<AbsenceListEntry.FullDayRange>()
@@ -1182,7 +1185,42 @@ fun List<AbsenceTime>.groupIntoAbsenceEntries(): List<AbsenceListEntry> {
         AbsenceListEntry.PartialDay(date, rows.sortedBy { it.startTime })
     }
 
-    return (ranges + partialDays).sortedByDescending { it.sortDate }
+    return (mergeAdjacentFullDayRanges(ranges) + partialDays).sortedByDescending { it.sortDate }
+}
+
+/**
+ * Merges [FullDayRange]s from *different* absenceIds when they're actually the same absence
+ * reported one day at a time — WebUntis assigns a fresh absenceId per day in that case (see
+ * groupIntoAbsenceEntries above, which otherwise only merges full days sharing one absenceId).
+ * Mirrors [clusterConsecutive]'s merge criteria: same reason/status/excused and no gap other
+ * than a weekend ([isNextSchoolDay]) between one range's end and the next's start.
+ */
+private fun mergeAdjacentFullDayRanges(
+    ranges: List<AbsenceListEntry.FullDayRange>
+): List<AbsenceListEntry.FullDayRange> {
+    val sorted = ranges.sortedBy { it.startDate }
+    val merged = mutableListOf<AbsenceListEntry.FullDayRange>()
+    for (range in sorted) {
+        val prev = merged.lastOrNull()
+        val matches = prev != null &&
+            prev.reasonName == range.reasonName &&
+            prev.statusName == range.statusName &&
+            prev.excused == range.excused &&
+            isNextSchoolDay(prev.endDate, range.startDate)
+        if (prev != null && matches) {
+            merged[merged.lastIndex] = prev.copy(
+                endDate = range.endDate,
+                dayCount = prev.dayCount + range.dayCount,
+                subjects = (prev.subjects + range.subjects).distinct(),
+                periodCount = prev.periodCount + range.periodCount,
+                counting = prev.counting || range.counting,
+                text = prev.text?.takeIf { it.isNotBlank() } ?: range.text
+            )
+        } else {
+            merged += range
+        }
+    }
+    return merged
 }
 
 // ─── TIMEGRID ─────────────────────────────────────────────────────────────────
